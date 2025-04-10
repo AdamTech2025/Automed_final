@@ -596,7 +596,7 @@ async def add_code_data(request: CodeDataRequest):
                 "response": response
             }
         }
-    except Exception as e:
+                except Exception as e:
         return {"status": "error", "message": str(e)}
 
 

@@ -18,6 +18,8 @@ pids
 *.seed
 *.pid.lock
 
+med_gpt.sqlite3-journal
+
 # testing
 coverage/
 
