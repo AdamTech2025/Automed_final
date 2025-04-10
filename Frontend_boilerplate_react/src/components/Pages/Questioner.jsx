@@ -26,13 +26,38 @@ const Questioner = ({
     }
   }, [questions]);
 
+  useEffect(() => {
+    console.log('Questioner rendered with props:', { 
+      isVisible, 
+      recordId,
+      questionCount: {
+        cdt: questions?.cdt_questions?.length || 0,
+        icd: questions?.icd_questions?.length || 0
+      }
+    });
+  }, [isVisible, recordId, questions]);
+
   const handleSubmit = async () => {
     try {
       setLoading(true);
       const values = await form.validateFields();
       
+      console.log('Submitting answers for record ID:', recordId);
+      console.log('Form values:', values);
+      
+      if (!recordId) {
+        throw new Error('Record ID is missing');
+      }
+      
       // Submit answers to the backend
       const response = await submitQuestionAnswers(values, recordId);
+      
+      if (response.status === 'error') {
+        // If there's an error message in the response, display it
+        message.error(response.message || 'Server returned an error');
+        console.error('Server error:', response.message);
+        return; // Don't close modal or reset form on error
+      }
       
       message.success('Answers submitted successfully');
       
@@ -40,7 +65,7 @@ const Questioner = ({
       form.resetFields();
       
       // Close modal and trigger success callback with the response data
-      if (onSubmitSuccess && response) {
+      if (onSubmitSuccess) {
         onSubmitSuccess(response);
       }
       

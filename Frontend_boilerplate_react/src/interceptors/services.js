@@ -26,11 +26,17 @@ export const submitSelectedCodes = async (selectedCodes, recordId) => {
 // Submit answers to questions service
 export const submitQuestionAnswers = async (answers, recordId) => {
   try {
+    console.log(`Submitting answers for record ID: ${recordId}`);
+    console.log('Answers data:', answers);
+    
     const response = await apiInstance.post(`/answer-questions/${recordId}`, {
       answers: JSON.stringify(answers)
     });
+    
+    console.log('Response received:', response.data);
     return response.data;
   } catch (error) {
-    throw error.response?.data || { message: 'Failed to submit answers' };
+    console.error('Error in submitQuestionAnswers:', error.response || error);
+    throw error.response?.data || { message: 'Failed to submit answers: ' + (error.message || 'Unknown error') };
   }
 };

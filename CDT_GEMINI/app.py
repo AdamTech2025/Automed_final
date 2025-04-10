@@ -178,10 +178,8 @@ async def analyze_web(request: ScenarioRequest):
     """Process the dental scenario and return results."""
     try:
         # Step 1: Create a record ID
-        record_id = str(uuid.uuid4())
         print("=== STARTING DENTAL SCENARIO ANALYSIS ===")
         print(f"Input scenario: {request.scenario}")
-        print(f"Generated record ID: {record_id}")
         
         # Step 2: Clean the data using data_cleaner
         print("\n=== CLEANING DATA ===")
@@ -201,10 +199,13 @@ async def analyze_web(request: ScenarioRequest):
             "icd_result": "{}",
             "questioner_data": "{}"
         })
-        print("Initial record created in database")
+        
+        # Get the database-generated record ID
+        record_id = initial_record[0]["id"]
+        print(f"Initial record created in database with ID: {record_id}")
         
         # Update with processed data
-        db.update_processed_scenario(initial_record[0]["id"], processed_scenario)
+        db.update_processed_scenario(record_id, processed_scenario)
         print("Database updated with cleaned data")
         
         # Step 4: Analyze CDT Codes
@@ -313,15 +314,15 @@ async def analyze_web(request: ScenarioRequest):
             
             # Store questioner data in the database
             questioner_json = json.dumps(questioner_result, default=str)
-            db.update_questioner_data(initial_record[0]["id"], questioner_json)
-            print(f"Questioner data saved to database for ID: {initial_record[0]['id']}")
+            db.update_questioner_data(record_id, questioner_json)
+            print(f"Questioner data saved to database for ID: {record_id}")
             
             # For now, we'll continue without answers (in production, you'd wait for user input)
             print("Questions need to be answered before proceeding to inspection stage")
         else:
             print("No questions needed, proceeding to inspection stage")
             # Store empty questioner data
-            db.update_questioner_data(initial_record[0]["id"], json.dumps({"has_questions": False}))
+            db.update_questioner_data(record_id, json.dumps({"has_questions": False}))
         
         # Step 7: Final validation with inspectors (after questioner)
         print("\n=== STEP 7: INSPECTOR - VALIDATING CODES ===")
@@ -384,25 +385,20 @@ async def analyze_web(request: ScenarioRequest):
         combined_icd_json = json.dumps(icd_result, default=str)
         
         # Save results to database
-        db.update_analysis_results(initial_record[0]["id"], combined_cdt_json, combined_icd_json)
+        db.update_analysis_results(record_id, combined_cdt_json, combined_icd_json)
         
         # Calculate processing time
         processing_time = time.time() - start_time
         print(f"\nTotal processing time: {round(processing_time, 2)} seconds")
         print("=== ANALYSIS COMPLETE ===")
         
-        # Return JSON response
+        # Return JSON response with the database record ID
         return {
             "status": "success",
             "data": {
-                "record_id": record_id,
-                # "cdt_result": cdt_classifier_json,
-                # "topics_results": topics_results,
+                "record_id": record_id,  # Use the database-generated ID
                 "subtopics_data": combined_cdt_results["subtopics_data"],
                 "inspector_results": inspector_cdt_results,
-                # "icd_data": icd_result,
-                # "questioner_result": questioner_result,
-                # "has_questions": has_questions,
                 "cdt_questions": questioner_result.get('cdt_questions', {}).get('questions', []),
                 "icd_questions": questioner_result.get('icd_questions', {}).get('questions', []),
                 "processing_time": round(processing_time, 2)
@@ -734,16 +730,22 @@ async def answer_questions(request: Request, record_id: str):
         form_data = await request.json()
         answers_json = form_data.get("answers", "{}")
         
+        print(f"Request data: {form_data}")
+        print(f"Answers JSON: {answers_json}")
+        
         try:
             # Parse the answers JSON
             answers = json.loads(answers_json)
-        except json.JSONDecodeError:
+            print(f"Parsed answers: {answers}")
+        except json.JSONDecodeError as e:
+            print(f"Error parsing JSON: {str(e)}")
             # Fallback to traditional form processing if JSON parsing fails
             answers = {}
             # Process CDT questions from traditional form fields
             for key in form_data.keys():
                 if key.startswith("cdt_") or key.startswith("icd_"):
                     answers[key] = form_data[key]
+            print(f"Fallback answers: {answers}")
         
         # Create a new database connection
         db = MedicalCodingDB()
@@ -752,10 +754,22 @@ async def answer_questions(request: Request, record_id: str):
         record = get_record_from_database(record_id, close_connection=False)
         
         if not record:
+            print(f"❌ Record not found: {record_id}")
+            # List recent records for debugging
+            try:
+                db.cursor.execute("SELECT id, created_at FROM dental_report ORDER BY created_at DESC LIMIT 5")
+                recent_records = db.cursor.fetchall()
+                print(f"Recent records: {recent_records}")
+            except Exception as e:
+                print(f"Error fetching recent records: {str(e)}")
+            
             return {
                 "status": "error",
-                "message": f"No record found with ID: {record_id}"
+                "message": f"No record found with ID: {record_id}",
+                "data": None
             }
+        
+        print(f"✅ Record found: {record_id}")
         
         # Get the processed scenario
         processed_scenario = record.get("processed_scenario", "")

@@ -30,8 +30,11 @@ const Home = () => {
 
     try {
       const response = await analyzeDentalScenario({ scenario });
+      console.log('Analysis results received:', response);
+      console.log('Record ID:', response?.data?.record_id);
       setResult(response);
     } catch (err) {
+      console.error('Error analyzing scenario:', err);
       setError(err.message || 'An error occurred while analyzing the scenario');
     } finally {
       setLoading(false);
@@ -84,8 +87,14 @@ const Home = () => {
   };
 
   const handleQuestionerSuccess = (response) => {
-    // Update the result with the new data after questions are answered
-    setResult(response);
+    if (response && response.status === 'success') {
+      // Only update result if we got a successful response
+      setResult(response);
+    } else if (response && response.status === 'error') {
+      // Display the error message
+      setError(response.message || 'Failed to process answers');
+      // Don't hide the questioner modal on error
+    }
   };
 
   const renderCodeSection = (topic) => {
@@ -105,7 +114,7 @@ const Home = () => {
 
           return (
             <div 
-              key={index} 
+              key={`topic-${index}-${topic}`}
               className={`mb-4 transition-all duration-300 ease-in-out ${
                 isAccepted ? 'bg-green-50 border-green-200' : 
                 isDenied ? 'bg-red-50 border-red-200' : 
@@ -192,7 +201,7 @@ const Home = () => {
               
               return (
                 <span 
-                  key={index} 
+                  key={`code-${index}-${code}`}
                   className={`px-3 py-1 rounded-full text-sm transition-all duration-200 ${
                     isAccepted 
                       ? 'bg-green-100 text-green-800 border border-green-300' : 
@@ -224,10 +233,10 @@ const Home = () => {
           isVisible={showQuestioner}
           onClose={handleQuestionerClose}
           questions={{
-            cdt_questions: result.data.cdt_questions || [],
-            icd_questions: result.data.icd_questions || []
+            cdt_questions: result?.data?.cdt_questions || [],
+            icd_questions: result?.data?.icd_questions || []
           }}
-          recordId={result.data.record_id}
+          recordId={result?.data?.record_id || ''}
           onSubmitSuccess={handleQuestionerSuccess}
         />
       )}
@@ -287,7 +296,9 @@ const Home = () => {
                 </div>
 
                 {/* Code Sections */}
-                {Object.keys(result.data.subtopics_data || {}).map(topic => renderCodeSection(topic))}
+                {Object.keys(result?.data?.subtopics_data || {}).map((topic, index) => (
+                  <div key={`topic-${index}-${topic}`}>{renderCodeSection(topic)}</div>
+                ))}
 
                 {/* Inspector Results */}
                 {renderInspectorResults()}
