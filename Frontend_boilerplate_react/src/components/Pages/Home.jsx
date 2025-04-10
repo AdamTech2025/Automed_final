@@ -225,6 +225,60 @@ const Home = () => {
     );
   };
 
+  // Add a function to check if all codes have been selected
+  const areAllCodesSelected = () => {
+    if (!result?.data?.inspector_results?.codes) return false;
+    
+    const allCodes = result.data.inspector_results.codes;
+    const selectedCount = selectedCodes.accepted.length + selectedCodes.denied.length;
+    
+    // Check if every code has been either accepted or denied
+    return allCodes.length > 0 && selectedCount === allCodes.length;
+  };
+
+  // Add a function to render the selected codes section
+  const renderSelectedCodes = () => {
+    if (selectedCodes.accepted.length === 0 && selectedCodes.denied.length === 0) return null;
+    
+    return (
+      <div className="mt-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
+        <h3 className="text-lg font-semibold mb-4">Your Selections</h3>
+        
+        {selectedCodes.accepted.length > 0 && (
+          <div className="mb-4">
+            <h4 className="font-medium text-green-700 mb-2">Accepted Codes:</h4>
+            <div className="flex flex-wrap gap-2">
+              {selectedCodes.accepted.map((code, index) => (
+                <span 
+                  key={`accepted-${index}-${code}`}
+                  className="px-3 py-1 rounded-full text-sm bg-green-100 text-green-800 border border-green-300"
+                >
+                  {code}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {selectedCodes.denied.length > 0 && (
+          <div>
+            <h4 className="font-medium text-red-700 mb-2">Denied Codes:</h4>
+            <div className="flex flex-wrap gap-2">
+              {selectedCodes.denied.map((code, index) => (
+                <span 
+                  key={`denied-${index}-${code}`}
+                  className="px-3 py-1 rounded-full text-sm bg-red-100 text-red-800 border border-red-300"
+                >
+                  {code}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col bg-gray-100">
       {/* Questioner Modal */}
@@ -303,15 +357,27 @@ const Home = () => {
                 {/* Inspector Results */}
                 {renderInspectorResults()}
 
+                {/* Selected Codes Section */}
+                {renderSelectedCodes()}
+
                 {/* Submit Button */}
                 <div className="mt-6 flex justify-end">
                   <button
                     onClick={handleSubmitCodes}
-                    disabled={submitting || (selectedCodes.accepted.length === 0 && selectedCodes.denied.length === 0)}
-                    className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-md hover:bg-green-700 disabled:bg-gray-400 flex items-center"
+                    disabled={submitting || !areAllCodesSelected()}
+                    className={`px-4 py-2 rounded-lg shadow-md flex items-center transition-all duration-300 ${
+                      areAllCodesSelected() 
+                        ? 'bg-green-600 text-white hover:bg-green-700' 
+                        : 'bg-gray-400 text-white cursor-not-allowed'
+                    }`}
                   >
                     <FaPaperPlane className="mr-2" />
-                    {submitting ? 'Submitting...' : 'Submit Selected Codes'}
+                    {submitting 
+                      ? 'Submitting...' 
+                      : areAllCodesSelected() 
+                        ? 'Submit Selected Codes' 
+                        : `Select All Codes (${result?.data?.inspector_results?.codes?.length - (selectedCodes.accepted.length + selectedCodes.denied.length)} remaining)`
+                    }
                   </button>
                 </div>
               </div>
