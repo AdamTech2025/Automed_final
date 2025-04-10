@@ -72,16 +72,26 @@ class MedicalCodingDB:
                 )
             """)
             
+            # Add dental_code_analysis table
+            self.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS dental_code_analysis (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    scenario TEXT NOT NULL,
+                    cdt_codes TEXT,
+                    response TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
             # Check if questioner_data column exists, if not add it
             try:
                 self.cursor.execute("SELECT questioner_data FROM dental_report LIMIT 1")
             except sqlite3.OperationalError:
-                # Column doesn't exist, so add it
                 self.cursor.execute("ALTER TABLE dental_report ADD COLUMN questioner_data TEXT")
                 print("✅ Added questioner_data column to existing table")
                 
             self.conn.commit()
-            print("✅ Database table created/verified successfully")
+            print("✅ Database tables created/verified successfully")
         except Exception as e:
             print(f"❌ Table creation error: {str(e)}")
             raise
@@ -400,6 +410,21 @@ class MedicalCodingDB:
         except Exception as e:
             print(f"❌ Error retrieving most recent analysis: {str(e)}")
             return None
+
+    def add_code_analysis(self, scenario: str, cdt_codes: str, response: str) -> int:
+        """Add a new dental code analysis record."""
+        self.ensure_connection()
+        try:
+            query = """
+            INSERT INTO dental_code_analysis (scenario, cdt_codes, response)
+            VALUES (?, ?, ?)
+            """
+            self.cursor.execute(query, (scenario, cdt_codes, response))
+            self.conn.commit()
+            return self.cursor.lastrowid
+        except Exception as e:
+            print(f"❌ Error adding code analysis: {str(e)}")
+            raise
 
 # ===========================
 # Example Usage
