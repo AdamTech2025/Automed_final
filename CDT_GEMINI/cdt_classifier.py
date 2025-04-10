@@ -155,20 +155,21 @@ Important Guidelines:
 5) For restorative procedures, pay careful attention to mention of posts, cores, buildups or similar structures used before crown placement, as these are separate billable services from the crown itself.
 
 
-For each identified code range, stricly follow this structure only do write write anything else:
+STRICT OUTPUT FORMAT - FOLLOW EXACTLY:
 
+For each code range, you must use the following format, with no additional text:
+
+CODE_RANGE: D0100-D0999 - Diagnostic Services
 
 EXPLANATION:
 [Provide a detailed explanation for why this code range was selected, with specific references to the scenario elements]
 
-
 DOUBT:
 [List any uncertainties or alternative interpretations that might affect code selection, or ask a question here if you need more data to be sure]
 
-CODE_RANGE: [D0100-D0999 - Diagnostic Services]
+CODE_RANGE: D0100-D0999 - Diagnostic Services
 
-,
-Repeat the above structure for each relevant code range.
+Repeat this exact format for each relevant code range. Do not add additional text, comments, or summaries outside of this format.
         """,
         input_variables=["scenario"]
     )
@@ -184,89 +185,80 @@ def classify_cdt_categories(scenario, temperature=0.0):
     chain = create_cdt_classifier(temperature)
     result = invoke_chain(chain, {"scenario": processed_scenario})["text"].strip()
     
-    # Extract multiple code range sections
-    code_ranges = []
+    # This will hold just the range codes for API usage
+    range_codes = []
     explanations = []
     doubts = []
     
-    # This will hold just the range codes for API usage
-    range_codes = []
-    
+    # Split the result by "CODE_RANGE:" to get each section
     sections = result.split("CODE_RANGE:")
     
     # Skip the first empty section if it exists
     sections = [s for s in sections if s.strip()]
     
     for section in sections:
-        # Process each code range section
         lines = section.strip().split('\n')
         
-        # First line is the code range
-        code_range = lines[0].strip()
-        
-        # Parse code range names
-        code_range_names = {}
-        if " - " in code_range:
-            range_code, range_name = code_range.split(" - ", 1)
-            range_code = range_code.strip()
-            code_range_names[range_code] = range_name.strip()
+        # First line should be the code range
+        if not lines:
+            continue
             
-            # Extract just the code range (e.g., "D0100-D0999")
-            # Remove any surrounding characters like brackets or quotes
-            range_code = range_code.replace("[", "").replace("]", "").replace("\"", "").strip()
-            range_codes.append(range_code)
+        code_range_line = lines[0].strip()
         
-        # Extract explanation and doubt for this code range
-        current_section = None
-        explanation = ""
-        doubt = ""
-        
-        for line in lines[1:]:
-            line = line.strip()
-            if not line:
-                continue
+        # Extract CDT code range (e.g., "D0100-D0999")
+        if " - " in code_range_line:
+            code_parts = code_range_line.split(" - ")
+            if code_parts and code_parts[0].strip().startswith("D"):
+                range_code = code_parts[0].strip()
                 
-            if line == "EXPLANATION:":
-                current_section = "explanation"
-            elif line == "DOUBT:":
-                current_section = "doubt"
-            elif current_section == "explanation":
-                if explanation:
-                    explanation += "\n" + line
-                else:
-                    explanation = line
-            elif current_section == "doubt":
-                if doubt:
-                    doubt += "\n" + line
-                else:
-                    doubt = line
-        
-        # Add to our collections
-        code_ranges.append({
-            "code_range": code_range,
-            "code_range_names": code_range_names
-        })
-        explanations.append(explanation)
-        doubts.append(doubt)
+                # Initialize variables for the current section
+                explanation = ""
+                doubt = ""
+                current_section = None
+                
+                # Process the remaining lines to extract explanation and doubt
+                for line in lines[1:]:
+                    line = line.strip()
+                    
+                    if not line:
+                        continue
+                    
+                    if line == "EXPLANATION:":
+                        current_section = "explanation"
+                    elif line == "DOUBT:":
+                        current_section = "doubt"
+                    elif current_section == "explanation":
+                        if explanation:
+                            explanation += "\n" + line
+                        else:
+                            explanation = line
+                    elif current_section == "doubt":
+                        if doubt:
+                            doubt += "\n" + line
+                        else:
+                            doubt = line
+                
+                # Only add to results if we have a valid code range
+                range_codes.append(range_code)
+                explanations.append(explanation)
+                doubts.append(doubt)
     
     # Create a comma-separated string of just the range codes
     range_codes_string = ",".join(range_codes)
     
-    # Create the new format requested by the user
+    # Create the formatted results
     formatted_results = []
     for i, range_code in enumerate(range_codes):
         formatted_results.append({
             "code_range": range_code,
-            "explanation": explanations[i],
-            "doubt": doubts[i]
+            "explanation": explanations[i] if i < len(explanations) else "",
+            "doubt": doubts[i] if i < len(doubts) else ""
         })
     
+    # Return the formatted results and the range codes string
     return {
-        "code_ranges": code_ranges,  # Keep original for backward compatibility
-        "explanations": explanations,  # Keep original for backward compatibility
-        "doubts": doubts,  # Keep original for backward compatibility
-        "range_codes_string": range_codes_string,  # Keep original for backward compatibility
-        "formatted_results": formatted_results  # New format as requested
+        "formatted_results": formatted_results,
+        "range_codes_string": range_codes_string
     }
 
 
@@ -279,22 +271,11 @@ if __name__ == "__main__":
     test_scenario = input("Enter a dental scenario to classify: ")
     result = classify_cdt_categories(test_scenario)
     
-    print("\n=== CDT CODE RANGES (NEW FORMAT) ===")
+    print("\n=== CDT CODE RANGES ===")
     for item in result["formatted_results"]:
-        print(f"{{")
-        print(f"code_range: {item['code_range']},")
-        print(f"explanation: {item['explanation']},")
-        print(f"doubt: {item['doubt']}")
-        print(f"}},")
-    
-    # Keep original output for reference
-    print("\n=== CDT CODE RANGES (ORIGINAL FORMAT) ===")
-    for i, code_range in enumerate(result["code_ranges"]):
-        print(f"Range {i+1}: {code_range['code_range']}")
-        
-        print("\n=== EXPLANATION ===")
-        print(result["explanations"][i])
-        
-        print("\n=== DOUBT ===")
-        print(result["doubts"][i])
+        print(f"CODE RANGE: {item['code_range']}")
+        print(f"EXPLANATION: {item['explanation']}")
+        print(f"DOUBT: {item['doubt']}")
         print("-" * 50)
+    
+    print(f"\nRange Codes String: {result['range_codes_string']}")

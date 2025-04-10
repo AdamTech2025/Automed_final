@@ -16,7 +16,7 @@ from typing import List
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s' 
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
@@ -221,14 +221,117 @@ async def analyze_web(request: ScenarioRequest):
         # Step 4: Analyze CDT Codes
         cdt_result = classify_cdt_categories(processed_scenario)
         
+        # Print the CDT classifier result for debugging
+        print("\n=== CDT CLASSIFIER RESULT ===")
+        print(f"Keys in cdt_result: {cdt_result.keys()}")
+        
         # Format CDT classifier results as structured JSON for the database
-        # Use the new format for database storage
         cdt_classifier_json = {
-            "formatted_results": cdt_result.get("formatted_results", []),
+            "formatted_results": [],
             "range_codes_string": cdt_result.get('range_codes_string', '')
         }
         
+        # Process the formatted_results directly if available
+        if 'formatted_results' in cdt_result:
+            cdt_classifier_json["formatted_results"] = cdt_result['formatted_results']
+            print(f"Using formatted_results directly from classifier with {len(cdt_result['formatted_results'])} results")
+        # Fallback for old format processing (keeping this for backward compatibility)
+        elif 'code_ranges' in cdt_result and 'explanations' in cdt_result and 'doubts' in cdt_result:
+            # Make sure the lengths match
+            min_length = min(len(cdt_result['code_ranges']), len(cdt_result['explanations']), len(cdt_result['doubts']))
+            
+            print(f"Processing {min_length} CDT code ranges with explanations and doubts")
+            
+            # Process each code range with its explanation and doubt
+            for i in range(min_length):
+                code_range_data = cdt_result['code_ranges'][i]
+                code_range = code_range_data.get('code_range', '').strip()
+                
+                # Extract just the code part if it contains a name
+                if " - " in code_range:
+                    code_range = code_range.split(" - ")[0].strip()
+                    
+                # Remove any brackets
+                code_range = code_range.replace("[", "").replace("]", "").replace("\"", "").strip()
+                
+                # Create formatted result
+                formatted_result = {
+                    "code_range": code_range,
+                    "explanation": cdt_result['explanations'][i].strip() if i < len(cdt_result['explanations']) else "",
+                    "doubt": cdt_result['doubts'][i].strip() if i < len(cdt_result['doubts']) else ""
+                }
+                cdt_classifier_json["formatted_results"].append(formatted_result)
+                
+                print(f"Processed code range: {code_range} with explanation and doubt")
+        elif 'range_codes' in cdt_result:
+            # Just include the code ranges without explanations/doubts
+            range_codes = cdt_result.get('range_codes', [])
+            print(f"No explanations/doubts found. Using {len(range_codes)} range codes")
+            
+            for code in range_codes:
+                cdt_classifier_json["formatted_results"].append({
+                    "code_range": code,
+                    "explanation": "",
+                    "doubt": ""
+                })
+        else:
+            print("WARNING: Could not find formatted_results or code_ranges in CDT classifier result")
+            print(f"Available fields: {list(cdt_result.keys())}")
+            
+            # Try to extract directly from the result text if available
+            result_text = cdt_result.get('text', '')
+            if result_text:
+                # Use regex to extract code ranges, explanations, and doubts
+                import re
+                sections = re.split(r'CODE_RANGE:', result_text)
+                
+                for section in sections[1:]:  # Skip first empty section
+                    lines = section.strip().split('\n')
+                    if not lines:
+                        continue
+                        
+                    # First line is the code range
+                    code_range = lines[0].strip()
+                    if " - " in code_range:
+                        code_range = code_range.split(" - ")[0].strip()
+                    code_range = code_range.replace("[", "").replace("]", "").replace("\"", "").strip()
+                    
+                    # Extract explanation and doubt
+                    explanation = ""
+                    doubt = ""
+                    current_section = None
+                    
+                    for line in lines[1:]:
+                        line = line.strip()
+                        if not line:
+                            continue
+                            
+                        if line == "EXPLANATION:":
+                            current_section = "explanation"
+                        elif line == "DOUBT:":
+                            current_section = "doubt"
+                        elif current_section == "explanation":
+                            if explanation:
+                                explanation += " " + line
+                            else:
+                                explanation = line
+                        elif current_section == "doubt":
+                            if doubt:
+                                doubt += " " + line
+                            else:
+                                doubt = line
+                    
+                    cdt_classifier_json["formatted_results"].append({
+                        "code_range": code_range,
+                        "explanation": explanation,
+                        "doubt": doubt
+                    })
+
+        print(f"Formatted CDT classifier JSON with {len(cdt_classifier_json['formatted_results'])} results")
+        print(json.dumps(cdt_classifier_json, indent=2))
+        
         # Step 5: Activate CDT Topics
+        # Get the range codes string from the classifier result directly
         range_codes = cdt_result["range_codes_string"].split(",")
         topics_results = {}
         
@@ -264,20 +367,48 @@ async def analyze_web(request: ScenarioRequest):
                             print(f"  Warning: Empty result from {topic_name}")
                             activation_result = {
                                 "code_range": clean_range,
+                                "explanation": "",
+                                "doubt": "",
                                 "subtopic": topic_name,
+                                "activated_subtopics": [],
                                 "codes": [f"No specific codes identified for {topic_name}"]
                             }
+                        # If activation_result doesn't have explanation or doubt fields, ensure they're present 
+                        if isinstance(activation_result, dict) and 'code_range' in activation_result:
+                            if 'explanation' not in activation_result:
+                                activation_result['explanation'] = ""
+                            if 'doubt' not in activation_result:
+                                activation_result['doubt'] = ""
                     except Exception as topic_error:
                         print(f"  Error in {topic_name}: {str(topic_error)}")
                         activation_result = {
                             "code_range": clean_range,
+                            "explanation": "",
+                            "doubt": f"Error processing: {str(topic_error)}",
                             "subtopic": topic_name,
-                            "error": str(topic_error),
+                            "activated_subtopics": [],
                             "codes": [f"Error processing {topic_name}"]
                         }
                     
+                    # Ensure the result has a consistent structure
+                    if isinstance(activation_result, dict) and 'code_range' in activation_result:
+                        # Parse the code range to extract explanations and doubts
+                        if 'code_range' in activation_result and isinstance(activation_result['code_range'], str):
+                            code_range_text = activation_result['code_range']
+                            
+                            # Try to extract explanation and doubt from code_range if they're embedded
+                            import re
+                            explanation_match = re.search(r'EXPLANATION:(.*?)(?=\n\nDOUBT:|$)', code_range_text, re.DOTALL)
+                            doubt_match = re.search(r'DOUBT:(.*?)(?=\n\nCODE RANGE:|$)', code_range_text, re.DOTALL)
+                            
+                            if explanation_match:
+                                activation_result['explanation'] = explanation_match.group(1).strip()
+                            
+                            if doubt_match:
+                                activation_result['doubt'] = doubt_match.group(1).strip()
+                    
                     # End of inner try-except
-                    # Store the results
+                    # Store the results with a consistent structure
                     topics_results[clean_range] = {
                         "name": topic_name,
                         "result": activation_result
@@ -301,7 +432,14 @@ async def analyze_web(request: ScenarioRequest):
                     print(f"Error activating {topic_name}: {str(e)}")
                     topics_results[clean_range] = {
                         "name": topic_name,
-                        "result": {"error": str(e)}
+                        "result": {
+                            "code_range": clean_range,
+                            "explanation": "",
+                            "doubt": f"Error: {str(e)}",
+                            "subtopic": topic_name,
+                            "activated_subtopics": [],
+                            "codes": [f"Error processing {topic_name}"]
+                        }
                     }
             else:
                 print(f"Warning: No topic function found for range code {clean_range} (mapped to {category_range})")
@@ -353,7 +491,7 @@ async def analyze_web(request: ScenarioRequest):
             "subtopics_data": {},  # Initialize empty subtopics container
         }
 
-        # Loop through topics results to extract subtopic data
+        # Loop through topics results to extract subtopic data with a cleaner format
         for range_code, topic_data in topics_results.items():
             topic_name = topic_data.get("name", "Unknown")
             activation_result = topic_data.get("result", {})
@@ -362,6 +500,8 @@ async def analyze_web(request: ScenarioRequest):
             if isinstance(activation_result, dict) and 'activated_subtopics' in activation_result:
                 subtopics = activation_result.get('activated_subtopics', [])
                 codes = activation_result.get('codes', [])
+                explanation = activation_result.get('explanation', '')
+                doubt = activation_result.get('doubt', '')
                 
                 # Process each code to extract code, explanation, and doubt
                 formatted_codes = []
@@ -379,11 +519,13 @@ async def analyze_web(request: ScenarioRequest):
                     }
                     formatted_codes.append(formatted_code)
                 
-                # Add to subtopics data
+                # Add to subtopics data with a cleaner structure
                 combined_cdt_results["subtopics_data"][range_code] = {
                     "topic_name": topic_name,
                     "activated_subtopics": subtopics,
-                    "specific_codes": formatted_codes
+                    "specific_codes": formatted_codes,
+                    "explanation": explanation,
+                    "doubt": doubt
                 }
 
         # Format ICD results to include inspector results
@@ -633,7 +775,7 @@ async def store_code_status(request: CodeStatusRequest):
                 "code_status": code_status
             }
         }
-        
+    
     except Exception as e:
         logger.error(f"Error storing code status: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -773,8 +915,8 @@ async def api_answer_questions(record_id: str, request: Request):
             "status": "success",
             "data": {
                 "record_id": record_id,
-                "subtopics_data": subtopics_data,
-                "inspector_results": inspector_cdt_results,
+            "subtopics_data": subtopics_data,
+            "inspector_results": inspector_cdt_results,
                 "cdt_questions": [],  # No more questions
                 "icd_questions": [],  # No more questions
             }
