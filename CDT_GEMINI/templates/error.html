@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dental Code Extractor</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        h1 { color: #2c3e50; }
+        form { margin: 20px 0; }
+        textarea { width: 100%; height: 100px; padding: 10px; margin: 10px 0; }
+        button { background: #3498db; color: white; border: none; padding: 10px 20px; cursor: pointer; }
+        .result { background: #f8f9fa; padding: 15px; margin: 15px 0; border-left: 4px solid #3498db; }
+        .error { background: #ffeeee; color: #e74c3c; padding: 15px; border-left: 4px solid #e74c3c; }
+    </style>
+</head>
+<body>
+    <h1>Dental Code Extractor</h1>
+    <form method="post" action="/analyze">
+        <div>
+            <label for="scenario">Enter a dental scenario:</label>
+            <textarea id="scenario" name="scenario" required>{scenario}</textarea>
+        </div>
+        <button type="submit">Analyze</button>
+    </form>
+   <h1>This the results</h1>
+   <p>{results}</p>
+</body>
+</html>

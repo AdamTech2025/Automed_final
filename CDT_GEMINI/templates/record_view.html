@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Record View</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/css/bootstrap.min.css') }}">
+    <style>
+        .json-display {
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            max-height: 500px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .card {
+            margin-bottom: 20px;
+        }
+        .card-header {
+            font-weight: bold;
+        }
+        .subtopic-list {
+            margin-left: 20px;
+        }
+        .code-item {
+            padding: 5px;
+            background-color: #e9f5f8;
+            border-radius: 3px;
+            margin-bottom: 5px;
+            display: inline-block;
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12">
+                <h1 class="mb-4">Database Record View</h1>
+                
+                {% if error %}
+                <div class="alert alert-danger" role="alert">
+                    <h4 class="alert-heading">Error</h4>
+                    <p>{{ error }}</p>
+                    <hr>
+                    <p class="mb-0">{{ error_details }}</p>
+                </div>
+                {% else %}
+                
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        Record Information
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Record ID:</strong> {{ record_id }}</p>
+                        <div class="mb-3">
+                            <h5>Processed Scenario:</h5>
+                            <div class="p-3 bg-light">{{ processed_scenario }}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- CDT Data -->
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        CDT Data
+                    </div>
+                    <div class="card-body">
+                        <!-- CDT Classifier -->
+                        {% if cdt_classifier %}
+                        <div class="mb-4">
+                            <h5>CDT Classifier</h5>
+                            {% if cdt_classifier.range_codes_string %}
+                            <p><strong>Range Codes:</strong> {{ cdt_classifier.range_codes_string }}</p>
+                            {% endif %}
+                            
+                            {% if cdt_classifier.formatted_results %}
+                            <h6>Formatted Results:</h6>
+                            <div class="list-group mb-3">
+                                {% for result in cdt_classifier.formatted_results %}
+                                <div class="list-group-item">
+                                    <p><strong>Code Range:</strong> {{ result.code_range }}</p>
+                                    <p><strong>Explanation:</strong> {{ result.explanation }}</p>
+                                    {% if result.doubt %}
+                                    <p><strong>Doubt:</strong> {{ result.doubt }}</p>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Subtopics Data -->
+                        {% if subtopics_data %}
+                        <div class="mb-4">
+                            <h5>Activated Topics and Subtopics</h5>
+                            <div class="list-group mb-3">
+                                {% for code_range, data in subtopics_data.items() %}
+                                <div class="list-group-item">
+                                    <p><strong>{{ data.topic_name }}</strong> ({{ code_range }})</p>
+                                    {% if data.activated_subtopics %}
+                                    <p><strong>Activated Subtopics:</strong></p>
+                                    <ul class="subtopic-list">
+                                        {% for subtopic in data.activated_subtopics %}
+                                        <li>{{ subtopic }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                    {% endif %}
+                                    
+                                    {% if data.specific_codes %}
+                                    <p><strong>Specific Codes:</strong></p>
+                                    <div>
+                                        {% for code in data.specific_codes %}
+                                        <div class="code-item">{{ code }}</div>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Inspector Results -->
+                        {% if inspector_results %}
+                        <div class="mb-4">
+                            <h5>Inspector Results</h5>
+                            {% if inspector_results.codes %}
+                            <p><strong>Validated CDT Codes:</strong></p>
+                            <div class="mb-2">
+                                {% for code in inspector_results.codes %}
+                                <span class="code-item">{{ code }}</span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                            
+                            {% if inspector_results.explanation %}
+                            <p><strong>Explanation:</strong></p>
+                            <div class="p-3 bg-light">{{ inspector_results.explanation }}</div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Raw CDT JSON -->
+                        <div class="mb-4">
+                            <h5>Raw CDT JSON Data</h5>
+                            <div class="json-display">{{ formatted_cdt_json }}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- ICD Data -->
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        ICD Data
+                    </div>
+                    <div class="card-body">
+                        <!-- ICD Categories -->
+                        {% if icd_data.categories %}
+                        <div class="mb-4">
+                            <h5>ICD Categories</h5>
+                            <div class="list-group mb-3">
+                                {% for category in icd_data.categories %}
+                                <div class="list-group-item">
+                                    <p><strong>Category:</strong> {{ category }}</p>
+                                    {% if icd_data.code_lists and loop.index0 < icd_data.code_lists|length %}
+                                    <p><strong>Codes:</strong> 
+                                        {% for code in icd_data.code_lists[loop.index0] %}
+                                        <span class="code-item">{{ code }}</span>
+                                        {% endfor %}
+                                    </p>
+                                    {% endif %}
+                                    
+                                    {% if icd_data.explanations and loop.index0 < icd_data.explanations|length %}
+                                    <p><strong>Explanation:</strong> {{ icd_data.explanations[loop.index0] }}</p>
+                                    {% endif %}
+                                    
+                                    {% if icd_data.doubts and loop.index0 < icd_data.doubts|length and icd_data.doubts[loop.index0] %}
+                                    <p><strong>Doubt:</strong> {{ icd_data.doubts[loop.index0] }}</p>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- ICD Inspector Results -->
+                        {% if icd_data.inspector_results %}
+                        <div class="mb-4">
+                            <h5>ICD Inspector Results</h5>
+                            {% if icd_data.inspector_results.codes %}
+                            <p><strong>Validated ICD Codes:</strong></p>
+                            <div class="mb-2">
+                                {% for code in icd_data.inspector_results.codes %}
+                                <span class="code-item">{{ code }}</span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                            
+                            {% if icd_data.inspector_results.explanation %}
+                            <p><strong>Explanation:</strong></p>
+                            <div class="p-3 bg-light">{{ icd_data.inspector_results.explanation }}</div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Raw ICD JSON -->
+                        <div class="mb-4">
+                            <h5>Raw ICD JSON Data</h5>
+                            <div class="json-display">{{ formatted_icd_json }}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Questioner Data -->
+                {% if formatted_questioner_json != '{}' %}
+                <div class="card">
+                    <div class="card-header bg-warning text-dark">
+                        Questioner Data
+                    </div>
+                    <div class="card-body">
+                        <div class="json-display">{{ formatted_questioner_json }}</div>
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', path='/js/bootstrap.bundle.min.js') }}"></script>
+</body>
+</html> 
