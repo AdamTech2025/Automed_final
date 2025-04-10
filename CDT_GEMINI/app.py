@@ -641,6 +641,152 @@ async def store_code_status(request: CodeStatusRequest):
         if 'db' in locals():
             db.close_connection()
 
+@app.post("/api/answer-questions/{record_id}")
+async def api_answer_questions(record_id: str, request: Request):
+    """Process the answers to questions and continue with analysis from API."""
+    try:
+        print(f"=== PROCESSING ANSWERS FOR ID: {record_id} ===")
+        
+        # Get the request data
+        request_data = await request.json()
+        answers_json = request_data.get("answers", "{}")
+        
+        print(f"Request data: {request_data}")
+        print(f"Answers JSON: {answers_json}")
+        
+        try:
+            # Parse the answers JSON
+            answers = json.loads(answers_json)
+            print(f"Parsed answers: {answers}")
+        except json.JSONDecodeError as e:
+            print(f"Error parsing JSON: {str(e)}")
+            answers = request_data.get("answers", {})
+            print(f"Using raw answers: {answers}")
+        
+        # Create a new database connection
+        db = MedicalCodingDB()
+        
+        # Get the record from the database - don't close the connection
+        record = get_record_from_database(record_id, close_connection=False)
+        
+        if not record:
+            print(f"❌ Record not found: {record_id}")
+            # List recent records for debugging
+            try:
+                db.cursor.execute("SELECT id, created_at FROM dental_report ORDER BY created_at DESC LIMIT 5")
+                recent_records = db.cursor.fetchall()
+                print(f"Recent records: {recent_records}")
+            except Exception as e:
+                print(f"Error fetching recent records: {str(e)}")
+            
+            return {
+                "status": "error",
+                "message": f"No record found with ID: {record_id}",
+                "data": None
+            }
+        
+        print(f"✅ Record found: {record_id}")
+        
+        # Get the processed scenario
+        processed_scenario = record.get("processed_scenario", "")
+        
+        # Get the questioner data
+        questioner_json = record.get("questioner_json", "{}")
+        questioner_data = json.loads(questioner_json) if questioner_json else {}
+        
+        # Update the scenario with the answers
+        updated_scenario = processed_scenario + "\n\nAdditional information provided:\n"
+        for question, answer in answers.items():
+            updated_scenario += f"Q: {question}\nA: {answer}\n"
+        
+        # Update the record with the updated scenario
+        try:
+            db.update_processed_scenario(record_id, updated_scenario)
+            print(f"Updated processed scenario for {record_id}")
+        except Exception as e:
+            print(f"❌ Error updating processed scenario: {str(e)}")
+            # Try to reconnect and retry
+            db.connect()
+            db.update_processed_scenario(record_id, updated_scenario)
+            print(f"Second attempt: Updated processed scenario for {record_id}")
+        
+        # Update the questioner data with the answers
+        questioner_data["answers"] = answers
+        questioner_data["has_answers"] = True
+        questioner_data["updated_scenario"] = updated_scenario
+        
+        # Save the updated questioner data
+        try:
+            db.update_questioner_data(record_id, json.dumps(questioner_data))
+            print(f"Updated questioner data for {record_id}")
+        except Exception as e:
+            print(f"❌ Error updating questioner data: {str(e)}")
+            # Try to reconnect and retry
+            db.connect()
+            db.update_questioner_data(record_id, json.dumps(questioner_data))
+            print(f"Second attempt: Updated questioner data for {record_id}")
+        
+        # Parse CDT and ICD results from the database
+        cdt_json = record.get("cdt_json", "{}")
+        icd_json = record.get("icd_json", "{}")
+        
+        cdt_result = json.loads(cdt_json) if cdt_json else {}
+        icd_result = json.loads(icd_json) if icd_json else {}
+        
+        # Get topics_results from CDT result
+        topics_results = cdt_result.get("topics", {})
+        
+        # Run the inspectors with the updated scenario and questioner data
+        inspector_cdt_results = analyze_dental_scenario(updated_scenario, 
+                                                       topics_results, 
+                                                       questioner_data=questioner_data)
+        
+        inspector_icd_results = analyze_icd_scenario(updated_scenario, 
+                                                   icd_result.get("icd_topics_results", {}), 
+                                                    questioner_data=questioner_data)
+
+        # Update CDT results
+        cdt_result["inspector_results"] = inspector_cdt_results
+        
+        # Update ICD result with inspector results
+        icd_result["inspector_results"] = inspector_icd_results
+        
+        # Save to database
+        try:
+            db.update_analysis_results(record_id, json.dumps(cdt_result), json.dumps(icd_result))
+            print(f"Updated analysis results for {record_id}")
+        except Exception as e:
+            print(f"❌ Error updating analysis results: {str(e)}")
+            # Try to reconnect and retry
+            db.connect()
+            db.update_analysis_results(record_id, json.dumps(cdt_result), json.dumps(icd_result))
+            print(f"Second attempt: Updated analysis results for {record_id}")
+        
+        # Format data for response
+        subtopics_data = cdt_result.get("subtopics_data", {})
+        
+        # Close database connection
+        db.close_connection()
+        
+        # Return the results as JSON
+        return {
+            "status": "success",
+            "data": {
+                "record_id": record_id,
+                "subtopics_data": subtopics_data,
+                "inspector_results": inspector_cdt_results,
+                "cdt_questions": [],  # No more questions
+                "icd_questions": [],  # No more questions
+            }
+        }
+        
+    except Exception as e:
+        traceback.print_exc()
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
 def display_database_record(record_id):
     """CLI function to display database record content"""
     print(f"Attempting to retrieve record: {record_id}")
@@ -702,3 +848,15 @@ if __name__ == "__main__":
     else:
         import uvicorn
         uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+
+@app.get("/api/routes")
+async def list_routes():
+    """List all available routes (for debugging)."""
+    routes = []
+    for route in app.routes:
+        routes.append({
+            "path": route.path,
+            "name": route.name,
+            "methods": [method for method in route.methods] if hasattr(route, "methods") else None
+        })
+    return {"routes": routes}

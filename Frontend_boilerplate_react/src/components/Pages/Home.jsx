@@ -225,15 +225,51 @@ const Home = () => {
     );
   };
 
-  // Add a function to check if all codes have been selected
+  // Update the areAllCodesSelected function to count codes from subtopics_data instead
   const areAllCodesSelected = () => {
-    if (!result?.data?.inspector_results?.codes) return false;
+    if (!result?.data?.subtopics_data) return false;
     
-    const allCodes = result.data.inspector_results.codes;
+    // Collect all valid codes from subtopics_data
+    const allCodes = [];
+    
+    Object.keys(result.data.subtopics_data).forEach(topic => {
+      const topicData = result.data.subtopics_data[topic];
+      if (topicData.specific_codes) {
+        topicData.specific_codes.forEach(codeData => {
+          // Only count valid codes (not 'none')
+          if (codeData && codeData.code && codeData.code !== 'none') {
+            allCodes.push(codeData.code);
+          }
+        });
+      }
+    });
+    
     const selectedCount = selectedCodes.accepted.length + selectedCodes.denied.length;
     
     // Check if every code has been either accepted or denied
     return allCodes.length > 0 && selectedCount === allCodes.length;
+  };
+
+  // Add a function to get the count of remaining codes to select
+  const getRemainingCodeCount = () => {
+    if (!result?.data?.subtopics_data) return 0;
+    
+    // Count total valid codes
+    let totalCodes = 0;
+    
+    Object.keys(result.data.subtopics_data).forEach(topic => {
+      const topicData = result.data.subtopics_data[topic];
+      if (topicData.specific_codes) {
+        topicData.specific_codes.forEach(codeData => {
+          if (codeData && codeData.code && codeData.code !== 'none') {
+            totalCodes++;
+          }
+        });
+      }
+    });
+    
+    const selectedCount = selectedCodes.accepted.length + selectedCodes.denied.length;
+    return totalCodes - selectedCount;
   };
 
   // Add a function to render the selected codes section
@@ -376,7 +412,7 @@ const Home = () => {
                       ? 'Submitting...' 
                       : areAllCodesSelected() 
                         ? 'Submit Selected Codes' 
-                        : `Select All Codes (${result?.data?.inspector_results?.codes?.length - (selectedCodes.accepted.length + selectedCodes.denied.length)} remaining)`
+                        : `Select All Codes (${getRemainingCodeCount()} remaining)`
                     }
                   </button>
                 </div>

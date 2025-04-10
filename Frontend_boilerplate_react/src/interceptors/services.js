@@ -29,7 +29,7 @@ export const submitQuestionAnswers = async (answers, recordId) => {
     console.log(`Submitting answers for record ID: ${recordId}`);
     console.log('Answers data:', answers);
     
-    const response = await apiInstance.post(`/answer-questions/${recordId}`, {
+    const response = await apiInstance.post(`/api/answer-questions/${recordId}`, {
       answers: JSON.stringify(answers)
     });
     
