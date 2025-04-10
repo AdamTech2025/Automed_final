@@ -1,6 +1,7 @@
 import { FaTooth, FaCogs, FaCheck, FaTimes, FaPaperPlane, FaRobot } from 'react-icons/fa';
 import { analyzeDentalScenario, submitSelectedCodes } from '../../interceptors/services.js';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import Questioner from './Questioner.jsx';
 
 const Home = () => {
   const [scenario, setScenario] = useState('');
@@ -9,6 +10,16 @@ const Home = () => {
   const [error, setError] = useState(null);
   const [selectedCodes, setSelectedCodes] = useState({ accepted: [], denied: [] });
   const [submitting, setSubmitting] = useState(false);
+  const [showQuestioner, setShowQuestioner] = useState(false);
+
+  // Check if there are questions in the result
+  useEffect(() => {
+    if (result && (result.data.cdt_questions?.length > 0 || result.data.icd_questions?.length > 0)) {
+      setShowQuestioner(true);
+    } else {
+      setShowQuestioner(false);
+    }
+  }, [result]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -66,6 +77,15 @@ const Home = () => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleQuestionerClose = () => {
+    setShowQuestioner(false);
+  };
+
+  const handleQuestionerSuccess = (response) => {
+    // Update the result with the new data after questions are answered
+    setResult(response);
   };
 
   const renderCodeSection = (topic) => {
@@ -198,6 +218,20 @@ const Home = () => {
 
   return (
     <div className="flex flex-col bg-gray-100">
+      {/* Questioner Modal */}
+      {result && (
+        <Questioner
+          isVisible={showQuestioner}
+          onClose={handleQuestionerClose}
+          questions={{
+            cdt_questions: result.data.cdt_questions || [],
+            icd_questions: result.data.icd_questions || []
+          }}
+          recordId={result.data.record_id}
+          onSubmitSuccess={handleQuestionerSuccess}
+        />
+      )}
+
       {/* Main content container */}
       <div className="flex-grow flex items-center justify-center p-4">
         <div className="w-full p-2 md:p-6 bg-white rounded-lg shadow-lg">
@@ -243,7 +277,7 @@ const Home = () => {
             </form>
 
             {/* Result */}
-            {result && (
+            {result && !showQuestioner && (
               <div className="mt-6">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-semibold">Analysis Results</h3>

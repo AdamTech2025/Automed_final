@@ -724,14 +724,14 @@ def display_database_record(record_id):
         print(f"Error displaying record: {e}")
 
 # Add a new endpoint for answering questions
-@app.post("/answer-questions/{record_id}", response_class=HTMLResponse)
+@app.post("/answer-questions/{record_id}", response_class=JSONResponse)
 async def answer_questions(request: Request, record_id: str):
     """Process the answers to questions and continue with analysis."""
     try:
         print(f"=== PROCESSING ANSWERS FOR ID: {record_id} ===")
         
         # Get the form data
-        form_data = await request.form()
+        form_data = await request.json()
         answers_json = form_data.get("answers", "{}")
         
         try:
@@ -752,11 +752,10 @@ async def answer_questions(request: Request, record_id: str):
         record = get_record_from_database(record_id, close_connection=False)
         
         if not record:
-            return templates.TemplateResponse("index.html", {
-                "request": request,
-                "error": "Record not found",
-                "error_details": f"No record found with ID: {record_id}"
-            })
+            return {
+                "status": "error",
+                "message": f"No record found with ID: {record_id}"
+            }
         
         # Get the processed scenario
         processed_scenario = record.get("processed_scenario", "")
@@ -814,7 +813,7 @@ async def answer_questions(request: Request, record_id: str):
         
         inspector_icd_results = analyze_icd_scenario(updated_scenario, 
                                                    icd_result.get("icd_topics_results", {}), 
-                                                    questioner_data=questioner_data)
+                                                   questioner_data=questioner_data)
 
         # Update CDT results
         cdt_result["inspector_results"] = inspector_cdt_results
@@ -833,39 +832,30 @@ async def answer_questions(request: Request, record_id: str):
             db.update_analysis_results(record_id, json.dumps(cdt_result), json.dumps(icd_result))
             print(f"Second attempt: Updated analysis results for {record_id}")
         
-        # Format data for template
-        cdt_classifier_json = cdt_result.get("cdt_classifier", {})
+        # Format data for response
         subtopics_data = cdt_result.get("subtopics_data", {})
         
         # Close database connection
         db.close_connection()
         
-        # Return the results
-        return templates.TemplateResponse("index.html", {
-            "request": request,
-            "scenario": record.get("user_question", ""),
-            "processed_scenario": updated_scenario,
-            "cdt_result": cdt_classifier_json,
-            "topics_results": topics_results,
-            "subtopics_data": subtopics_data,
-            "inspector_results": inspector_cdt_results,
-            "icd_data": icd_result,
-            "questioner_result": questioner_data,
-            "has_questions": False,  # Questions have been answered
-            "results": {
-                "record_id": record_id
-            },
-            "processing_complete": True  # Flag to indicate processing is complete
-        })
+        # Return the results as JSON
+        return {
+            "status": "success",
+            "data": {
+                "record_id": record_id,
+                "subtopics_data": subtopics_data,
+                "inspector_results": inspector_cdt_results,
+                "cdt_questions": [],  # No more questions
+                "icd_questions": [],  # No more questions
+            }
+        }
         
     except Exception as e:
         traceback.print_exc()
-        return templates.TemplateResponse("index.html", {
-            "request": request,
-            "error": "An error occurred while processing answers",
-            "error_details": str(e),
-            "processing_complete": True  # Still mark as complete even with error
-        })
+        return {
+            "status": "error",
+            "message": str(e)
+        }
 
 
 

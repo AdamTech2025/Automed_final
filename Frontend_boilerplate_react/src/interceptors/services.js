@@ -22,3 +22,15 @@ export const submitSelectedCodes = async (selectedCodes, recordId) => {
     throw error.response?.data || { message: 'Failed to submit selected codes' };
   }
 };
+
+// Submit answers to questions service
+export const submitQuestionAnswers = async (answers, recordId) => {
+  try {
+    const response = await apiInstance.post(`/answer-questions/${recordId}`, {
+      answers: JSON.stringify(answers)
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { message: 'Failed to submit answers' };
+  }
+};
