@@ -57,18 +57,3 @@ Always stay concise, clear, and clinically grounded.
         return error_msg
 
 # Test block
-@app.post("/api/add-code-data")
-async def add_code_data(request: CodeDataRequest):
-    """Add code data to the database."""
-    try:
-        response = Add_code_data(request.scenario, request.cdt_codes)
-        return {
-            "status": "success",
-            "data": {
-                "scenario": request.scenario,
-                "cdt_codes": request.cdt_codes,
-                "response": response
-            }
-        }
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
