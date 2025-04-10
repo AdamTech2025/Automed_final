@@ -48,7 +48,7 @@ db = MedicalCodingDB()
 # Initialize FastAPI app
 app = FastAPI(title="Dental Code Extractor API")
 templates = Jinja2Templates(directory="templates")
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # Track active analyses by ID
 active_analyses = {}
@@ -215,6 +215,10 @@ class CodeStatusRequest(BaseModel):
     accepted: List[str]
     denied: List[str]
     record_id: str
+
+class CodeDataRequest(BaseModel):
+    scenario: str
+    cdt_codes: str
 
 # Add simple implementation for routes
 @app.get("/", response_class=HTMLResponse)
@@ -744,6 +748,24 @@ async def get_analysis_status(analysis_id: str):
         return active_analyses[analysis_id]
     return {"status": "not_found"}
 
+
+
+
+@app.post("/api/add-code-data")
+async def add_code_data(request: CodeDataRequest):
+    """Add code data to the database."""
+    try:
+        response = Add_code_data(request.scenario, request.cdt_codes)
+        return {
+            "status": "success",
+            "data": {
+                "scenario": request.scenario,
+                "cdt_codes": request.cdt_codes,
+                "response": response
+            }
+        }
+                except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 def get_record_from_database(record_id, close_connection=True):

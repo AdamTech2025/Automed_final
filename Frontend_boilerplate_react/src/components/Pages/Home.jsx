@@ -1,4 +1,4 @@
-import { FaTooth, FaCogs, FaCheck, FaTimes, FaPaperPlane, FaRobot } from 'react-icons/fa';
+import { FaTooth, FaCogs, FaCheck, FaTimes, FaPaperPlane, FaRobot, FaCopy } from 'react-icons/fa';
 import { analyzeDentalScenario, submitSelectedCodes } from '../../interceptors/services.js';
 import { useState, useEffect } from 'react';
 import Questioner from './Questioner.jsx';
@@ -11,6 +11,8 @@ const Home = () => {
   const [selectedCodes, setSelectedCodes] = useState({ accepted: [], denied: [] });
   const [submitting, setSubmitting] = useState(false);
   const [showQuestioner, setShowQuestioner] = useState(false);
+  const [expandedTopics, setExpandedTopics] = useState({});
+  const [newCode, setNewCode] = useState('');
 
   // Check if there are questions in the result
   useEffect(() => {
@@ -97,85 +99,146 @@ const Home = () => {
     }
   };
 
+  const toggleTopic = (topic) => {
+    setExpandedTopics(prev => ({
+      ...prev,
+      [topic]: !prev[topic]
+    }));
+  };
+
+  const handleCopyCodes = () => {
+    const codes = result.data.inspector_results.codes.join(', ');
+    navigator.clipboard.writeText(codes).then(() => {
+      alert('Codes copied to clipboard!');
+    }).catch(err => {
+      console.error('Failed to copy codes: ', err);
+    });
+  };
+
+  const scrollToCode = (code) => {
+    // Find the topic containing the code
+    const topic = Object.keys(result.data.subtopics_data).find(topic =>
+      result.data.subtopics_data[topic].specific_codes.some(codeData => codeData.code === code)
+    );
+
+    if (topic) {
+      // Expand the topic if it's not already expanded
+      if (!expandedTopics[topic]) {
+        toggleTopic(topic);
+      }
+
+      // Scroll to the code
+      const element = document.getElementById(`code-${code}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  };
+
   const renderCodeSection = (topic) => {
     if (!result?.data?.subtopics_data?.[topic]) return null;
     
     const { topic_name, activated_subtopics, specific_codes } = result.data.subtopics_data[topic];
+    const isExpanded = expandedTopics[topic];
+    
+    // Skip if all codes are "none"
+    const hasValidCodes = specific_codes.some(code => code && code.code !== 'none');
+    if (!hasValidCodes) return null;
     
     return (
       <div className="mb-6">
-        <h3 className="text-lg font-semibold mb-2">{topic_name}</h3>
-        {activated_subtopics.map((subtopic, index) => {
-          const codeData = specific_codes[index];
-          if (!codeData || codeData.code === 'none') return null;
+        <div 
+          className="flex items-center justify-between p-4 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
+          onClick={() => toggleTopic(topic)}
+        >
+          <h3 className="text-lg font-semibold">{topic_name}</h3>
+          <div className="transform transition-transform duration-300">
+            {isExpanded ? '▼' : '▶'}
+          </div>
+        </div>
+        
+        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${
+          isExpanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'
+        }`}>
+          {activated_subtopics.map((subtopic, index) => {
+            const codeData = specific_codes[index];
+            if (!codeData || codeData.code === 'none') return null;
 
-          const isAccepted = selectedCodes.accepted.includes(codeData.code);
-          const isDenied = selectedCodes.denied.includes(codeData.code);
+            const isAccepted = selectedCodes.accepted.includes(codeData.code);
+            const isDenied = selectedCodes.denied.includes(codeData.code);
 
-          return (
-            <div 
-              key={`topic-${index}-${topic}`}
-              className={`mb-4 transition-all duration-300 ease-in-out ${
-                isAccepted ? 'bg-green-50 border-green-200' : 
-                isDenied ? 'bg-red-50 border-red-200' : 
-                'bg-white border-gray-200'
-              }`}
-            >
-              <h4 className="font-medium text-gray-700 mb-2 p-4">{subtopic}</h4>
-              <div className={`p-4 rounded-lg shadow-sm border ${
-                isAccepted ? 'border-green-300' : 
-                isDenied ? 'border-red-300' : 
-                'border-gray-200'
-              }`}>
-                <div className="flex justify-between items-center mb-2">
-                  <span className={`font-mono px-2 py-1 rounded ${
-                    isAccepted ? 'bg-green-100 text-green-800' : 
-                    isDenied ? 'bg-red-100 text-red-800' : 
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {codeData.code}
-                  </span>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => handleCodeSelection(codeData.code, 'accept')}
-                      className={`p-2 rounded-full transition-all duration-200 ${
-                        isAccepted 
-                          ? 'bg-green-500 text-white scale-110' 
-                          : 'bg-gray-200 text-gray-600 hover:bg-green-500 hover:text-white hover:scale-110'
-                      }`}
-                    >
-                      <FaCheck />
-                    </button>
-                    <button
-                      onClick={() => handleCodeSelection(codeData.code, 'deny')}
-                      className={`p-2 rounded-full transition-all duration-200 ${
-                        isDenied 
-                          ? 'bg-red-500 text-white scale-110' 
-                          : 'bg-gray-200 text-gray-600 hover:bg-red-500 hover:text-white hover:scale-110'
-                      }`}
-                    >
-                      <FaTimes />
-                    </button>
+            return (
+              <div 
+                key={`topic-${index}-${topic}`}
+                id={`code-${codeData.code}`}
+                className={`mt-4 transition-all duration-300 ease-in-out ${
+                  isAccepted ? 'bg-green-50 border-green-200' : 
+                  isDenied ? 'bg-red-50 border-red-200' : 
+                  'bg-white border-gray-200'
+                }`}
+              >
+                <h4 className="font-medium text-gray-700 mb-2 p-4">{subtopic}</h4>
+                <div className={`p-4 rounded-lg shadow-sm border ${
+                  isAccepted ? 'border-green-300' : 
+                  isDenied ? 'border-red-300' : 
+                  'border-gray-200'
+                }`}>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className={`font-mono px-2 py-1 rounded ${
+                      isAccepted ? 'bg-green-100 text-green-800' : 
+                      isDenied ? 'bg-red-100 text-red-800' : 
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {codeData.code}
+                    </span>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCodeSelection(codeData.code, 'accept');
+                        }}
+                        className={`p-2 rounded-full transition-all duration-200 ${
+                          isAccepted 
+                            ? 'bg-green-500 text-white scale-110' 
+                            : 'bg-gray-200 text-gray-600 hover:bg-green-500 hover:text-white hover:scale-110'
+                        }`}
+                      >
+                        <FaCheck />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCodeSelection(codeData.code, 'deny');
+                        }}
+                        className={`p-2 rounded-full transition-all duration-200 ${
+                          isDenied 
+                            ? 'bg-red-500 text-white scale-110' 
+                            : 'bg-gray-200 text-gray-600 hover:bg-red-500 hover:text-white hover:scale-110'
+                        }`}
+                      >
+                        <FaTimes />
+                      </button>
+                    </div>
                   </div>
+                  <p className={`text-sm mb-1 ${
+                    isAccepted ? 'text-green-700' : 
+                    isDenied ? 'text-red-700' : 
+                    'text-gray-600'
+                  }`}>
+                    <span className="font-medium">Explanation:</span> {codeData.explanation}
+                  </p>
+                  <p className={`text-sm ${
+                    isAccepted ? 'text-green-700' : 
+                    isDenied ? 'text-red-700' : 
+                    'text-gray-600'
+                  }`}>
+                    <span className="font-medium">Doubt:</span> {codeData.doubt}
+                  </p>
                 </div>
-                <p className={`text-sm mb-1 ${
-                  isAccepted ? 'text-green-700' : 
-                  isDenied ? 'text-red-700' : 
-                  'text-gray-600'
-                }`}>
-                  <span className="font-medium">Explanation:</span> {codeData.explanation}
-                </p>
-                <p className={`text-sm ${
-                  isAccepted ? 'text-green-700' : 
-                  isDenied ? 'text-red-700' : 
-                  'text-gray-600'
-                }`}>
-                  <span className="font-medium">Doubt:</span> {codeData.doubt}
-                </p>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     );
   };
@@ -186,10 +249,18 @@ const Home = () => {
     const { codes, explanation } = result.data.inspector_results;
 
     return (
-      <div className="mt-8 p-4 bg-blue-50 rounded-lg border border-blue-200">
-        <div className="flex items-center mb-4">
-          <FaRobot className="text-blue-500 mr-2" />
-          <h3 className="text-lg font-semibold text-blue-700">AI Final Analysis</h3>
+      <div className="mt-8 p-4 bg-blue-50 rounded-lg border border-blue-200 ai-final-analysis-content relative">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center">
+            <FaRobot className="text-blue-500 mr-2" />
+            <h3 className="text-lg font-semibold text-blue-700">AI Final Analysis</h3>
+          </div>
+          <button
+            onClick={handleCopyCodes}
+            className="text-blue-500 hover:text-blue-700 transition-colors"
+          >
+            <FaCopy className="inline mr-1" /> Copy Codes
+          </button>
         </div>
         
         <div className="mb-4">
@@ -202,7 +273,8 @@ const Home = () => {
               return (
                 <span 
                   key={`code-${index}-${code}`}
-                  className={`px-3 py-1 rounded-full text-sm transition-all duration-200 ${
+                  onClick={() => scrollToCode(code)}
+                  className={`cursor-pointer px-3 py-1 rounded-full text-sm transition-all duration-200 ${
                     isAccepted 
                       ? 'bg-green-100 text-green-800 border border-green-300' : 
                     isDenied 
@@ -315,8 +387,12 @@ const Home = () => {
     );
   };
 
+  const handleAddCode = () => {
+    // Implementation of handleAddCode function
+  };
+
   return (
-    <div className="flex flex-col bg-gray-100">
+    <div className="flex flex-col min-h-screen bg-gray-100">
       {/* Questioner Modal */}
       {result && (
         <Questioner
@@ -333,7 +409,7 @@ const Home = () => {
 
       {/* Main content container */}
       <div className="flex-grow flex items-center justify-center p-4">
-        <div className="w-full p-2 md:p-6 bg-white rounded-lg shadow-lg">
+        <div className="w-full max-w-3xl p-4 md:p-6 bg-white rounded-lg shadow-lg">
           {/* Header */}
           <div className="bg-blue-500 text-white p-4 rounded-lg mb-6">
             <h2 className="text-xl md:text-2xl font-semibold flex items-center">
@@ -366,7 +442,7 @@ const Home = () => {
               <div className="flex justify-end">
                 <button
                   type="submit"
-                  className="bg-blue-600 text-white px-4 py-2 md:px-6 md:py-2 rounded-lg shadow-md hover:bg-blue-700 disabled:bg-gray-400 text-sm md:text-base"
+                  className="bg-blue-600 text-white px-4 py-2 md:px-6 md:py-2 rounded-lg shadow-md hover:bg-blue-700 disabled:bg-gray-400 text-sm md:text-base transition-all duration-300"
                   disabled={loading}
                 >
                   <FaCogs className="inline mr-2" />
@@ -374,6 +450,9 @@ const Home = () => {
                 </button>
               </div>
             </form>
+
+            {/* Inspector Results Section */}
+            {renderInspectorResults()}
 
             {/* Result */}
             {result && !showQuestioner && (
@@ -390,11 +469,25 @@ const Home = () => {
                   <div key={`topic-${index}-${topic}`}>{renderCodeSection(topic)}</div>
                 ))}
 
-                {/* Inspector Results */}
-                {renderInspectorResults()}
-
                 {/* Selected Codes Section */}
                 {renderSelectedCodes()}
+
+                {/* Add Code Section */}
+                <div className="mt-6 flex items-center">
+                  <input
+                    type="text"
+                    placeholder="Enter code"
+                    className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-sm md:text-base"
+                    value={newCode}
+                    onChange={(e) => setNewCode(e.target.value)}
+                  />
+                  <button
+                    onClick={handleAddCode}
+                    className="ml-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-all duration-300"
+                  >
+                    Add Code
+                  </button>
+                </div>
 
                 {/* Submit Button */}
                 <div className="mt-6 flex justify-end">
