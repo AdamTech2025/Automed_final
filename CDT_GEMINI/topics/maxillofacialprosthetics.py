@@ -1,6 +1,5 @@
 import os
 import sys
-from dotenv import load_dotenv
 from langchain.prompts import PromptTemplate
 from llm_services import create_chain, invoke_chain, get_llm_service
 
@@ -17,13 +16,12 @@ from subtopics.Maxillofacial_Prosthetics import (
 )
 
 # Load environment variables
-load_dotenv()
+
 
 # Get model name from environment variable, default to gpt-4o if not set
 
 # Ensure API key is set
-if not os.getenv("OPENAI_API_KEY"):
-    raise ValueError("OPENAI_API_KEY not found in environment variables. Please set it in the .env file.")
+
 
 def analyze_maxillofacial_prosthetics(scenario):
     """

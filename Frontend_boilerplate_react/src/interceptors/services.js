@@ -9,3 +9,16 @@ export const analyzeDentalScenario = async (scenarioData) => {
     throw error.response?.data || { message: 'Failed to analyze scenario' };
   }
 };
+
+// Submit selected codes service
+export const submitSelectedCodes = async (selectedCodes, recordId) => {
+  try {
+    const response = await apiInstance.post('/api/submit-codes', {
+      ...selectedCodes,
+      record_id: recordId
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { message: 'Failed to submit selected codes' };
+  }
+};

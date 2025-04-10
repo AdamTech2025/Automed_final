@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { FaTooth, FaPowerOff } from 'react-icons/fa';
+import { FaTooth} from 'react-icons/fa';
 
 const Navbar = () => {
   return (
@@ -10,9 +10,7 @@ const Navbar = () => {
           Dental Code Extractor Pro
         </Link>
       </div>
-      <button className="bg-red-600 text-white px-4 py-2 rounded-lg shadow-md hover:bg-red-700 text-sm md:text-base flex items-center">
-        <FaPowerOff className="inline mr-2" />Reset
-      </button>
+ 
     </nav>
   );
 };
