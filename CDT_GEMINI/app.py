@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 from data_cleaner import process_scenario
 from cdt_classifier import classify_cdt_categories
 from icd_classifier import classify_icd_categories
-from supabase import MedicalCodingDB
 from inspector import analyze_dental_scenario
 from icd_inspector import analyze_icd_scenario
 from questioner import process_questioner
@@ -44,7 +43,7 @@ from topics.orthodontics import activate_orthodontic
 from topics.adjunctivegeneralservices import activate_adjunctive_general_services
 
 
-from supabase import MedicalCodingDB
+from database import MedicalCodingDB
 
 db = MedicalCodingDB()
 # Initialize FastAPI app
