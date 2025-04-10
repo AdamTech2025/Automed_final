@@ -11,11 +11,12 @@ import asyncio
 import sys
 import traceback
 from pydantic import BaseModel
+from typing import List
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s' 
 )
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,10 @@ from topics.oralandmaxillofacialsurgery import activate_oral_maxillofacial_surge
 from topics.orthodontics import activate_orthodontic
 from topics.adjunctivegeneralservices import activate_adjunctive_general_services
 
+
+from supabase import MedicalCodingDB
+
+db = MedicalCodingDB()
 # Initialize FastAPI app
 app = FastAPI(title="Dental Code Extractor API")
 templates = Jinja2Templates(directory="templates")
@@ -160,6 +165,11 @@ CDT_TOPICS = {
 
 class ScenarioRequest(BaseModel):
     scenario: str
+
+class CodeStatusRequest(BaseModel):
+    accepted: List[str]
+    denied: List[str]
+    record_id: str
 
 # Add simple implementation for routes
 @app.get("/", response_class=HTMLResponse)
@@ -581,12 +591,59 @@ async def view_record(request: Request, record_id: str):
             }
         )
 
+@app.post("/api/store-code-status")
+async def store_code_status(request: CodeStatusRequest):
+    """Store the status of accepted and denied codes for a record."""
+    try:
+        print(f"=== STORING CODE STATUS FOR ID: {request.record_id} ===")
+        db = MedicalCodingDB()
+        
+        # Get existing record
+        record = get_record_from_database(request.record_id, close_connection=False)
+        if not record:
+            raise HTTPException(status_code=404, detail="Record not found")
+        
+        # Parse existing CDT data
+        cdt_json = json.loads(record["cdt_json"]) if record["cdt_json"] else {}
+        
+        # Create code status structure
+        code_status = {
+            "accepted": request.accepted,
+            "denied": request.denied,
+            "timestamp": time.time()
+        }
+        
+        # Update CDT data with code status
+        cdt_json["code_status"] = code_status
+        
+        # Update database
+        query = """
+        UPDATE dental_report 
+        SET cdt_result = ? 
+        WHERE id = ?
+        """
+        db.cursor.execute(query, (json.dumps(cdt_json), request.record_id))
+        db.conn.commit()
+        
+        return {
+            "status": "success",
+            "message": "Code statuses updated successfully",
+            "data": {
+                "record_id": request.record_id,
+                "code_status": code_status
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error storing code status: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'db' in locals():
+            db.close_connection()
+
 def display_database_record(record_id):
-    """
-    CLI function to display database record content
-    """
-    print(f"Attempting to retrieve record: {record_id}")  # Debug statement
-    
+    """CLI function to display database record content"""
+    print(f"Attempting to retrieve record: {record_id}")
     try:
         record = get_record_from_database(record_id)
         if not record:
@@ -606,54 +663,9 @@ def display_database_record(record_id):
         if "cdt_json" in record and record["cdt_json"]:
             print(f"\nCDT DATA:")
             print(f"{'-'*80}")
-            
             try:
                 cdt_json = json.loads(record["cdt_json"])
-                
-                # Display CDT Classifier
-                if "cdt_classifier" in cdt_json:
-                    print("\nCDT CLASSIFIER RESULTS:")
-                    classifier = cdt_json["cdt_classifier"]
-                    if "range_codes_string" in classifier:
-                        print(f"Range Codes: {classifier['range_codes_string']}")
-                    
-                    if "formatted_results" in classifier:
-                        print("\nFormatted Results:")
-                        for result in classifier["formatted_results"]:
-                            print(f"  - Code Range: {result.get('code_range', 'N/A')}")
-                            print(f"    Explanation: {result.get('explanation', 'N/A')}")
-                            if "doubt" in result and result["doubt"]:
-                                print(f"    Doubt: {result['doubt']}")
-                            print()
-                
-                # Display activated topics
-                if "subtopics_data" in cdt_json:
-                    print("\nACTIVATED TOPICS AND SUBTOPICS:")
-                    for code_range, data in cdt_json["subtopics_data"].items():
-                        print(f"  - {data.get('topic_name', 'Unknown Topic')} ({code_range})")
-                        
-                        if "activated_subtopics" in data and data["activated_subtopics"]:
-                            print("    Activated Subtopics:")
-                            for subtopic in data["activated_subtopics"]:
-                                print(f"      * {subtopic}")
-                        
-                        if "specific_codes" in data and data["specific_codes"]:
-                            print("    Specific Codes:")
-                            print(f"      {', '.join(data['specific_codes'])}")
-                        
-                        print()
-                
-                # Display inspector results
-                if "inspector_results" in cdt_json:
-                    print("\nINSPECTOR RESULTS:")
-                    inspector = cdt_json["inspector_results"]
-                    if "codes" in inspector and inspector["codes"]:
-                        print(f"  Validated CDT Codes: {', '.join(inspector['codes'])}")
-                    
-                    if "explanation" in inspector:
-                        print(f"  Explanation: {inspector['explanation']}")
-                    
-                    print()
+                print(json.dumps(cdt_json, indent=2))
             except json.JSONDecodeError:
                 print("  [Error parsing CDT JSON data]")
         
@@ -661,45 +673,9 @@ def display_database_record(record_id):
         if "icd_json" in record and record["icd_json"]:
             print(f"\nICD DATA:")
             print(f"{'-'*80}")
-            
             try:
                 icd_json = json.loads(record["icd_json"])
-                
-                # Display ICD Categories
-                if "categories" in icd_json:
-                    print("\nICD CATEGORIES:")
-                    for i, category in enumerate(icd_json["categories"]):
-                        print(f"  - {category}")
-                        
-                        # Display codes for this category
-                        if "code_lists" in icd_json and i < len(icd_json["code_lists"]):
-                            codes = icd_json["code_lists"][i]
-                            if codes:
-                                print(f"    Codes: {', '.join(codes)}")
-                        
-                        # Display explanation for this category
-                        if "explanations" in icd_json and i < len(icd_json["explanations"]):
-                            explanation = icd_json["explanations"][i]
-                            print(f"    Explanation: {explanation}")
-                        
-                        # Display doubt for this category
-                        if "doubts" in icd_json and i < len(icd_json["doubts"]) and icd_json["doubts"][i]:
-                            doubt = icd_json["doubts"][i]
-                            print(f"    Doubt: {doubt}")
-                        
-                        print()
-                
-                # Display ICD inspector results
-                if "inspector_results" in icd_json:
-                    print("\nICD INSPECTOR RESULTS:")
-                    inspector = icd_json["inspector_results"]
-                    if "codes" in inspector and inspector["codes"]:
-                        print(f"  Validated ICD Codes: {', '.join(inspector['codes'])}")
-                    
-                    if "explanation" in inspector:
-                        print(f"  Explanation: {inspector['explanation']}")
-                    
-                    print()
+                print(json.dumps(icd_json, indent=2))
             except json.JSONDecodeError:
                 print("  [Error parsing ICD JSON data]")
         
@@ -707,7 +683,6 @@ def display_database_record(record_id):
         if "questioner_json" in record and record["questioner_json"]:
             print(f"\nQUESTIONER DATA:")
             print(f"{'-'*80}")
-            
             try:
                 questioner_json = json.loads(record["questioner_json"])
                 print(json.dumps(questioner_json, indent=2))
@@ -718,161 +693,6 @@ def display_database_record(record_id):
     
     except Exception as e:
         print(f"Error displaying record: {e}")
-
-# Add a new endpoint for answering questions
-@app.post("/answer-questions/{record_id}", response_class=JSONResponse)
-async def answer_questions(request: Request, record_id: str):
-    """Process the answers to questions and continue with analysis."""
-    try:
-        print(f"=== PROCESSING ANSWERS FOR ID: {record_id} ===")
-        
-        # Get the form data
-        form_data = await request.json()
-        answers_json = form_data.get("answers", "{}")
-        
-        print(f"Request data: {form_data}")
-        print(f"Answers JSON: {answers_json}")
-        
-        try:
-            # Parse the answers JSON
-            answers = json.loads(answers_json)
-            print(f"Parsed answers: {answers}")
-        except json.JSONDecodeError as e:
-            print(f"Error parsing JSON: {str(e)}")
-            # Fallback to traditional form processing if JSON parsing fails
-            answers = {}
-            # Process CDT questions from traditional form fields
-            for key in form_data.keys():
-                if key.startswith("cdt_") or key.startswith("icd_"):
-                    answers[key] = form_data[key]
-            print(f"Fallback answers: {answers}")
-        
-        # Create a new database connection
-        db = MedicalCodingDB()
-        
-        # Get the record from the database - don't close the connection
-        record = get_record_from_database(record_id, close_connection=False)
-        
-        if not record:
-            print(f"❌ Record not found: {record_id}")
-            # List recent records for debugging
-            try:
-                db.cursor.execute("SELECT id, created_at FROM dental_report ORDER BY created_at DESC LIMIT 5")
-                recent_records = db.cursor.fetchall()
-                print(f"Recent records: {recent_records}")
-            except Exception as e:
-                print(f"Error fetching recent records: {str(e)}")
-            
-            return {
-                "status": "error",
-                "message": f"No record found with ID: {record_id}",
-                "data": None
-            }
-        
-        print(f"✅ Record found: {record_id}")
-        
-        # Get the processed scenario
-        processed_scenario = record.get("processed_scenario", "")
-        
-        # Get the questioner data
-        questioner_json = record.get("questioner_json", "{}")
-        questioner_data = json.loads(questioner_json) if questioner_json else {}
-        
-        # Update the scenario with the answers
-        updated_scenario = processed_scenario + "\n\nAdditional information provided:\n"
-        for question, answer in answers.items():
-            updated_scenario += f"Q: {question}\nA: {answer}\n"
-        
-        # Update the record with the updated scenario
-        try:
-            db.update_processed_scenario(record_id, updated_scenario)
-            print(f"Updated processed scenario for {record_id}")
-        except Exception as e:
-            print(f"❌ Error updating processed scenario: {str(e)}")
-            # Try to reconnect and retry
-            db.connect()
-            db.update_processed_scenario(record_id, updated_scenario)
-            print(f"Second attempt: Updated processed scenario for {record_id}")
-        
-        # Update the questioner data with the answers
-        questioner_data["answers"] = answers
-        questioner_data["has_answers"] = True
-        questioner_data["updated_scenario"] = updated_scenario
-        
-        # Save the updated questioner data
-        try:
-            db.update_questioner_data(record_id, json.dumps(questioner_data))
-            print(f"Updated questioner data for {record_id}")
-        except Exception as e:
-            print(f"❌ Error updating questioner data: {str(e)}")
-            # Try to reconnect and retry
-            db.connect()
-            db.update_questioner_data(record_id, json.dumps(questioner_data))
-            print(f"Second attempt: Updated questioner data for {record_id}")
-        
-        # Parse CDT and ICD results from the database
-        cdt_json = record.get("cdt_json", "{}")
-        icd_json = record.get("icd_json", "{}")
-        
-        cdt_result = json.loads(cdt_json) if cdt_json else {}
-        icd_result = json.loads(icd_json) if icd_json else {}
-        
-        # Get topics_results from CDT result
-        topics_results = cdt_result.get("topics", {})
-        
-        # Run the inspectors with the updated scenario and questioner data
-        inspector_cdt_results = analyze_dental_scenario(updated_scenario, 
-                                                       topics_results, 
-                                                       questioner_data=questioner_data)
-        
-        inspector_icd_results = analyze_icd_scenario(updated_scenario, 
-                                                   icd_result.get("icd_topics_results", {}), 
-                                                   questioner_data=questioner_data)
-
-        # Update CDT results
-        cdt_result["inspector_results"] = inspector_cdt_results
-        
-        # Update ICD result with inspector results
-        icd_result["inspector_results"] = inspector_icd_results
-        
-        # Save to database
-        try:
-            db.update_analysis_results(record_id, json.dumps(cdt_result), json.dumps(icd_result))
-            print(f"Updated analysis results for {record_id}")
-        except Exception as e:
-            print(f"❌ Error updating analysis results: {str(e)}")
-            # Try to reconnect and retry
-            db.connect()
-            db.update_analysis_results(record_id, json.dumps(cdt_result), json.dumps(icd_result))
-            print(f"Second attempt: Updated analysis results for {record_id}")
-        
-        # Format data for response
-        subtopics_data = cdt_result.get("subtopics_data", {})
-        
-        # Close database connection
-        db.close_connection()
-        
-        # Return the results as JSON
-        return {
-            "status": "success",
-            "data": {
-                "record_id": record_id,
-                "subtopics_data": subtopics_data,
-                "inspector_results": inspector_cdt_results,
-                "cdt_questions": [],  # No more questions
-                "icd_questions": [],  # No more questions
-            }
-        }
-        
-    except Exception as e:
-        traceback.print_exc()
-        return {
-            "status": "error",
-            "message": str(e)
-        }
-
-
-
 
 # CLI command handling
 if __name__ == "__main__":

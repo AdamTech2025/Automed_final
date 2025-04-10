@@ -13,7 +13,7 @@ export const analyzeDentalScenario = async (scenarioData) => {
 // Submit selected codes service
 export const submitSelectedCodes = async (selectedCodes, recordId) => {
   try {
-    const response = await apiInstance.post('/api/submit-codes', {
+    const response = await apiInstance.post('/api/store-code-status', {
       ...selectedCodes,
       record_id: recordId
     });
