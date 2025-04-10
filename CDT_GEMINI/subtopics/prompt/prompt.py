@@ -24,12 +24,13 @@ Instructions:
 
 10)code only for the procedure was actually performed on the date billed.
 
-11)
-Your answer must strictly follow the exact format below without any additional text.
+output format:
+**Your answer must strictly follow the exact format below without any additional text,
+**Strictly follow the below format if multiple code applies use the same format again and again, 
 
-EXPLANATION: [provide a brief, concise explanation of why this code(s) (are) is applicable]
+EXPLANATION: [provide a brief, concise explanation of why this code is applicable]
 DOUBT: [list any uncertainties or alternative interpretations if they exist, or ask a question if you need more information to clarify]
-CODE: [specific code or codes, separated by comma, or none if no code is applicable]"""
+CODE: [specific code or none if no code is applicable]"""
 
 
 
