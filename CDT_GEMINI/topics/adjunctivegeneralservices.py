@@ -266,3 +266,4 @@ if __name__ == "__main__":
     print(f"PRIMARY SUBTOPIC: {result.get('subtopic', 'None')}")
     print(f"ACTIVATED SUBTOPICS: {', '.join(result.get('activated_subtopics', []))}")
     print(f"SPECIFIC CODES: {', '.join(result.get('codes', []))}")
+    print(f"SPECIFIC CODES: {', '.join(result.get('codes', []))}")

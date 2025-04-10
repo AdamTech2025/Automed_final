@@ -5,13 +5,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import time
 import json
-import uuid
 import logging
-import asyncio
 import sys
 import traceback
 from pydantic import BaseModel
 from typing import List
+import re
 
 # Configure logging
 logging.basicConfig(
@@ -62,6 +61,53 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Utility function to transform topics to a simplified structure for DB storage
+def transform_topics_for_db(topics_data):
+    """
+    Transform the complex topics structure into a simplified format for database storage.
+    
+    Args:
+        topics_data (dict): Original topics data structure
+        
+    Returns:
+        dict: Simplified topics structure with clean format
+    """
+    transformed_topics = {}
+    
+    for range_code, topic_data in topics_data.items():
+        topic_name = topic_data.get("name", "Unknown")
+        activation_result = topic_data.get("result", {})
+        
+        # Extract key information from the activation result
+        explanation = activation_result.get("explanation", "")
+        doubt = activation_result.get("doubt", "")
+        activated_subtopics = activation_result.get("activated_subtopics", [])
+        
+        # Extract code range - handle case where it contains explanation text
+        code_range = activation_result.get("code_range", "")
+        if "\nCODE RANGE:" in code_range:
+            # It's a complex block, extract just the code range part
+            import re
+            code_match = re.search(r'\nCODE RANGE:\s*(.*?)(?:\n|$)', code_range)
+            if code_match:
+                code_range = code_match.group(1).strip()
+            else:
+                # Fallback to the full text if no match
+                code_range = code_range
+        
+        # Create a simplified structure for the topic
+        transformed_topics[range_code] = {
+            "name": topic_name,
+            "result": {
+                "EXPLANATION": explanation,
+                "DOUBT": doubt,
+                "CODE": code_range
+            },
+            "activated_subtopics": activated_subtopics
+        }
+    
+    return transformed_topics
 
 # Helper function to map specific CDT codes to their broader category
 def map_to_cdt_category(specific_code):
@@ -281,7 +327,6 @@ async def analyze_web(request: ScenarioRequest):
             result_text = cdt_result.get('text', '')
             if result_text:
                 # Use regex to extract code ranges, explanations, and doubts
-                import re
                 sections = re.split(r'CODE_RANGE:', result_text)
                 
                 for section in sections[1:]:  # Skip first empty section
@@ -449,7 +494,10 @@ async def analyze_web(request: ScenarioRequest):
                                               cdt_analysis=topics_results, 
                                               icd_analysis=classify_icd_categories(processed_scenario))
         
-        has_questions = questioner_result.get('has_questions', False)
+        # Transform topics into simplified structure for DB storage
+        simplified_topics = transform_topics_for_db(topics_results)
+        
+        has_questions = questioner_result.get('has_questions')
         
         # If there are questions, we need to handle them
         if has_questions:
@@ -464,8 +512,52 @@ async def analyze_web(request: ScenarioRequest):
             db.update_questioner_data(record_id, questioner_json)
             print(f"Questioner data saved to database for ID: {record_id}")
             
-            # For now, we'll continue without answers (in production, you'd wait for user input)
-            print("Questions need to be answered before proceeding to inspection stage")
+            # Skip inspector stage until questions are answered
+            inspector_cdt_results = {"pending_questions": True, "codes": []}
+            inspector_icd_results = {"pending_questions": True, "codes": []}
+            
+            # Save preliminary results to database without inspector results
+            # Format and combine CDT results
+            combined_cdt_results = {
+                "cdt_classifier": cdt_classifier_json,
+                "topics": simplified_topics,
+                "inspector_results": inspector_cdt_results,
+                "subtopics_data": {},  # Initialize empty subtopics container
+                "pending_questions": True  # Flag to indicate questions are pending
+            }
+            
+            # No subtopics processing when questions are pending
+            
+            # Format ICD results 
+            icd_result = classify_icd_categories(processed_scenario)
+            icd_result["inspector_results"] = inspector_icd_results
+            icd_result["pending_questions"] = True
+            
+            # Convert to JSON string for database
+            combined_cdt_json = json.dumps(combined_cdt_results, default=str)
+            combined_icd_json = json.dumps(icd_result, default=str)
+            
+            # Save results to database
+            db.update_analysis_results(record_id, combined_cdt_json, combined_icd_json)
+            
+            # Calculate processing time
+            processing_time = time.time() - start_time
+            print(f"\nTotal processing time (with pending questions): {round(processing_time, 2)} seconds")
+            print("=== ANALYSIS PARTIALLY COMPLETE - WAITING FOR QUESTION ANSWERS ===")
+            
+            # Return JSON response with the questions
+            return {
+                "status": "success",
+                "data": {
+                    "record_id": record_id,
+                    "has_questions": True,
+                    "subtopics_data": {},
+                    "inspector_results": {"pending_questions": True, "codes": []},
+                    "cdt_questions": questioner_result.get('cdt_questions', {}).get('questions', []),
+                    "icd_questions": questioner_result.get('icd_questions', {}).get('questions', []),
+                    "processing_time": round(processing_time, 2)
+                }
+            }
         else:
             print("No questions needed, proceeding to inspection stage")
             # Store empty questioner data
@@ -485,7 +577,7 @@ async def analyze_web(request: ScenarioRequest):
         # Format and combine CDT results
         combined_cdt_results = {
             "cdt_classifier": cdt_classifier_json,
-            "topics": topics_results,
+            "topics": simplified_topics,
             "inspector_results": inspector_cdt_results,
             "subtopics_data": {},  # Initialize empty subtopics container
         }
@@ -507,24 +599,106 @@ async def analyze_web(request: ScenarioRequest):
                 for code_text in codes:
                     # Extract code, explanation, and doubt using regex
                     import re
-                    code_match = re.search(r'CODE: (.*?)(?=\n|$)', code_text)
-                    explanation_match = re.search(r'EXPLANATION: (.*?)(?=\n|$)', code_text)
-                    doubt_match = re.search(r'DOUBT: (.*?)(?=\n|$)', code_text)
                     
-                    formatted_code = {
-                        "code": code_match.group(1).strip() if code_match else "",
-                        "explanation": explanation_match.group(1).strip() if explanation_match else "",
-                        "doubt": doubt_match.group(1).strip() if doubt_match else ""
-                    }
-                    formatted_codes.append(formatted_code)
+                    # First try to find CODE: pattern - improved to handle multi-line patterns
+                    code_matches = re.findall(r'CODE:?\s*([^\n]+)(?:\n|$)', code_text)
+                    explanation_matches = re.findall(r'EXPLANATION:?\s*([^\n]+)(?:\n|$)', code_text)
+                    doubt_matches = re.findall(r'DOUBT:?\s*([^\n]+)(?:\n|$)', code_text)
+                    
+                    # Also try to find patterns that include multi-line content
+                    if not code_matches:
+                        # Match CODE followed by any content until EXPLANATION, DOUBT, or end of string
+                        multi_code_matches = re.findall(r'CODE:?\s*(.*?)(?=\nEXPLANATION:|\nDOUBT:|$)', code_text, re.DOTALL)
+                        code_matches = [m.strip() for m in multi_code_matches if m.strip()]
+                    
+                    if not explanation_matches:
+                        multi_explanation_matches = re.findall(r'EXPLANATION:?\s*(.*?)(?=\nCODE:|\nDOUBT:|$)', code_text, re.DOTALL)
+                        explanation_matches = [m.strip() for m in multi_explanation_matches if m.strip()]
+                    
+                    if not doubt_matches:
+                        multi_doubt_matches = re.findall(r'DOUBT:?\s*(.*?)(?=\nCODE:|\nEXPLANATION:|$)', code_text, re.DOTALL)
+                        doubt_matches = [m.strip() for m in multi_doubt_matches if m.strip()]
+                    
+                    # If still no matches, try splitting the text by keywords
+                    if not code_matches and "CODE:" in code_text:
+                        parts = re.split(r'(CODE:|EXPLANATION:|DOUBT:)', code_text)
+                        current_type = None
+                        current_text = ""
+                        
+                        code_parts = []
+                        explanation_parts = []
+                        doubt_parts = []
+                        
+                        for part in parts:
+                            if part in ["CODE:", "EXPLANATION:", "DOUBT:"]:
+                                if current_type == "CODE:" and current_text.strip():
+                                    code_parts.append(current_text.strip())
+                                elif current_type == "EXPLANATION:" and current_text.strip():
+                                    explanation_parts.append(current_text.strip())
+                                elif current_type == "DOUBT:" and current_text.strip():
+                                    doubt_parts.append(current_text.strip())
+                                
+                                current_type = part
+                                current_text = ""
+                            else:
+                                current_text += part
+                        
+                        # Add the last part
+                        if current_type == "CODE:" and current_text.strip():
+                            code_parts.append(current_text.strip())
+                        elif current_type == "EXPLANATION:" and current_text.strip():
+                            explanation_parts.append(current_text.strip())
+                        elif current_type == "DOUBT:" and current_text.strip():
+                            doubt_parts.append(current_text.strip())
+                        
+                        # Add to our matches
+                        code_matches.extend(code_parts)
+                        explanation_matches.extend(explanation_parts)
+                        doubt_matches.extend(doubt_parts)
+                    
+                    # Create formatted code objects for each code found
+                    if code_matches:
+                        for i, code in enumerate(code_matches):
+                            formatted_code = {
+                                "code": code.strip(),
+                                "explanation": explanation_matches[i].strip() if i < len(explanation_matches) else "",
+                                "doubt": doubt_matches[i].strip() if i < len(doubt_matches) else ""
+                            }
+                            formatted_codes.append(formatted_code)
+                    elif explanation_matches or doubt_matches:
+                        # If only explanation or doubt found but no code
+                        formatted_code = {
+                            "code": "",
+                            "explanation": explanation_matches[0].strip() if explanation_matches else "",
+                            "doubt": doubt_matches[0].strip() if doubt_matches else ""
+                        }
+                        formatted_codes.append(formatted_code)
+                    elif code_text.strip():
+                        # If there's text but no structured format, try to extract standalone codes
+                        # Look for what appears to be a code (e.g., D1234, 99211, etc.)
+                        standalone_codes = re.findall(r'\b([A-Za-z]\d{4,5}|\d{5,6})\b', code_text)
+                        if standalone_codes:
+                            for code in standalone_codes:
+                                formatted_code = {
+                                    "code": code,
+                                    "explanation": "",
+                                    "doubt": ""
+                                }
+                                formatted_codes.append(formatted_code)
+                        else:
+                            # If no structured format and no standalone codes, use the text as explanation
+                            formatted_code = {
+                                "code": "",
+                                "explanation": code_text.strip(),
+                                "doubt": ""
+                            }
+                            formatted_codes.append(formatted_code)
                 
                 # Add to subtopics data with a cleaner structure
                 combined_cdt_results["subtopics_data"][range_code] = {
                     "topic_name": topic_name,
                     "activated_subtopics": subtopics,
-                    "specific_codes": formatted_codes,
-                    "explanation": explanation,
-                    "doubt": doubt
+                    "specific_codes": formatted_codes
                 }
 
         # Format ICD results to include inspector results
@@ -889,8 +1063,142 @@ async def api_answer_questions(record_id: str, request: Request):
         # Update CDT results
         cdt_result["inspector_results"] = inspector_cdt_results
         
+        # Transform topics into simplified structure for DB storage if topics exist
+        if "topics" in cdt_result:
+            # Transform topics into simplified structure for DB storage
+            simplified_topics = transform_topics_for_db(cdt_result.get("topics", {}))
+            cdt_result["topics"] = simplified_topics
+
         # Update ICD result with inspector results
         icd_result["inspector_results"] = inspector_icd_results
+        
+        # Remove the pending_questions flag if it exists
+        if "pending_questions" in cdt_result:
+            del cdt_result["pending_questions"]
+        if "pending_questions" in icd_result:
+            del icd_result["pending_questions"]
+            
+        # Preserve existing subtopics_data if it exists, otherwise initialize it
+        if "subtopics_data" not in cdt_result:
+            cdt_result["subtopics_data"] = {}
+        
+        # Process topics and subtopics from topics_results
+        for range_code, topic_data in topics_results.items():
+            topic_name = topic_data.get("name", "Unknown")
+            
+            # Handle different topic data formats
+            # Check for result key with activated_subtopics
+            if "result" in topic_data and isinstance(topic_data["result"], dict):
+                activation_result = topic_data["result"]
+                subtopics = activation_result.get("activated_subtopics", [])
+                codes = activation_result.get("codes", [])
+                explanation = activation_result.get("explanation", "")
+                doubt = activation_result.get("doubt", "")
+                
+                # Process each code to extract more detailed information
+                formatted_codes = []
+                for code_text in codes:
+                    # Extract code, explanation, and doubt using regex
+                    import re
+                    
+                    # Process code text to extract structured information
+                    code_matches = re.findall(r'CODE:?\s*([^\n]+)(?:\n|$)', code_text)
+                    explanation_matches = re.findall(r'EXPLANATION:?\s*([^\n]+)(?:\n|$)', code_text)
+                    doubt_matches = re.findall(r'DOUBT:?\s*([^\n]+)(?:\n|$)', code_text)
+                    
+                    # Also try to find patterns that include multi-line content
+                    if not code_matches:
+                        multi_code_matches = re.findall(r'CODE:?\s*(.*?)(?=\nEXPLANATION:|\nDOUBT:|$)', code_text, re.DOTALL)
+                        code_matches = [m.strip() for m in multi_code_matches if m.strip()]
+                    
+                    if not explanation_matches:
+                        multi_explanation_matches = re.findall(r'EXPLANATION:?\s*(.*?)(?=\nCODE:|\nDOUBT:|$)', code_text, re.DOTALL)
+                        explanation_matches = [m.strip() for m in multi_explanation_matches if m.strip()]
+                    
+                    if not doubt_matches:
+                        multi_doubt_matches = re.findall(r'DOUBT:?\s*(.*?)(?=\nCODE:|\nEXPLANATION:|$)', code_text, re.DOTALL)
+                        doubt_matches = [m.strip() for m in multi_doubt_matches if m.strip()]
+                    
+                    # Extract standalone codes if no structured format is found
+                    if not code_matches and "CODE:" not in code_text:
+                        standalone_codes = re.findall(r'\b([A-Za-z]\d{4,5}|\d{5,6})\b', code_text)
+                        if standalone_codes:
+                            for code in standalone_codes:
+                                formatted_code = {
+                                    "code": code,
+                                    "explanation": explanation,
+                                    "doubt": doubt
+                                }
+                                formatted_codes.append(formatted_code)
+                        else:
+                            # If no codes found, use the text as explanation
+                            formatted_code = {
+                                "code": "",
+                                "explanation": code_text.strip() if code_text.strip() else explanation,
+                                "doubt": doubt
+                            }
+                            formatted_codes.append(formatted_code)
+                    else:
+                        # Create formatted code objects for each code found
+                        for i, code in enumerate(code_matches):
+                            formatted_code = {
+                                "code": code.strip(),
+                                "explanation": explanation_matches[i].strip() if i < len(explanation_matches) else "",
+                                "doubt": doubt_matches[i].strip() if i < len(doubt_matches) else ""
+                            }
+                            formatted_codes.append(formatted_code)
+                
+                # Store in subtopics_data
+                if range_code not in cdt_result["subtopics_data"]:
+                    cdt_result["subtopics_data"][range_code] = {
+                        "topic_name": topic_name,
+                        "activated_subtopics": subtopics,
+                        "specific_codes": formatted_codes
+                    }
+                else:
+                    # Update existing entry
+                    cdt_result["subtopics_data"][range_code]["activated_subtopics"] = list(set(
+                        cdt_result["subtopics_data"][range_code].get("activated_subtopics", []) + subtopics
+                    ))
+                    existing_codes = cdt_result["subtopics_data"][range_code].get("specific_codes", [])
+                    cdt_result["subtopics_data"][range_code]["specific_codes"] = existing_codes + formatted_codes
+            
+            # Check for classic subtopics structure
+            if "subtopics" in topic_data:
+                for subtopic in topic_data["subtopics"]:
+                    # Only process subtopics that are "activated"
+                    if subtopic.get("activated", False):
+                        # Extract CDT codes using regex
+                        codes_string = subtopic.get("specific_code", "")
+                        specific_codes = re.findall(r'D\d{4}', codes_string)
+                        
+                        # Get the range code which combines topic and subtopic
+                        subtopic_range_code = f"{range_code}-{subtopic.get('code', '')}"
+                        
+                        formatted_specific_codes = []
+                        for code in specific_codes:
+                            formatted_specific_codes.append({
+                                "code": code,
+                                "explanation": subtopic.get("explanation", ""),
+                                "doubt": subtopic.get("doubt", "")
+                            })
+                        
+                        # Store in a more accessible format
+                        if subtopic_range_code not in cdt_result["subtopics_data"]:
+                            cdt_result["subtopics_data"][subtopic_range_code] = {
+                                "topic_name": topic_name,
+                                "activated_subtopics": [subtopic.get("name", "")],
+                                "specific_codes": formatted_specific_codes
+                            }
+                        else:
+                            # Append to existing entry
+                            cdt_result["subtopics_data"][subtopic_range_code]["activated_subtopics"].append(subtopic.get("name", ""))
+                            cdt_result["subtopics_data"][subtopic_range_code]["specific_codes"].extend(formatted_specific_codes)
+                            # Remove duplicates
+                            cdt_result["subtopics_data"][subtopic_range_code]["specific_codes"] = list({
+                                code_obj["code"]: code_obj
+                                for code_obj in cdt_result["subtopics_data"][subtopic_range_code]["specific_codes"]
+                            }.values())
         
         # Save to database
         try:
@@ -914,10 +1222,12 @@ async def api_answer_questions(record_id: str, request: Request):
             "status": "success",
             "data": {
                 "record_id": record_id,
-            "subtopics_data": subtopics_data,
-            "inspector_results": inspector_cdt_results,
+                "subtopics_data": subtopics_data,
+                "inspector_results": inspector_cdt_results,
                 "cdt_questions": [],  # No more questions
-                "icd_questions": [],  # No more questions
+                "icd_questions": [],  # No more questions,
+                "topics": cdt_result.get("topics", {}),  # Include topics data in response
+                "cdt_classifier": cdt_result.get("cdt_classifier", {})  # Include classifier data
             }
         }
         
@@ -989,15 +1299,3 @@ if __name__ == "__main__":
     else:
         import uvicorn
         uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
-
-@app.get("/api/routes")
-async def list_routes():
-    """List all available routes (for debugging)."""
-    routes = []
-    for route in app.routes:
-        routes.append({
-            "path": route.path,
-            "name": route.name,
-            "methods": [method for method in route.methods] if hasattr(route, "methods") else None
-        })
-    return {"routes": routes}

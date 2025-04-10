@@ -1,7 +1,7 @@
 PROMPT = """
 
 
-Based on the given dental scenario, determine which dental code range(s) should be applied for billing purposes. The primary goal is to maximize the doctor's revenue by ensuring every billable procedure is captured while keeping claims defensible to avoid any denial. You must use the predefined subtopic ranges provided exactly as given, but you may also include additional ranges if they seem relevant. False positives are allowed and encouraged, as any extra code ranges will be refined later.
+Based on the given dental scenario, determine which dental code range(s) should be applied for billing purposes. The primary goal is to maximize the doctor's revenue by ensuring every billable procedure is captured while keeping claims defensible to avoid any denial. You must use the predefined subtopic ranges provided exactly as given, but you may also include additional ranges if they seem relevant.
 
 
 Instructions:
