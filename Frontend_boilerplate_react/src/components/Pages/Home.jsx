@@ -1,5 +1,5 @@
 import { FaTooth, FaCogs, FaCheck, FaTimes, FaPaperPlane, FaRobot, FaCopy } from 'react-icons/fa';
-import { analyzeDentalScenario, submitSelectedCodes } from '../../interceptors/services.js';
+import { analyzeDentalScenario, submitSelectedCodes, addCustomCode } from '../../interceptors/services.js';
 import { useState, useEffect } from 'react';
 import Questioner from './Questioner.jsx';
 
@@ -441,8 +441,79 @@ const Home = () => {
     );
   };
 
-  const handleAddCode = () => {
-    // Implementation of handleAddCode function
+  const handleAddCode = async () => {
+    if (!newCode.trim()) {
+      setError("Please enter a valid code");
+      return;
+    }
+    
+    if (!result?.data?.record_id) {
+      setError("No active analysis session. Please analyze a scenario first.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await addCustomCode(newCode, scenario, result.data.record_id);
+      console.log('Custom code response:', response);
+      
+      // Update the result with the new code
+      if (response.data && response.data.code_data) {
+        // Create a copy of the current result
+        const updatedResult = {...result};
+        
+        // Add the new code to the appropriate topic or create a new topic
+        const codeData = response.data.code_data;
+        
+        if (!updatedResult.data.subtopics_data) {
+          updatedResult.data.subtopics_data = {};
+        }
+        
+        // Either add to "Custom Codes" topic or create it
+        if (!updatedResult.data.subtopics_data.custom_codes) {
+          updatedResult.data.subtopics_data.custom_codes = {
+            topic_name: "Custom Added Codes",
+            specific_codes: []
+          };
+        }
+        
+        // Add the new code data
+        updatedResult.data.subtopics_data.custom_codes.specific_codes.push({
+          code: codeData.code,
+          explanation: codeData.explanation,
+          doubt: codeData.doubt || "None"
+        });
+        
+        // If there are inspector results, add the code there too
+        if (updatedResult.data.inspector_results && updatedResult.data.inspector_results.codes) {
+          // Only add if it's not already in the list
+          if (!updatedResult.data.inspector_results.codes.includes(codeData.code)) {
+            updatedResult.data.inspector_results.codes.push(codeData.code);
+          }
+        }
+        
+        // Update the result state
+        setResult(updatedResult);
+        
+        // Expand the custom codes topic
+        setExpandedTopics(prev => ({
+          ...prev,
+          custom_codes: true
+        }));
+        
+        // Clear the input
+        setNewCode('');
+      } else {
+        setError("Received invalid response format from server");
+      }
+    } catch (err) {
+      console.error('Error adding custom code:', err);
+      setError(err.message || 'Failed to add custom code');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -540,12 +611,14 @@ const Home = () => {
                     className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-sm md:text-base"
                     value={newCode}
                     onChange={(e) => setNewCode(e.target.value)}
+                    disabled={loading}
                   />
                   <button
                     onClick={handleAddCode}
-                    className="ml-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-all duration-300"
+                    className="ml-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-all duration-300 disabled:bg-gray-400"
+                    disabled={loading || !newCode.trim() || !result?.data?.record_id}
                   >
-                    Add Code
+                    {loading ? 'Adding...' : 'Add Code'}
                   </button>
                 </div>
 

@@ -40,3 +40,17 @@ export const submitQuestionAnswers = async (answers, recordId) => {
     throw error.response?.data || { message: 'Failed to submit answers: ' + (error.message || 'Unknown error') };
   }
 };
+
+// Add custom code service
+export const addCustomCode = async (code, scenario, recordId) => {
+  try {
+    const response = await apiInstance.post('/api/add-code-data', {
+      code,
+      scenario,
+      record_id: recordId
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { message: 'Failed to add custom code' };
+  }
+};
