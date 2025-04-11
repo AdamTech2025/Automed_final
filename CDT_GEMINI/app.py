@@ -248,6 +248,10 @@ class CodeStatusRequest(BaseModel):
     denied: List[str]
     record_id: str
 
+class CodeDataRequest(BaseModel):
+    scenario: str
+    cdt_codes: str
+
 # Add simple implementation for routes
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
@@ -1248,6 +1252,23 @@ def display_database_record(record_id):
     
     except Exception as e:
         print(f"Error displaying record: {e}")
+
+@app.post("/api/add-code-data")
+async def add_code_data(request: CodeDataRequest):
+    """Add code data to the database."""
+    try:
+        # Use the new Supabase-based add_code_analysis method
+        record_id = db.add_code_analysis(request.scenario, request.cdt_codes, "Analysis completed")
+        return {
+            "status": "success",
+            "data": {
+                "scenario": request.scenario,
+                "cdt_codes": request.cdt_codes,
+                "record_id": record_id
+            }
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 # CLI command handling
 if __name__ == "__main__":

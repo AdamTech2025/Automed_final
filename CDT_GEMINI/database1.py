@@ -244,6 +244,23 @@ class MedicalCodingDB:
             print(f"❌ Error retrieving most recent analysis: {str(e)}")
             return None
 
+    def add_code_analysis(self, scenario: str, cdt_codes: str, response: str) -> int:
+        """Add a new dental code analysis record."""
+        self.ensure_connection()
+        try:
+            record_data = {
+                "scenario": scenario,
+                "cdt_codes": cdt_codes,
+                "response": response
+            }
+            
+            result = self.supabase.table("dental_code_analysis").insert(record_data).execute()
+            print(f"✅ Code analysis record added successfully with ID: {result.data[0]['id']}")
+            return result.data[0]['id']
+        except Exception as e:
+            print(f"❌ Error adding code analysis: {str(e)}")
+            raise
+
 # ===========================
 # Example Usage
 # ===========================
