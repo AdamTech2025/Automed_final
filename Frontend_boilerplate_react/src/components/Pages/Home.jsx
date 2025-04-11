@@ -123,8 +123,16 @@ const Home = () => {
   };
 
   const handleCopyCodes = () => {
-    const codes = result.data.inspector_results.codes.join(', ');
-    navigator.clipboard.writeText(codes).then(() => {
+    const acceptedCodes = result.data.inspector_results.codes.join(', ');
+    const rejectedCodes = result.data.inspector_results.rejected_codes ? 
+      result.data.inspector_results.rejected_codes.join(', ') : '';
+    
+    let textToCopy = `Accepted: ${acceptedCodes}`;
+    if (rejectedCodes) {
+      textToCopy += `\nRejected: ${rejectedCodes}`;
+    }
+    
+    navigator.clipboard.writeText(textToCopy).then(() => {
       alert('Codes copied to clipboard!');
     }).catch(err => {
       console.error('Failed to copy codes: ', err);
@@ -300,7 +308,7 @@ const Home = () => {
   const renderInspectorResults = () => {
     if (!result?.data?.inspector_results) return null;
 
-    const { codes, explanation } = result.data.inspector_results;
+    const { codes, rejected_codes, explanation } = result.data.inspector_results;
 
     return (
       <div className="mt-8 p-4 bg-blue-50 rounded-lg border border-blue-200 ai-final-analysis-content relative">
@@ -342,6 +350,23 @@ const Home = () => {
             })}
           </div>
         </div>
+
+        {rejected_codes && rejected_codes.length > 0 && (
+          <div className="mb-4">
+            <h4 className="font-medium text-gray-700 mb-2">Rejected Codes:</h4>
+            <div className="flex flex-wrap gap-2">
+              {rejected_codes.map((code, index) => (
+                <span 
+                  key={`rejected-code-${index}-${code}`}
+                  onClick={() => scrollToCode(code)}
+                  className="cursor-pointer px-3 py-1 rounded-full text-sm bg-gray-100 text-gray-600 border border-gray-300"
+                >
+                  {code}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div>
           <h4 className="font-medium text-gray-700 mb-2">Explanation:</h4>
@@ -402,9 +427,35 @@ const Home = () => {
   const renderSelectedCodes = () => {
     if (selectedCodes.accepted.length === 0 && selectedCodes.denied.length === 0) return null;
     
+    const handleCopySelectedCodes = () => {
+      const acceptedText = selectedCodes.accepted.length > 0 
+        ? `Accepted: ${selectedCodes.accepted.join(', ')}` 
+        : '';
+      
+      const deniedText = selectedCodes.denied.length > 0 
+        ? `Denied: ${selectedCodes.denied.join(', ')}` 
+        : '';
+      
+      const textToCopy = [acceptedText, deniedText].filter(Boolean).join('\n');
+      
+      navigator.clipboard.writeText(textToCopy).then(() => {
+        alert('Selected codes copied to clipboard!');
+      }).catch(err => {
+        console.error('Failed to copy selected codes: ', err);
+      });
+    };
+    
     return (
       <div className="mt-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
-        <h3 className="text-lg font-semibold mb-4">Your Selections</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Your Selections</h3>
+          <button
+            onClick={handleCopySelectedCodes}
+            className="text-blue-500 hover:text-blue-700 transition-colors flex items-center"
+          >
+            <FaCopy className="mr-1" /> Copy All
+          </button>
+        </div>
         
         {selectedCodes.accepted.length > 0 && (
           <div className="mb-4">
@@ -578,6 +629,9 @@ const Home = () => {
 
             {/* Inspector Results Section */}
             {renderInspectorResults()}
+            
+            {/* Selected Codes Section */}
+            {renderSelectedCodes()}
 
             {/* Result */}
             {result && !showQuestioner && (
@@ -599,9 +653,6 @@ const Home = () => {
                     <p className="text-gray-600">No code sections available for this analysis.</p>
                   </div>
                 )}
-
-                {/* Selected Codes Section */}
-                {renderSelectedCodes()}
 
                 {/* Add Code Section */}
                 <div className="mt-6 flex items-center">

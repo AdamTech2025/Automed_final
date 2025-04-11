@@ -1270,6 +1270,52 @@ async def add_code_data(request: CodeDataRequest):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+# Add new endpoint for adding custom codes
+class CustomCodeRequest(BaseModel):
+    code: str
+    scenario: str
+    record_id: str
+
+@app.post("/api/add-custom-code")
+async def add_custom_code(request: CustomCodeRequest):
+    """Process a custom code added by the user for a scenario."""
+    try:
+        logger.info(f"Processing custom code: {request.code} for record: {request.record_id}")
+        
+        # Get the record
+        record = get_record_from_database(request.record_id)
+        if not record:
+            return {
+                "status": "error",
+                "message": f"No record found with ID: {request.record_id}"
+            }
+        
+        # Create a simple explanation for the custom code
+        explanation = f"Custom code {request.code} added by user."
+        
+        # Create the code data structure
+        code_data = {
+            "code": request.code,
+            "explanation": explanation,
+            "doubt": "User-added code"
+        }
+        
+        # Return the results
+        return {
+            "status": "success",
+            "data": {
+                "code_data": code_data,
+                "record_id": request.record_id
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error adding custom code: {str(e)}")
+        traceback.print_exc()
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
 # CLI command handling
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "view-record" and len(sys.argv) == 3:
