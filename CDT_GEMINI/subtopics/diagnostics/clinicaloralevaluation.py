@@ -1,22 +1,17 @@
 import os
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+from llm_services import create_chain, invoke_chain, get_llm_service
 from subtopics.prompt.prompt import PROMPT
 
-
-# Get model name from environment variable, default to gpt-4o if not set
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
-
-def create_clinical_oral_evaluations_extractor(temperature=0.0):
+def create_clinical_oral_evaluations_extractor():
     """
     Create a LangChain-based Clinical Oral Evaluations extractor.
     """
-    # Use ChatOpenAI for newer models like gpt-4o
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
-    
-    prompt_template = PromptTemplate(
-        template=f"""
+    template = f"""
 You are a highly experienced dental coding expert, 
 
 # Dental Evaluation CDT Code Cheat Sheet
@@ -170,33 +165,43 @@ eg:
 
 ---
 
-
-
- Scenario:
-"{{question}}"
-
-{PROMPT}
-""",
-        input_variables=["question"]
-    )
+ Scenario: {{scenario}}
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+ {PROMPT}
+    """
+    
+    prompt = PromptTemplate(template=template, input_variables=["scenario"])
+    return create_chain(prompt)
 
-def extract_clinical_oral_evaluations_code(scenario, temperature=0.0):
+def extract_clinical_oral_evaluations_code(scenario):
     """
     Extract Clinical Oral Evaluations code(s) for a given scenario.
     """
     try:
-        chain = create_clinical_oral_evaluations_extractor(temperature)
-        result = chain.run(question=scenario)
-        print(f"Clinical oral evaluations code result: {result}")
-        return result.strip()
+        extractor = create_clinical_oral_evaluations_extractor()
+        result = invoke_chain(extractor, {"scenario": scenario})
+        return result.get("text", "").strip()
     except Exception as e:
-        print(f"Error in extract_clinical_oral_evaluations_code: {str(e)}")
-        return ""
+        print(f"Error in clinical oral evaluations code extraction: {str(e)}")
+        return None
 
 def activate_clinical_oral_evaluations(scenario):
     """
     Activate Clinical Oral Evaluations analysis and return results.
     """
-    return extract_clinical_oral_evaluations_code(scenario)
+    try:
+        result = extract_clinical_oral_evaluations_code(scenario)
+        return result
+    except Exception as e:
+        print(f"Error activating clinical oral evaluations analysis: {str(e)}")
+        return None
+
+# Example usage
+if __name__ == "__main__":
+    # Print the current Gemini model and temperature being used
+    llm_service = get_llm_service()
+    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
+    
+    scenario = "A new patient comes in for their first dental visit in 5 years. The dentist performs a comprehensive examination including medical history, dental history, oral cancer screening, and full periodontal charting."
+    result = activate_clinical_oral_evaluations(scenario)
+    print(result)

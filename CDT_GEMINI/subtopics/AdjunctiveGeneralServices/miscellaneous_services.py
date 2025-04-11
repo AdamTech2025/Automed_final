@@ -1,19 +1,12 @@
-"""
-Module to handle miscellaneous services codes extraction based on user-defined scenarios.
-This module specifically handles D9910-D9973 code range for miscellaneous services.
-"""
-
 import os
 import sys
 from langchain.prompts import PromptTemplate
-
-# Add the root directory to the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(current_dir))
 sys.path.append(parent_dir)
-
 from llm_services import create_chain, invoke_chain, get_llm_service
 from subtopics.prompt.prompt import PROMPT
+
 
 def create_miscellaneous_services_extractor():
     """

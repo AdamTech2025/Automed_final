@@ -1,22 +1,17 @@
 import os
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+from llm_services import create_chain, invoke_chain, get_llm_service
 from subtopics.prompt.prompt import PROMPT
 
-
-# Get model name from environment variable, default to gpt-4o if not set
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
-
-def create_prediagnostic_services_extractor(temperature=0.0):
+def create_prediagnostic_services_extractor():
     """
     Create a LangChain-based Prediagnostic Services extractor.
     """
-    # Use ChatOpenAI for newer models like gpt-4o
-    llm = ChatGoogleGenerativeAI(model="models/gemini-1.5-flash-8b", temperature=temperature)
-    
-    prompt_template = PromptTemplate(
-        template=f"""
+    template = f"""
 You are a highly experienced medical coding expert, 
 
 
@@ -58,24 +53,43 @@ You are a highly experienced medical coding expert,
 3. **Understand Limitations:** These codes do not include full diagnostic evaluations or treatment planning.
 
 ### *Scenario:*
-"{{question}}"
+{{scenario}}
 
 {PROMPT}
-""",
-        input_variables=["question"]
-    )
+"""
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    prompt = PromptTemplate(template=template, input_variables=["scenario"])
+    return create_chain(prompt)
 
-def extract_prediagnostic_services_code(scenario, temperature=0.0):
+def extract_prediagnostic_services_code(scenario):
     """
     Extract Prediagnostic Services code(s) for a given scenario.
     """
-    chain = create_prediagnostic_services_extractor(temperature)
-    return chain.run(question=scenario).strip()
+    try:
+        extractor = create_prediagnostic_services_extractor()
+        result = invoke_chain(extractor, {"scenario": scenario})
+        return result.get("text", "").strip()
+    except Exception as e:
+        print(f"Error in prediagnostic services code extraction: {str(e)}")
+        return None
 
 def activate_prediagnostic_services(scenario):
     """
     Activate Prediagnostic Services analysis and return results.
     """
-    return extract_prediagnostic_services_code(scenario)
+    try:
+        result = extract_prediagnostic_services_code(scenario)
+        return result
+    except Exception as e:
+        print(f"Error activating prediagnostic services analysis: {str(e)}")
+        return None
+
+# Example usage
+if __name__ == "__main__":
+    # Print the current Gemini model and temperature being used
+    llm_service = get_llm_service()
+    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
+    
+    scenario = "A school nurse conducts quick dental checks on elementary students to identify children who may need to visit a dentist."
+    result = activate_prediagnostic_services(scenario)
+    print(result)

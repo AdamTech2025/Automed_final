@@ -733,7 +733,9 @@ async def get_analysis_status(analysis_id: str):
         return active_analyses[analysis_id]
     return {"status": "not_found"}
 
-
+@app.get("/")
+def test(request: Request):
+    return {"message": "Hello, World!"}
 
 def get_record_from_database(record_id, close_connection=True):
     """

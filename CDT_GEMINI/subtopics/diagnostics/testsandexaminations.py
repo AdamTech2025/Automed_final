@@ -1,22 +1,17 @@
 import os
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+from llm_services import create_chain, invoke_chain, get_llm_service
 from subtopics.prompt.prompt import PROMPT
 
-
-# Get model name from environment variable, default to gpt-4o if not set
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
-
-def create_tests_and_examinations_extractor(temperature=0.0):
+def create_tests_and_examinations_extractor():
     """
     Create a LangChain-based Tests and Examinations extractor.
     """
-    # Use ChatOpenAI for newer models like gpt-4o
-    llm = ChatGoogleGenerativeAI(model="models/gemini-1.5-flash-8b", temperature=temperature)
-    
-    prompt_template = PromptTemplate(
-        template=f"""
+    template = f"""
 You are a highly experienced dental coding expert
 
 ### **General Guidelines for Selecting Codes:**
@@ -30,7 +25,7 @@ You are a highly experienced dental coding expert
 
 ### **D0411 - HbA1c In-Office Point of Service Testing**
 **When to Use:**
-- To assess a patient’s HbA1c levels for diabetes monitoring.
+- To assess a patient's HbA1c levels for diabetes monitoring.
 
 **What to Check:**
 - Ensure the test is necessary for patient evaluation and treatment planning.
@@ -42,7 +37,7 @@ You are a highly experienced dental coding expert
 
 ### **D0412 - Blood Glucose Level Test (In-Office Using a Glucose Meter)**
 **When to Use:**
-- When an immediate reading of a patient’s blood glucose level is required.
+- When an immediate reading of a patient's blood glucose level is required.
 
 **What to Check:**
 - Must be performed at the point of service.
@@ -150,7 +145,7 @@ You are a highly experienced dental coding expert
 
 ### **D0425 - Caries Susceptibility Tests**
 **When to Use:**
-- To determine a patient’s risk for developing cavities.
+- To determine a patient's risk for developing cavities.
 
 **What to Check:**
 - Should not be used for carious dentin staining.
@@ -249,60 +244,72 @@ You are a highly experienced dental coding expert
 - When testing for active infections, including coronavirus.
 
 **What to Check:**
-- Ensure test is performed in an appropriate setting.
+- Must use approved testing methods.
 
-Notes:
-- Provides rapid results for disease detection.
+**Notes:**
+- Helpful in infection control protocols.
 
 ---
 
 ### **D0605 - Antibody Testing for a Public Health Related Pathogen**
-When to Use:
-- To detect antibodies indicating past infection.
+**When to Use:**
+- To detect antibodies indicating previous infection or immunization.
 
-What to Check:
-- Ensure testing aligns with public health protocols.
+**What to Check:**
+- Must follow public health guidelines.
 
-Notes:
-- Helps determine prior exposure and immunity status.
-
----
-
- **D0606 - Molecular Testing for a Public Health Related Pathogen**
-When to Use:**
--For genetic detection of pathogens like coronavirus.
-
-What to Check:
- Requires laboratory processing.
-
-notes:
-- High sensitivity for detecting viral infections.
+**Notes:**
+- Assists in determining immune status.
 
 ---
 
+### **D0606 - Molecular Testing for a Public Health Related Pathogen**
+**When to Use:**
+- For detailed molecular analysis of pathogens.
 
+**What to Check:**
+- Must use validated laboratory methods.
 
+**Notes:**
+- Offers higher sensitivity for pathogen detection.
 
-
-### *Scenario:*
-"{{question}}"
+Scenario: {{scenario}}
 
 {PROMPT}
-""",
-        input_variables=["question"]
-    )
+"""
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    prompt = PromptTemplate(template=template, input_variables=["scenario"])
+    return create_chain(prompt)
 
-def extract_tests_and_examinations_code(scenario, temperature=0.0):
+def extract_tests_and_examinations_code(scenario):
     """
     Extract Tests and Examinations code(s) for a given scenario.
     """
-    chain = create_tests_and_examinations_extractor(temperature)
-    return chain.run(question=scenario).strip()
+    try:
+        extractor = create_tests_and_examinations_extractor()
+        result = invoke_chain(extractor, {"scenario": scenario})
+        return result.get("text", "").strip()
+    except Exception as e:
+        print(f"Error in tests and examinations code extraction: {str(e)}")
+        return None
 
 def activate_tests_and_examinations(scenario):
     """
     Activate Tests and Examinations analysis and return results.
     """
-    return extract_tests_and_examinations_code(scenario)
+    try:
+        result = extract_tests_and_examinations_code(scenario)
+        return result
+    except Exception as e:
+        print(f"Error activating tests and examinations analysis: {str(e)}")
+        return None
+
+# Example usage
+if __name__ == "__main__":
+    # Print the current Gemini model and temperature being used
+    llm_service = get_llm_service()
+    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
+    
+    scenario = "A patient with a history of diabetes has their HbA1c levels measured in the dental office prior to an extraction procedure."
+    result = activate_tests_and_examinations(scenario)
+    print(result)
