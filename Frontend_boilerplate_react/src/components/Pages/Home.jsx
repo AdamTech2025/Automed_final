@@ -23,6 +23,19 @@ const Home = () => {
     }
   }, [result]);
 
+  // At the beginning of the component, add a debug effect
+  useEffect(() => {
+    if (result?.data?.subtopics_data) {
+      console.log("Subtopics data received:", result.data.subtopics_data);
+      // Initialize expanded topics state
+      const initialExpandedState = {};
+      Object.keys(result.data.subtopics_data).forEach(topic => {
+        initialExpandedState[topic] = false;
+      });
+      setExpandedTopics(initialExpandedState);
+    }
+  }, [result?.data?.subtopics_data]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -100,10 +113,13 @@ const Home = () => {
   };
 
   const toggleTopic = (topic) => {
-    setExpandedTopics(prev => ({
-      ...prev,
-      [topic]: !prev[topic]
-    }));
+    console.log(`Toggling topic: ${topic}, current state:`, expandedTopics[topic]);
+    setExpandedTopics(prev => {
+      const newState = { ...prev };
+      newState[topic] = !prev[topic];
+      console.log(`New expanded state for ${topic}:`, newState[topic]);
+      return newState;
+    });
   };
 
   const handleCopyCodes = () => {
@@ -117,21 +133,50 @@ const Home = () => {
 
   const scrollToCode = (code) => {
     // Find the topic containing the code
-    const topic = Object.keys(result.data.subtopics_data).find(topic =>
-      result.data.subtopics_data[topic].specific_codes.some(codeData => codeData.code === code)
-    );
+    let foundTopic = null;
+    let codeIndex = -1;
+    
+    // Search through all topics and their specific_codes to find the matching code
+    Object.keys(result.data.subtopics_data).forEach(topic => {
+      const topicData = result.data.subtopics_data[topic];
+      if (topicData.specific_codes) {
+        topicData.specific_codes.forEach((codeData, index) => {
+          if (codeData && codeData.code === code) {
+            foundTopic = topic;
+            codeIndex = index;
+          }
+        });
+      }
+    });
 
-    if (topic) {
+    if (foundTopic) {
+      console.log(`Found code ${code} in topic ${foundTopic} at index ${codeIndex}`);
+      
       // Expand the topic if it's not already expanded
-      if (!expandedTopics[topic]) {
-        toggleTopic(topic);
+      if (!expandedTopics[foundTopic]) {
+        setExpandedTopics(prev => ({
+          ...prev,
+          [foundTopic]: true
+        }));
       }
 
-      // Scroll to the code
-      const element = document.getElementById(`code-${code}`);
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+      // Wait a short time for the expansion animation to complete before scrolling
+      setTimeout(() => {
+        // Scroll to the code
+        const element = document.getElementById(`code-${code}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Add a brief highlight effect
+          element.classList.add('bg-yellow-100');
+          setTimeout(() => {
+            element.classList.remove('bg-yellow-100');
+          }, 1500);
+        } else {
+          console.log(`Could not find element with ID code-${code}`);
+        }
+      }, 300);
+    } else {
+      console.log(`Could not find topic containing code ${code}`);
     }
   };
 
@@ -141,8 +186,11 @@ const Home = () => {
     const { topic_name, activated_subtopics, specific_codes } = result.data.subtopics_data[topic];
     const isExpanded = expandedTopics[topic];
     
+    // Skip if no valid codes
+    if (!specific_codes || specific_codes.length === 0) return null;
+    
     // Skip if all codes are "none"
-    const hasValidCodes = specific_codes.some(code => code && code.code !== 'none');
+    const hasValidCodes = specific_codes.some(code => code && code.code && code.code !== 'none');
     if (!hasValidCodes) return null;
     
     return (
@@ -160,29 +208,35 @@ const Home = () => {
         <div className={`overflow-hidden transition-all duration-300 ease-in-out ${
           isExpanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'
         }`}>
-          {activated_subtopics.map((subtopic, index) => {
-            const codeData = specific_codes[index];
-            if (!codeData || codeData.code === 'none') return null;
+          {specific_codes.map((codeData, index) => {
+            if (!codeData || !codeData.code || codeData.code === 'none') return null;
 
             const isAccepted = selectedCodes.accepted.includes(codeData.code);
             const isDenied = selectedCodes.denied.includes(codeData.code);
+            
+            // Determine which subtopic to use (if any)
+            const subtopicText = activated_subtopics && activated_subtopics.length > index 
+              ? activated_subtopics[index] 
+              : codeData.code;
 
             return (
               <div 
-                key={`topic-${index}-${topic}`}
-                id={`code-${codeData.code}`}
+                key={`topic-${index}-${topic}-${codeData.code}`}
                 className={`mt-4 transition-all duration-300 ease-in-out ${
                   isAccepted ? 'bg-green-50 border-green-200' : 
                   isDenied ? 'bg-red-50 border-red-200' : 
                   'bg-white border-gray-200'
                 }`}
               >
-                <h4 className="font-medium text-gray-700 mb-2 p-4">{subtopic}</h4>
-                <div className={`p-4 rounded-lg shadow-sm border ${
+                <h4 className="font-medium text-gray-700 mb-2 p-4">{subtopicText}</h4>
+                <div 
+                  id={`code-${codeData.code}`} 
+                  className={`p-4 rounded-lg shadow-sm border transition-colors duration-300 ${
                   isAccepted ? 'border-green-300' : 
                   isDenied ? 'border-red-300' : 
                   'border-gray-200'
-                }`}>
+                }`}
+                >
                   <div className="flex justify-between items-center mb-2">
                     <span className={`font-mono px-2 py-1 rounded ${
                       isAccepted ? 'bg-green-100 text-green-800' : 
@@ -392,7 +446,7 @@ const Home = () => {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-100">
+    <div className="flex flex-col bg-gray-100">
       {/* Questioner Modal */}
       {result && (
         <Questioner
@@ -409,7 +463,7 @@ const Home = () => {
 
       {/* Main content container */}
       <div className="flex-grow flex items-center justify-center p-4">
-        <div className="w-full max-w-3xl p-4 md:p-6 bg-white rounded-lg shadow-lg">
+        <div className="w-full  p-4 md:p-6 bg-white rounded-lg shadow-lg">
           {/* Header */}
           <div className="bg-blue-500 text-white p-4 rounded-lg mb-6">
             <h2 className="text-xl md:text-2xl font-semibold flex items-center">
@@ -465,9 +519,15 @@ const Home = () => {
                 </div>
 
                 {/* Code Sections */}
-                {Object.keys(result?.data?.subtopics_data || {}).map((topic, index) => (
-                  <div key={`topic-${index}-${topic}`}>{renderCodeSection(topic)}</div>
-                ))}
+                {result?.data?.subtopics_data && Object.keys(result.data.subtopics_data).length > 0 ? (
+                  Object.keys(result.data.subtopics_data).map((topic, index) => (
+                    <div key={`topic-container-${index}-${topic}`}>{renderCodeSection(topic)}</div>
+                  ))
+                ) : (
+                  <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                    <p className="text-gray-600">No code sections available for this analysis.</p>
+                  </div>
+                )}
 
                 {/* Selected Codes Section */}
                 {renderSelectedCodes()}
