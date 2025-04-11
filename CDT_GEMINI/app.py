@@ -74,8 +74,7 @@ from topics.oralandmaxillofacialsurgery import activate_oral_maxillofacial_surge
 from topics.orthodontics import activate_orthodontic
 from topics.adjunctivegeneralservices import activate_adjunctive_general_services
 
-
-from database import MedicalCodingDB
+from database1 import MedicalCodingDB
 
 db = MedicalCodingDB()
 # Initialize FastAPI app
@@ -757,43 +756,30 @@ def get_record_from_database(record_id, close_connection=True):
     try:
         db = MedicalCodingDB()
         
-        # Get basic record info using the correct column names
-        query = """
-        SELECT 
-            id, 
-            user_question,
-            processed_clean_data, 
-            cdt_result,
-            icd_result,
-            questioner_data,
-            created_at
-        FROM dental_report 
-        WHERE id = ?
-        """
-        db.cursor.execute(query, (record_id,))
-        row = db.cursor.fetchone()
+        # Get record from Supabase
+        result = db.supabase.table("dental_report").select("*").eq("id", record_id).execute()
         
-        if not row:
+        if not result.data:
             return None
+        
+        # Get the first record (should be only one since id is primary key)
+        row = result.data[0]
         
         # Create a dict with the record data
         record = {
-            "id": row[0],
-            "user_question": row[1],
-            "processed_scenario": row[2],  # processed_clean_data in DB
-            "cdt_json": row[3],           # cdt_result in DB
-            "icd_json": row[4],           # icd_result in DB
-            "questioner_json": row[5],    # questioner_data in DB
-            "created_at": row[6]
+            "id": row["id"],
+            "user_question": row["user_question"],
+            "processed_scenario": row["processed_clean_data"],
+            "cdt_json": row["cdt_result"],
+            "icd_json": row["icd_result"],
+            "questioner_json": row["questioner_data"],
+            "created_at": row["created_at"]
         }
         
         return record
     except Exception as e:
         logger.error(f"Error retrieving record from database: {e}")
         return None
-    finally:
-        if close_connection:
-            db.close_connection()
 
 @app.get("/view-record/{record_id}", response_class=HTMLResponse)
 async def view_record(request: Request, record_id: str):
@@ -931,13 +917,7 @@ async def store_code_status(request: CodeStatusRequest):
         cdt_json["code_status"] = code_status
         
         # Update database
-        query = """
-        UPDATE dental_report 
-        SET cdt_result = ? 
-        WHERE id = ?
-        """
-        db.cursor.execute(query, (json.dumps(cdt_json), request.record_id))
-        db.conn.commit()
+        db.supabase.table("dental_report").update({"cdt_result": json.dumps(cdt_json)}).eq("id", request.record_id).execute()
         
         return {
             "status": "success",
@@ -951,9 +931,6 @@ async def store_code_status(request: CodeStatusRequest):
     except Exception as e:
         logger.error(f"Error storing code status: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        if 'db' in locals():
-            db.close_connection()
 
 @app.post("/api/answer-questions/{record_id}")
 async def api_answer_questions(record_id: str, request: Request):
@@ -987,8 +964,7 @@ async def api_answer_questions(record_id: str, request: Request):
             print(f"❌ Record not found: {record_id}")
             # List recent records for debugging
             try:
-                db.cursor.execute("SELECT id, created_at FROM dental_report ORDER BY created_at DESC LIMIT 5")
-                recent_records = db.cursor.fetchall()
+                recent_records = db.supabase.table("dental_report").select("id, created_at").order("created_at", desc=True).limit(5).execute().data
                 print(f"Recent records: {recent_records}")
             except Exception as e:
                 print(f"Error fetching recent records: {str(e)}")
@@ -1015,13 +991,13 @@ async def api_answer_questions(record_id: str, request: Request):
         
         # Update the record with the updated scenario
         try:
-            db.update_processed_scenario(record_id, updated_scenario)
+            db.supabase.table("dental_report").update({"processed_clean_data": updated_scenario}).eq("id", record_id).execute()
             print(f"Updated processed scenario for {record_id}")
         except Exception as e:
             print(f"❌ Error updating processed scenario: {str(e)}")
             # Try to reconnect and retry
             db.connect()
-            db.update_processed_scenario(record_id, updated_scenario)
+            db.supabase.table("dental_report").update({"processed_clean_data": updated_scenario}).eq("id", record_id).execute()
             print(f"Second attempt: Updated processed scenario for {record_id}")
         
         # Update the questioner data with the answers
@@ -1031,13 +1007,13 @@ async def api_answer_questions(record_id: str, request: Request):
         
         # Save the updated questioner data
         try:
-            db.update_questioner_data(record_id, json.dumps(questioner_data))
+            db.supabase.table("dental_report").update({"questioner_data": json.dumps(questioner_data)}).eq("id", record_id).execute()
             print(f"Updated questioner data for {record_id}")
         except Exception as e:
             print(f"❌ Error updating questioner data: {str(e)}")
             # Try to reconnect and retry
             db.connect()
-            db.update_questioner_data(record_id, json.dumps(questioner_data))
+            db.supabase.table("dental_report").update({"questioner_data": json.dumps(questioner_data)}).eq("id", record_id).execute()
             print(f"Second attempt: Updated questioner data for {record_id}")
         
         # Parse CDT and ICD results from the database
@@ -1189,20 +1165,17 @@ async def api_answer_questions(record_id: str, request: Request):
         
         # Save to database
         try:
-            db.update_analysis_results(record_id, json.dumps(cdt_result), json.dumps(icd_result))
+            db.supabase.table("dental_report").update({"cdt_result": json.dumps(cdt_result), "icd_result": json.dumps(icd_result)}).eq("id", record_id).execute()
             print(f"Updated analysis results for {record_id}")
         except Exception as e:
             print(f"❌ Error updating analysis results: {str(e)}")
             # Try to reconnect and retry
             db.connect()
-            db.update_analysis_results(record_id, json.dumps(cdt_result), json.dumps(icd_result))
+            db.supabase.table("dental_report").update({"cdt_result": json.dumps(cdt_result), "icd_result": json.dumps(icd_result)}).eq("id", record_id).execute()
             print(f"Second attempt: Updated analysis results for {record_id}")
         
         # Format data for response
         subtopics_data = cdt_result.get("subtopics_data", {})
-        
-        # Close database connection
-        db.close_connection()
         
         # Return the results as JSON
         return {
