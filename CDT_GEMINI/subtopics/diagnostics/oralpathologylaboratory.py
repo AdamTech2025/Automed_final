@@ -4,8 +4,10 @@ from langchain.prompts import PromptTemplate
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(current_dir))
 sys.path.append(parent_dir)
-from llm_services import create_chain, invoke_chain, get_llm_service
+from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 from subtopics.prompt.prompt import PROMPT
+
+set_model_for_file("gemini-2.5-pro-exp-03-25")
 
 def create_oral_pathology_laboratory_extractor():
     """
