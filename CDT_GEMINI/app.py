@@ -9,7 +9,7 @@ import logging
 import sys
 import traceback
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 import re
 
 # Configure logging
@@ -250,7 +250,9 @@ class CodeStatusRequest(BaseModel):
 
 class CodeDataRequest(BaseModel):
     scenario: str
-    cdt_codes: str
+    cdt_codes: Optional[str] = None
+    code: Optional[str] = None
+    record_id: Optional[str] = None
 
 # Add simple implementation for routes
 @app.get("/", response_class=HTMLResponse)
@@ -1257,14 +1259,31 @@ def display_database_record(record_id):
 async def add_code_data(request: CodeDataRequest):
     """Add code data to the database."""
     try:
-        # Use the new Supabase-based add_code_analysis method
-        record_id = db.add_code_analysis(request.scenario, request.cdt_codes, "Analysis completed")
+        # If cdt_codes is not provided but code is, use code instead
+        cdt_codes = request.cdt_codes
+        if not cdt_codes and request.code:
+            cdt_codes = request.code
+            
+        if not cdt_codes:
+            raise HTTPException(status_code=422, detail="Either cdt_codes or code must be provided")
+            
+        # Use the ADd_code_data function from add_codes/add_code_data.py
+        from add_codes.add_code_data import Add_code_data
+        result = Add_code_data(request.scenario, cdt_codes)
+        
+        # If record_id is provided, use it to link the analysis
+        record_id = request.record_id
+        if not record_id:
+            # Create a new record if none exists
+            record_id = db.add_code_analysis(request.scenario, cdt_codes, result)
+            
         return {
             "status": "success",
             "data": {
                 "scenario": request.scenario,
-                "cdt_codes": request.cdt_codes,
-                "record_id": record_id
+                "cdt_codes": cdt_codes,
+                "record_id": record_id,
+                "analysis": result
             }
         }
     except Exception as e:
@@ -1290,13 +1309,14 @@ async def add_custom_code(request: CustomCodeRequest):
                 "message": f"No record found with ID: {request.record_id}"
             }
         
-        # Create a simple explanation for the custom code
-        explanation = f"Custom code {request.code} added by user."
+        # Use the Add_code_data function for analysis
+        from add_codes.add_code_data import Add_code_data
+        analysis_result = Add_code_data(request.scenario, request.code)
         
         # Create the code data structure
         code_data = {
             "code": request.code,
-            "explanation": explanation,
+            "explanation": analysis_result if analysis_result else f"Custom code {request.code} added by user.",
             "doubt": "User-added code"
         }
         
@@ -1305,7 +1325,8 @@ async def add_custom_code(request: CustomCodeRequest):
             "status": "success",
             "data": {
                 "code_data": code_data,
-                "record_id": request.record_id
+                "record_id": request.record_id,
+                "analysis": analysis_result
             }
         }
     except Exception as e:
