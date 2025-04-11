@@ -23,7 +23,7 @@ def create_other_surgical_procedures_extractor(temperature=0.0):
     """
     Create a LangChain-based other surgical procedures code extractor.
     """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-1.5-flash-8b", temperature=temperature)
+    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
     
     template = f"""
     You are a dental coding expert specializing in oral and maxillofacial surgery.

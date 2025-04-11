@@ -27,7 +27,7 @@ def activate_general_prosthetics(scenario):
         str: The identified general maxillofacial prosthetics code or empty string if none found.
     """
     try:
-        llm = ChatGoogleGenerativeAI(model="models/gemini-1.5-flash-8b", temperature=0.0)        
+        llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=0.0)        
         template = f"""
 You are a dental coding expert 
 

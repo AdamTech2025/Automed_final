@@ -19,7 +19,7 @@ def create_orthodontia_cases_extractor(temperature=0.0):
     """
     Create a LangChain-based symptoms and disorders pertinent to orthodontia cases code extractor.
     """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-1.5-flash-8b", temperature=temperature)
+    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
     
     prompt_template = PromptTemplate(
         template="""

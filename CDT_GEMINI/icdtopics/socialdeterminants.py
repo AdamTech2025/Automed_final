@@ -19,7 +19,7 @@ def create_social_determinants_extractor(temperature=0.0):
     """
     Create a LangChain-based social determinants of health code extractor.
     """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-1.5-flash-8b", temperature=temperature)
+    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
     
     prompt_template = PromptTemplate(
         template="""

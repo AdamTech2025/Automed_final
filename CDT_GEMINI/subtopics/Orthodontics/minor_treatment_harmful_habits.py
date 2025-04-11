@@ -20,7 +20,7 @@ def create_minor_treatment_harmful_habits_extractor(temperature=0.0):
     """
     Create a LangChain-based minor treatment to control harmful habits code extractor.
     """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-1.5-flash-8b", temperature=temperature)
+    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
     
     prompt_template = PromptTemplate(
         template=f"""
