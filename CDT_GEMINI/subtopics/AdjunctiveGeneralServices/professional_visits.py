@@ -1,17 +1,9 @@
-"""
-Module to handle professional visits codes extraction based on user-defined scenarios.
-This module specifically handles D9410-D9450 code range for professional visits.
-"""
-
 import os
 import sys
 from langchain.prompts import PromptTemplate
-
-# Add the root directory to the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(current_dir))
 sys.path.append(parent_dir)
-
 from llm_services import create_chain, invoke_chain, get_llm_service
 from subtopics.prompt.prompt import PROMPT
 

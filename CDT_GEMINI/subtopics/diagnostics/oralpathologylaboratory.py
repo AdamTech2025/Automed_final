@@ -1,21 +1,17 @@
 import os
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+from llm_services import create_chain, invoke_chain, get_llm_service
 from subtopics.prompt.prompt import PROMPT
 
-
-# Get model name from environment variable, default to gpt-4o if not set
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
-
-def create_oral_pathology_laboratory_extractor(temperature=0.0):
+def create_oral_pathology_laboratory_extractor():
     """
     Create a LangChain-based Oral Pathology Laboratory test extractor.
     """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-1.5-flash-8b", temperature=temperature)
-    
-    prompt_template = PromptTemplate(
-        template=f"""
+    template = f"""
 You are a highly experienced medical coding expert. 
 
 Canvas ## Oral Pathology Laboratory - Detailed Guidelines
@@ -117,7 +113,7 @@ Canvas ## Oral Pathology Laboratory - Detailed Guidelines
 - When special stains are required for elements like melanin, mucin, iron, or glycogen.
 
 **What to Check:**
-- Verify the stain’s diagnostic purpose.
+- Verify the stain's diagnostic purpose.
 
 **Notes:**
 - Helps identify tissue abnormalities.
@@ -221,24 +217,43 @@ Canvas ## Oral Pathology Laboratory - Detailed Guidelines
 - Must include a full procedural description.  
 
 ### *Scenario:*
-"{{question}}"
+{{scenario}}
 
 {PROMPT}
-""",
-        input_variables=["question"]
-    )
+"""
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    prompt = PromptTemplate(template=template, input_variables=["scenario"])
+    return create_chain(prompt)
 
-def extract_oral_pathology_laboratory_code(scenario, temperature=0.0):
+def extract_oral_pathology_laboratory_code(scenario):
     """
     Extract Oral Pathology Laboratory test code(s) for a given scenario.
     """
-    chain = create_oral_pathology_laboratory_extractor(temperature)
-    return chain.run(question=scenario).strip()
+    try:
+        extractor = create_oral_pathology_laboratory_extractor()
+        result = invoke_chain(extractor, {"scenario": scenario})
+        return result.get("text", "").strip()
+    except Exception as e:
+        print(f"Error in oral pathology laboratory code extraction: {str(e)}")
+        return None
 
 def activate_oral_pathology_laboratory(scenario):
     """
     Activate Oral Pathology Laboratory analysis and return results.
     """
-    return extract_oral_pathology_laboratory_code(scenario)
+    try:
+        result = extract_oral_pathology_laboratory_code(scenario)
+        return result
+    except Exception as e:
+        print(f"Error activating oral pathology laboratory analysis: {str(e)}")
+        return None
+
+# Example usage
+if __name__ == "__main__":
+    # Print the current Gemini model and temperature being used
+    llm_service = get_llm_service()
+    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
+    
+    scenario = "A dentist takes a biopsy of an unusual lesion on the buccal mucosa and sends it to the lab for both gross and microscopic examination."
+    result = activate_oral_pathology_laboratory(scenario)
+    print(result)

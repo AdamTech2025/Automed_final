@@ -1,22 +1,17 @@
 import os
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+from llm_services import create_chain, invoke_chain, get_llm_service
 from subtopics.prompt.prompt import PROMPT
 
-
-# Get model name from environment variable, default to gpt-4o if not set
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
-
-def create_diagnostic_imaging_extractor(temperature=0.0):   
+def create_diagnostic_imaging_extractor():   
     """
     Create a LangChain-based Diagnostic Imaging extractor.
     """
-    # Use ChatOpenAI for newer models like gpt-4o
-    llm = ChatGoogleGenerativeAI(model="models/gemini-1.5-flash-8b", temperature=temperature)
-    
-    prompt_template = PromptTemplate(
-        template=f"""
+    template = f"""
 
         # Radiographic and Imaging Code Usage Guidelines
 
@@ -33,8 +28,8 @@ def create_diagnostic_imaging_extractor(temperature=0.0):
   - **D0391** for interpretation by a different practitioner
 
 ## 3. Do Not Double Bill
-- Don’t bill both D0210 and individual component codes (e.g., D0220, D0274)
-- If using D0372 (tomosynthesis full-mouth), don’t also report D0210
+- Don't bill both D0210 and individual component codes (e.g., D0220, D0274)
+- If using D0372 (tomosynthesis full-mouth), don't also report D0210
 
 ## 4. Match the Right Imaging Code Type
 - **2D Standard Radiographs:** D0210-D0277
@@ -248,79 +243,107 @@ Code: D0703
 Use when: Capturing 2D oral/facial photographs only.  
 What to check: Use for documentation/monitoring.
 
+Code: D0704  
+Use when: Capturing 3D photographic image.  
+What to check: Used for digital facial analysis.
+
 Code: D0705  
-Use when: Capturing posterior extraoral dental image only.  
-What to check: Must be original and show posterior teeth in both arches.
+Use when: Capturing extra-oral posterior dental image (capture only).  
+What to check: Document imaging purpose.
 
 Code: D0706  
-Use when: Capturing occlusal intraoral image only.  
-What to check: Often for pediatric or trauma eval.
+Use when: Capturing intraoral occlusal image only.  
+What to check: Document arch imaged.
 
 Code: D0707  
-Use when: Capturing periapical image only.  
-What to check: Taken by non-dentist, no interpretation.
+Use when: Capturing intraoral periapical image only.  
+What to check: Document tooth/area.
 
 Code: D0708  
-Use when: Capturing bitewing image only.  
-What to check: Specify horizontal or vertical axis.
+Use when: Capturing intraoral bitewing image only.  
+What to check: Document number captured.
 
 Code: D0709  
-Use when: Capturing comprehensive intraoral series only.  
-What to check: Taken offsite or by auxiliary, no interpretation.
+Use when: Capturing intraoral complete series (capture only).  
+What to check: Interpretation billed separately.
 
 Code: D0391  
-Use when: Interpreting a diagnostic image captured by another provider.  
-What to check: Must submit written report.
+Use when: Interpretation and report of diagnostic images by practitioner not associated with image capture. Examples include teledentistry consultations, specialty referrals, or scenarios where imaging technicians capture the images for later review by a dentist.  
+What to check: Must document the interpretation and generate a written report that becomes part of the patient's record. Only use when the interpreter did not also capture the image. Only use with the D070X series or D038X series when a separate provider is interpreting.  
+What to check: Requires written interpretation report.
 
 Code: D0393  
-Use when: Running virtual treatment simulation using 3D data.  
-What to check: Common for implant/ortho planning.
+Use when: Treatment simulation using 3D image volume. This may include implant placement simulation, orthodontic treatment simulation, or surgical simulation.  
+What to check: Typically requires specialized software. Should include documentation of simulation parameters and objectives. Must go beyond basic CBCT interpretation. Excludes actual guide fabrication.  
+What to check: Must use specialized software for simulation.
 
 Code: D0394  
-Use when: Performing digital subtraction of two or more images.  
-What to check: Highlights progressive changes.
+Use when: Digital subtraction of radiographic images. Used to track subtle changes in bone density or lesion progression over time.  
+What to check: Requires original baseline images and follow-up images. Documentation should indicate changes observed through digital subtraction. Typically used in periodontal or implant monitoring.  
+What to check: For monitoring changes over time.
 
 Code: D0395  
-Use when: Fusing multiple 3D image volumes (e.g., CT + MRI).  
-What to check: Used in complex surgical planning.
+Use when: Fusion of two or more 3D image volumes of same or different modalities. Examples include merging CBCT with digital models or facial scans.  
+What to check: Document the purpose and clinical benefit of image fusion. Requires specialized software. Should enhance diagnosis or treatment planning beyond individual image interpretation.  
+What to check: Combining different imaging modalities.
 
 Code: D0801  
-Use when: Capturing direct 3D surface scan on patient’s teeth.  
-What to check: For CAD/CAM or ortho use.
+Use when: 3D dental surface scan - direct. Used for digital impressions captured directly in the patient's mouth.  
+What to check: Distinguish from traditional impressions. Document the clinical purpose for the scan.  
+What to check: For digital impressions using intraoral scanner.
 
 Code: D0802  
-Use when: Capturing indirect 3D dental surface scan (from model).  
-What to check: Model must be labeled and retained.
+Use when: 3D dental surface scan - indirect. Used when scanning dental models or impressions rather than directly scanning the oral cavity.  
+What to check: Document the source of the physical model or impression. Indicate purpose for digitization.  
+What to check: Scanning of physical models.
 
 Code: D0803  
-Use when: Capturing 3D facial surface scan directly on patient.  
-What to check: Used in facial esthetics, ortho.
+Use when: 3D facial surface scan - direct. Used for capturing digital models of facial structures directly from the patient.  
+What to check: Document the purpose (e.g., esthetic planning, surgical planning). Specify regions scanned.  
+What to check: Direct facial scanning for digital planning.
 
 Code: D0804  
-Use when: Capturing indirect 3D facial scan (e.g., prosthetic mold).  
-What to check: Scan from constructed features or prosthetics.
+Use when: 3D facial surface scan - indirect. Used for digitizing existing facial moulage or similar physical representations.  
+What to check: Document the source of the physical model. Indicate the diagnostic or treatment planning purpose.  
+What to check: Digitizing existing 3D facial models.
 
-
-
-Scenario:
-"{{question}}"
+Scenario: {{scenario}}
 
 {PROMPT}
-""",
-        input_variables=["question"]
-    )
+"""
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    prompt = PromptTemplate(template=template, input_variables=["scenario"])
+    return create_chain(prompt)
 
-def extract_diagnostic_imaging_code(scenario, temperature=0.0):
+def extract_diagnostic_imaging_code(scenario):
     """
     Extract Diagnostic Imaging code(s) for a given scenario.
     """
-    chain = create_diagnostic_imaging_extractor(temperature)
-    return chain.run(question=scenario).strip()
+    try:
+        extractor = create_diagnostic_imaging_extractor()
+        result = invoke_chain(extractor, {"scenario": scenario})
+        return result.get("text", "").strip()
+    except Exception as e:
+        print(f"Error in diagnostic imaging code extraction: {str(e)}")
+        return None
 
 def activate_diagnostic_imaging(scenario):
     """
     Activate Diagnostic Imaging analysis and return results.
     """
-    return extract_diagnostic_imaging_code(scenario)
+    try:
+        result = extract_diagnostic_imaging_code(scenario)
+        return result
+    except Exception as e:
+        print(f"Error activating diagnostic imaging analysis: {str(e)}")
+        return None
+
+# Example usage
+if __name__ == "__main__":
+    # Print the current Gemini model and temperature being used
+    llm_service = get_llm_service()
+    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
+    
+    scenario = "A new patient comes in with pain in the upper right quadrant. The dentist takes a periapical X-ray of tooth #3 and then two additional periapical X-rays of teeth #2 and #4 to evaluate the surrounding area."
+    result = activate_diagnostic_imaging(scenario)
+    print(result)
