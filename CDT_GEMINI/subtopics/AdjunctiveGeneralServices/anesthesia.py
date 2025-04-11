@@ -1,7 +1,3 @@
-"""
-Module to handle anesthesia codes extraction based on user-defined scenarios.
-This module specifically handles D9210-D9248 code range for anesthesia.
-"""
 
 import os
 import sys

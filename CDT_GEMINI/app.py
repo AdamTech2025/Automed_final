@@ -1,7 +1,5 @@
-﻿from fastapi import FastAPI, Request, Form, HTTPException
-from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+﻿from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import time
 import json
@@ -79,8 +77,6 @@ from database1 import MedicalCodingDB
 db = MedicalCodingDB()
 # Initialize FastAPI app
 app = FastAPI(title="Dental Code Extractor API")
-templates = Jinja2Templates(directory="templates")
-app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Track active analyses by ID
 active_analyses = {}
@@ -254,18 +250,7 @@ class CodeDataRequest(BaseModel):
     code: Optional[str] = None
     record_id: Optional[str] = None
 
-# Add simple implementation for routes
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    """Render the home page."""
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "results": None,
-        "has_questions": False,
-        "cdt_questions": None,
-        "icd_questions": None
-    })
-
+# API routes begin here
 @app.post("/api/analyze")
 async def analyze_web(request: ScenarioRequest):
     """Process the dental scenario and return results."""
@@ -787,115 +772,60 @@ def get_record_from_database(record_id, close_connection=True):
         logger.error(f"Error retrieving record from database: {e}")
         return None
 
-@app.get("/view-record/{record_id}", response_class=HTMLResponse)
-async def view_record(request: Request, record_id: str):
-    """View the details of a stored analysis record."""
+# Modified view_record to return JSON data instead of using templates
+@app.get("/view-record/{record_id}")
+async def view_record(record_id: str):
+    """View the details of a stored analysis record as JSON."""
     try:
         # Get record from the database
         record = get_record_from_database(record_id)
         
         if not record:
-            return templates.TemplateResponse(
-                "record_view.html",
-                {
-                    "request": request,
-                    "record_id": record_id,
-                    "error": "Record not found",
-                    "error_details": f"No record with ID {record_id} exists in the database."
-                }
-            )
+            raise HTTPException(status_code=404, detail=f"No record found with ID: {record_id}")
         
-        # Parse JSON data
-        template_data = {
-            "request": request,
+        # Parse JSON data for the response
+        response_data = {
             "record_id": record_id,
             "processed_scenario": record.get("processed_scenario", "Not available"),
-            "error": None
         }
         
         # Format CDT data
         try:
             if "cdt_json" in record and record["cdt_json"]:
-                cdt_json = json.loads(record["cdt_json"])
-                template_data["formatted_cdt_json"] = json.dumps(cdt_json, indent=2)
-                
-                # Extract CDT classifier data
-                if "cdt_classifier" in cdt_json:
-                    template_data["cdt_classifier"] = cdt_json["cdt_classifier"]
-                
-                # Extract subtopics data
-                if "subtopics_data" in cdt_json:
-                    template_data["subtopics_data"] = cdt_json["subtopics_data"]
-                
-                # Extract inspector results
-                if "inspector_results" in cdt_json:
-                    template_data["inspector_results"] = cdt_json["inspector_results"]
+                response_data["cdt_data"] = json.loads(record["cdt_json"])
             else:
-                template_data["formatted_cdt_json"] = "{}"
+                response_data["cdt_data"] = {}
         except Exception as e:
             logger.error(f"Error parsing CDT JSON data: {e}")
-            template_data["formatted_cdt_json"] = f"Error parsing data: {str(e)}"
+            response_data["cdt_data"] = {"error": f"Error parsing data: {str(e)}"}
         
         # Format ICD data
         try:
-            icd_data = {}
             if "icd_json" in record and record["icd_json"]:
-                icd_json = json.loads(record["icd_json"])
-                template_data["formatted_icd_json"] = json.dumps(icd_json, indent=2)
-                
-                # Extract ICD data
-                if "categories" in icd_json:
-                    icd_data["categories"] = icd_json["categories"]
-                
-                if "code_lists" in icd_json:
-                    icd_data["code_lists"] = icd_json["code_lists"]
-                
-                if "explanations" in icd_json:
-                    icd_data["explanations"] = icd_json["explanations"]
-                
-                if "doubts" in icd_json:
-                    icd_data["doubts"] = icd_json["doubts"]
-                
-                if "icd_topics_results" in icd_json:
-                    icd_data["icd_topics_results"] = icd_json["icd_topics_results"]
-                
-                if "inspector_results" in icd_json:
-                    icd_data["inspector_results"] = icd_json["inspector_results"]
+                response_data["icd_data"] = json.loads(record["icd_json"])
             else:
-                template_data["formatted_icd_json"] = "{}"
-            
-            template_data["icd_data"] = icd_data
+                response_data["icd_data"] = {}
         except Exception as e:
             logger.error(f"Error parsing ICD JSON data: {e}")
-            template_data["formatted_icd_json"] = f"Error parsing data: {str(e)}"
-            template_data["icd_data"] = {}
+            response_data["icd_data"] = {"error": f"Error parsing data: {str(e)}"}
         
         # Format questioner data
         try:
             if "questioner_json" in record and record["questioner_json"]:
-                questioner_json = json.loads(record["questioner_json"])
-                template_data["formatted_questioner_json"] = json.dumps(questioner_json, indent=2)
+                response_data["questioner_data"] = json.loads(record["questioner_json"])
             else:
-                template_data["formatted_questioner_json"] = "{}"
+                response_data["questioner_data"] = {}
         except Exception as e:
             logger.error(f"Error parsing questioner JSON data: {e}")
-            template_data["formatted_questioner_json"] = f"Error parsing data: {str(e)}"
+            response_data["questioner_data"] = {"error": f"Error parsing data: {str(e)}"}
         
-        # Render the template with data
-        return templates.TemplateResponse("record_view.html", template_data)
+        return response_data
     
+    except HTTPException as e:
+        raise e
     except Exception as e:
         logger.error(f"Error viewing record: {e}")
-        return templates.TemplateResponse(
-            "record_view.html",
-            {
-                "request": request,
-                "record_id": record_id,
-                "error": "Error retrieving record",
-                "error_details": str(e),
-                "processing_complete": True  # Mark as complete for error state
-            }
-        )
+        raise HTTPException(status_code=500, detail=f"Error retrieving record: {str(e)}")
 
 @app.post("/api/store-code-status")
 async def store_code_status(request: CodeStatusRequest):
