@@ -9,7 +9,7 @@ from llm_services import create_chain, invoke_chain, set_model_for_file
 load_dotenv()
 
 # Set a specific model for this file (optional)
-set_model_for_file("gemini-2.5-pro-exp-03-25")
+set_model_for_file("gemini-2.5-pro-preview-03-25")
 
 def setup_logging():
     """Configure logging for the inspector module."""
