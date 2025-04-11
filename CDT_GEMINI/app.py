@@ -84,11 +84,14 @@ active_analyses = {}
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # React app URL
+    allow_origins=["http://localhost:5173", "https://python.adamtechnologies.in"],  # React app URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+
 
 # Utility function to transform topics to a simplified structure for DB storage
 def transform_topics_for_db(topics_data):
