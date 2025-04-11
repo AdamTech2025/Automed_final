@@ -20,7 +20,7 @@ def create_unspecified_removable_prosthodontic_procedure_extractor(temperature=0
     """
     Create a LangChain-based unspecified removable prosthodontic procedure code extractor.
     """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-1.5-flash-8b", temperature=temperature)
+    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
     
     prompt_template = PromptTemplate(
         template=f"""

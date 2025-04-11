@@ -23,7 +23,7 @@ def create_fpd_abutment_extractor():
     """
     Creates a LangChain-based extractor for fixed partial denture retainer, abutment supported codes.
     """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-1.5-flash-8b", temperature=0.0)    
+    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=0.0)    
     template = f"""
     You are a dental coding expert specializing in implant services.
     
