@@ -41,15 +41,26 @@ Always stay concise, clear, and clinically grounded.
 
     try:
         llm = get_llm_service()
-        chain = create_chain(llm, prompt_template)
+        chain = create_chain(prompt_template)
         response = invoke_chain(chain, {"scenario": scenario, "cdt_codes": cdt_codes})
+        
+        # Convert response to string if it's not already
+        if isinstance(response, dict):
+            if "text" in response:
+                response_text = response["text"]
+            elif "content" in response:
+                response_text = response["content"]
+            else:
+                response_text = str(response)
+        else:
+            response_text = str(response)
         
         # Store the analysis in the database
         db = MedicalCodingDB()
-        record_id = db.add_code_analysis(scenario, cdt_codes, response)
+        record_id = db.add_code_analysis(scenario, cdt_codes, response_text)
         print(f"✅ Analysis stored with ID: {record_id}")
         
-        return response
+        return response_text
 
     except Exception as e:
         error_msg = f"Error during analysis: {str(e)}"

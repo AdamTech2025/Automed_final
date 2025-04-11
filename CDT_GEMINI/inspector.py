@@ -9,7 +9,7 @@ from llm_services import create_chain, invoke_chain, set_model_for_file
 load_dotenv()
 
 # Set a specific model for this file (optional)
-set_model_for_file("gemini-2.5-pro-exp-03-25")
+set_model_for_file("gemini-2.0-flash")
 
 def setup_logging():
     """Configure logging for the inspector module."""
@@ -28,72 +28,56 @@ def create_dental_inspector(temperature=0.0):
     """
     prompt_template = PromptTemplate(
         template="""
-You are the final code selector ("Inspector") with extensive expertise in dental coding. Your task is to perform a thorough analysis of the provided scenario along with the candidate CDT code outputs—including all explanations and doubts—from previous subtopics. Your final output must include only the CDT code(s) that are fully justified by the scenario, with no assumptions or extraneous inclusions.
-
+You are the final code selector ("Inspector") with extensive expertise in dental coding. Your task is to perform a thorough analysis of the provided scenario along with the candidate CDT code outputs—including all explanations and doubts—from previous subtopics. Your final output must include only the CDT code(s) that are justified by the scenario, with minimal assumptions.
 
 Scenario:
 {scenario}
 
-
 Topic Analysis Results:
 {topic_analysis}
-
 
 Additional Information from Questions (if any):
 {questioner_data}
 
-
 Instructions:
-
 
 1) Carefully read the complete clinical scenario provided.
 
-
 2) Review all candidate CDT codes suggested by previous subtopics along with their explanations and any doubts raised.
 
+3) Use Provided Codes: Only consider and select from the candidate CDT codes that were actually analyzed in the topic analysis results. Do not reject codes that weren't part of the original analysis.
 
-3) Strictly Use Provided Codes: Only select from the candidate CDT codes provided. Do not add any new codes.
+4) Reasonable Assumptions: You may make basic clinical assumptions that are standard in dental practice, but avoid making significant assumptions about unstated procedures.
 
+5) Justification: Select codes that are reasonably supported by the scenario. If a code has minor doubts but is likely correct based on the context, include it.
 
-4) No Assumptions: Do not assume entirely new information that is not stated in the scenario but basic assumption are allowed.
+6) Mutually Exclusive Codes: When presented with mutually exclusive codes, choose the one that is best justified for the specific visit. Do not bill for the same procedure twice.
 
+7) Revenue & Defensibility: Your selection should maximize revenue while ensuring billing is defensible, but don't reject codes unnecessarily.
 
-5) Accuracy & Justification: Select only those codes that are clearly and explicitly supported by the scenario. If any candidate code has associated doubts regarding its applicability, do not include it.
+8) Consider Additional QA: Incorporate any additional information or clarifications provided through the question-answer process.
 
+9) Output the same code multiple times if it is applicable (e.g., 8 scans would include the code 8 times).
 
-6) Mutually Exclusive Codes: When presented with mutually exclusive codes (i.e., different codes representing the same procedure), choose the one that is best justified and most appropriate for the specific visit. Do not bill for the same procedure twice.
-
-
-7) Revenue Maximization & Defensibility: Your final selection must maximize revenue for the doctor while ensuring that the billing is defensible with no risk of claim denial.
-
-
-8) Consider Additional QA: Incorporate any additional information or clarifications provided through the question-answer process. If there is any remaining doubt that could affect accurate coding, omit the code rather than risk an error.
-
-9) also output the same code multiple times, if it is applicable, like 8 scannings so code will be included 8 times.
-
-10)Check Coding Rules
- Is this code bundleable/unbundleable (e.g., D1110 can't be billed with D4341)?
-
- Is the service medically necessary?
-
- Was this an emergency visit, post-op visit, or re-evaluation?
-
-
+10) Coding Rules:
+    - Consider standard bundling rules but don't be overly strict
+    - Assume medical necessity for standard procedures
+    - Consider emergency/post-op status if implied by context
+    - Only reject codes that were explicitly analyzed in the topic analysis
 
 IMPORTANT: You must format your response exactly as follows:
 
-
 EXPLANATION: [provide a detailed explanation for why each code was selected or rejected. Include specific reasoning for each code mentioned in the topic analysis.]
 
-CODES: [comma-separated list of CDT codes, with no square brackets around individual codes]
+CODES: [comma-separated list of CDT codes that are accepted, with no square brackets around individual codes]
 
-
-
+REJECTED CODES: [comma-separated list of CDT codes that were considered but rejected, with no square brackets around individual codes. Only list codes that were actually analyzed in the topic analysis and are explicitly contradicted by the scenario.]
 
 For example:
 
 EXPLANATION: D0120 (periodic oral evaluation) is appropriate as this was a regular dental visit. D0274 (bitewings-four radiographs) is included because the scenario mentions taking four bitewing x-rays. D1110 (prophylaxis-adult) is included as the scenario describes cleaning of teeth for an adult patient. D0140 was rejected because this was not an emergency visit.
 CODES: D0120, D0274, D1110
+REJECTED CODES: D0140,D0220,D0230
 """,
         input_variables=["scenario", "topic_analysis", "questioner_data"]
     )
@@ -173,6 +157,7 @@ def analyze_dental_scenario(scenario, topic_analysis, questioner_data=None):
         # Parse the result to extract codes and explanation
         codes_line = ""
         explanation_line = ""
+        rejected_codes_line = ""
         
         # More robust parsing of the response - looking for the updated format
         lines = result_text.strip().split('\n')
@@ -184,6 +169,10 @@ def analyze_dental_scenario(scenario, topic_analysis, questioner_data=None):
             # Check for code line with our new format (uppercase without dashes)
             if line.upper().startswith("CODES:"):
                 codes_line = line.split(":", 1)[1].strip()
+            
+            # Check for rejected codes line
+            elif line.upper().startswith("REJECTED CODES:"):
+                rejected_codes_line = line.split(":", 1)[1].strip()
             
             # Check for explanation line (now uppercase without dash)
             elif line.upper().startswith("EXPLANATION:"):
@@ -207,6 +196,20 @@ def analyze_dental_scenario(scenario, topic_analysis, questioner_data=None):
                 clean_code = code.strip().strip('[]')
                 if clean_code and clean_code.lower() != 'none':
                     cleaned_codes.append(clean_code)
+        
+        # Clean up the rejected codes
+        rejected_codes = []
+        if rejected_codes_line:
+            # Remove any enclosing brackets from the entire string
+            rejected_codes_line = rejected_codes_line.strip('[]')
+            
+            # Split by comma
+            for code in rejected_codes_line.split(','):
+                # Clean each code and remove any square brackets around individual codes
+                clean_code = code.strip().strip('[]')
+                # Don't include wildcards or "none" in rejected codes
+                if clean_code and clean_code.lower() != 'none' and '*' not in clean_code:
+                    rejected_codes.append(clean_code)
         
         # If explanation is still empty, try to extract it using other patterns
         if not explanation_line:
@@ -242,10 +245,12 @@ def analyze_dental_scenario(scenario, topic_analysis, questioner_data=None):
         
         # Log the extracted components
         logger.info(f"Extracted codes: {cleaned_codes}")
+        logger.info(f"Extracted rejected codes: {rejected_codes}")
         logger.info(f"Extracted explanation: {explanation_line}")
         
         return {
             "codes": cleaned_codes,
+            "rejected_codes": rejected_codes,
             "explanation": explanation_line
         }
     except Exception as e:
@@ -254,6 +259,7 @@ def analyze_dental_scenario(scenario, topic_analysis, questioner_data=None):
             "error": str(e),
             "output": f"- CODES: none\n- EXPLAINATION: Error occurred: {str(e)}",
             "codes": [],
+            "rejected_codes": [],
             "explanation": f"Error occurred: {str(e)}",
             "type": "error",
             "data_source": "error"

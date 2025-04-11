@@ -44,7 +44,7 @@ export const submitQuestionAnswers = async (answers, recordId) => {
 // Add custom code service
 export const addCustomCode = async (code, scenario, recordId) => {
   try {
-    const response = await apiInstance.post('/api/add-code-data', {
+    const response = await apiInstance.post('/api/add-custom-code', {
       code,
       scenario,
       record_id: recordId

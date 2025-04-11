@@ -123,8 +123,11 @@ const Home = () => {
   };
 
   const handleCopyCodes = () => {
-    const codes = result.data.inspector_results.codes.join(', ');
-    navigator.clipboard.writeText(codes).then(() => {
+    const acceptedCodes = result.data.inspector_results.codes.join(', ');
+    
+    let textToCopy = `Accepted: ${acceptedCodes}`;
+    
+    navigator.clipboard.writeText(textToCopy).then(() => {
       alert('Codes copied to clipboard!');
     }).catch(err => {
       console.error('Failed to copy codes: ', err);
@@ -196,7 +199,7 @@ const Home = () => {
     return (
       <div className="mb-6">
         <div 
-          className="flex items-center justify-between p-4 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
+          className={`flex items-center justify-between p-4 ${topic === 'custom_codes' ? 'bg-blue-50' : 'bg-gray-50'} rounded-lg cursor-pointer hover:bg-gray-100 transition-colors`}
           onClick={() => toggleTopic(topic)}
         >
           <h3 className="text-lg font-semibold">{topic_name}</h3>
@@ -228,12 +231,23 @@ const Home = () => {
                   'bg-white border-gray-200'
                 }`}
               >
-                <h4 className="font-medium text-gray-700 mb-2 p-4">{subtopicText}</h4>
+                <h4 className="font-medium text-gray-700 mb-2 p-4 flex justify-between items-center">
+                  <span>{subtopicText}</span>
+                  {topic === 'custom_codes' && 'isApplicable' in codeData && (
+                    <span className={`text-sm px-2 py-1 rounded-full ${
+                      codeData.isApplicable ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                    }`}>
+                      {codeData.isApplicable ? 'Applicable' : 'Not Applicable'}
+                    </span>
+                  )}
+                </h4>
                 <div 
                   id={`code-${codeData.code}`} 
                   className={`p-4 rounded-lg shadow-sm border transition-colors duration-300 ${
                   isAccepted ? 'border-green-300' : 
                   isDenied ? 'border-red-300' : 
+                  topic === 'custom_codes' && 'isApplicable' in codeData ? 
+                    (codeData.isApplicable ? 'border-green-300' : 'border-red-300') :
                   'border-gray-200'
                 }`}
                 >
@@ -241,6 +255,8 @@ const Home = () => {
                     <span className={`font-mono px-2 py-1 rounded ${
                       isAccepted ? 'bg-green-100 text-green-800' : 
                       isDenied ? 'bg-red-100 text-red-800' : 
+                      topic === 'custom_codes' && 'isApplicable' in codeData ? 
+                        (codeData.isApplicable ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800') :
                       'bg-gray-100 text-gray-800'
                     }`}>
                       {codeData.code}
@@ -277,6 +293,8 @@ const Home = () => {
                   <p className={`text-sm mb-1 ${
                     isAccepted ? 'text-green-700' : 
                     isDenied ? 'text-red-700' : 
+                    topic === 'custom_codes' && 'isApplicable' in codeData ? 
+                      (codeData.isApplicable ? 'text-green-700' : 'text-red-700') :
                     'text-gray-600'
                   }`}>
                     <span className="font-medium">Explanation:</span> {codeData.explanation}
@@ -284,6 +302,8 @@ const Home = () => {
                   <p className={`text-sm ${
                     isAccepted ? 'text-green-700' : 
                     isDenied ? 'text-red-700' : 
+                    topic === 'custom_codes' && 'isApplicable' in codeData ? 
+                      (codeData.isApplicable ? 'text-green-700' : 'text-red-700') :
                     'text-gray-600'
                   }`}>
                     <span className="font-medium">Doubt:</span> {codeData.doubt}
@@ -364,16 +384,18 @@ const Home = () => {
         topicData.specific_codes.forEach(codeData => {
           // Only count valid codes (not 'none')
           if (codeData && codeData.code && codeData.code !== 'none') {
+            // For custom codes, only count if applicable
+            if (topic === 'custom_codes' && 'isApplicable' in codeData && !codeData.isApplicable) {
+              return; // Skip this code
+            }
             allCodes.push(codeData.code);
           }
         });
       }
     });
     
-    const selectedCount = selectedCodes.accepted.length + selectedCodes.denied.length;
-    
-    // Check if every code has been either accepted or denied
-    return allCodes.length > 0 && selectedCount === allCodes.length;
+    // Check if all codes have been accepted
+    return allCodes.length > 0 && allCodes.every(code => selectedCodes.accepted.includes(code));
   };
 
   // Add a function to get the count of remaining codes to select
@@ -382,54 +404,62 @@ const Home = () => {
     
     // Count total valid codes
     let totalCodes = 0;
+    let acceptedCount = 0;
     
     Object.keys(result.data.subtopics_data).forEach(topic => {
       const topicData = result.data.subtopics_data[topic];
       if (topicData.specific_codes) {
         topicData.specific_codes.forEach(codeData => {
           if (codeData && codeData.code && codeData.code !== 'none') {
+            // For custom codes, only count if applicable
+            if (topic === 'custom_codes' && 'isApplicable' in codeData && !codeData.isApplicable) {
+              return; // Skip this code
+            }
             totalCodes++;
+            if (selectedCodes.accepted.includes(codeData.code)) {
+              acceptedCount++;
+            }
           }
         });
       }
     });
     
-    const selectedCount = selectedCodes.accepted.length + selectedCodes.denied.length;
-    return totalCodes - selectedCount;
+    return totalCodes - acceptedCount;
   };
 
   // Add a function to render the selected codes section
   const renderSelectedCodes = () => {
-    if (selectedCodes.accepted.length === 0 && selectedCodes.denied.length === 0) return null;
+    if (selectedCodes.accepted.length === 0) return null;
+    
+    const handleCopySelectedCodes = () => {
+      const acceptedText = selectedCodes.accepted.length > 0 
+        ? `Accepted: ${selectedCodes.accepted.join(', ')}` 
+        : '';
+      
+      navigator.clipboard.writeText(acceptedText);
+      alert('Selected codes copied to clipboard!');
+    };
     
     return (
       <div className="mt-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
-        <h3 className="text-lg font-semibold mb-4">Your Selections</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Your Selections</h3>
+          <button
+            onClick={handleCopySelectedCodes}
+            className="text-blue-500 hover:text-blue-700 transition-colors flex items-center"
+          >
+            <FaCopy className="mr-1" /> Copy All
+          </button>
+        </div>
         
         {selectedCodes.accepted.length > 0 && (
-          <div className="mb-4">
+          <div>
             <h4 className="font-medium text-green-700 mb-2">Accepted Codes:</h4>
             <div className="flex flex-wrap gap-2">
               {selectedCodes.accepted.map((code, index) => (
                 <span 
                   key={`accepted-${index}-${code}`}
                   className="px-3 py-1 rounded-full text-sm bg-green-100 text-green-800 border border-green-300"
-                >
-                  {code}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-        
-        {selectedCodes.denied.length > 0 && (
-          <div>
-            <h4 className="font-medium text-red-700 mb-2">Denied Codes:</h4>
-            <div className="flex flex-wrap gap-2">
-              {selectedCodes.denied.map((code, index) => (
-                <span 
-                  key={`denied-${index}-${code}`}
-                  className="px-3 py-1 rounded-full text-sm bg-red-100 text-red-800 border border-red-300"
                 >
                   {code}
                 </span>
@@ -471,6 +501,16 @@ const Home = () => {
           updatedResult.data.subtopics_data = {};
         }
         
+        // Extract applicability status from the explanation
+        const isApplicable = codeData.explanation && codeData.explanation.includes("**Applicable?** Yes");
+        
+        // Extract reason from the explanation
+        let reason = "";
+        if (codeData.explanation) {
+          const reasonMatch = codeData.explanation.match(/\*\*Reason\*\*: (.*?)($|\n)/);
+          reason = reasonMatch ? reasonMatch[1].trim() : "";
+        }
+        
         // Either add to "Custom Codes" topic or create it
         if (!updatedResult.data.subtopics_data.custom_codes) {
           updatedResult.data.subtopics_data.custom_codes = {
@@ -479,18 +519,21 @@ const Home = () => {
           };
         }
         
-        // Add the new code data
+        // Add the new code data with parsed information
         updatedResult.data.subtopics_data.custom_codes.specific_codes.push({
           code: codeData.code,
-          explanation: codeData.explanation,
-          doubt: codeData.doubt || "None"
+          explanation: reason || codeData.explanation,
+          doubt: codeData.doubt || "None",
+          isApplicable: isApplicable
         });
         
-        // If there are inspector results, add the code there too
-        if (updatedResult.data.inspector_results && updatedResult.data.inspector_results.codes) {
-          // Only add if it's not already in the list
-          if (!updatedResult.data.inspector_results.codes.includes(codeData.code)) {
-            updatedResult.data.inspector_results.codes.push(codeData.code);
+        // If there are inspector results, add the code there too if applicable
+        if (updatedResult.data.inspector_results) {
+          if (isApplicable) {
+            // Add to accepted codes if applicable
+            if (!updatedResult.data.inspector_results.codes.includes(codeData.code)) {
+              updatedResult.data.inspector_results.codes.push(codeData.code);
+            }
           }
         }
         
@@ -505,6 +548,11 @@ const Home = () => {
         
         // Clear the input
         setNewCode('');
+        
+        // Auto-select only the applicable codes
+        if (isApplicable) {
+          handleCodeSelection(codeData.code, 'accept');
+        }
       } else {
         setError("Received invalid response format from server");
       }
@@ -578,6 +626,9 @@ const Home = () => {
 
             {/* Inspector Results Section */}
             {renderInspectorResults()}
+            
+            {/* Selected Codes Section */}
+            {renderSelectedCodes()}
 
             {/* Result */}
             {result && !showQuestioner && (
@@ -585,7 +636,7 @@ const Home = () => {
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-semibold">Analysis Results</h3>
                   <div className="text-sm text-gray-600">
-                    Selected: {selectedCodes.accepted.length} | Denied: {selectedCodes.denied.length}
+                    Selected: {selectedCodes.accepted.length}
                   </div>
                 </div>
 
@@ -600,26 +651,30 @@ const Home = () => {
                   </div>
                 )}
 
-                {/* Selected Codes Section */}
-                {renderSelectedCodes()}
-
                 {/* Add Code Section */}
-                <div className="mt-6 flex items-center">
-                  <input
-                    type="text"
-                    placeholder="Enter code"
-                    className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-sm md:text-base"
-                    value={newCode}
-                    onChange={(e) => setNewCode(e.target.value)}
-                    disabled={loading}
-                  />
-                  <button
-                    onClick={handleAddCode}
-                    className="ml-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-all duration-300 disabled:bg-gray-400"
-                    disabled={loading || !newCode.trim() || !result?.data?.record_id}
-                  >
-                    {loading ? 'Adding...' : 'Add Code'}
-                  </button>
+                <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <h3 className="text-lg font-semibold mb-3">Add Custom Code</h3>
+                  <div className="flex items-center mb-2">
+                    <input
+                      type="text"
+                      placeholder="Enter CDT code (e.g., D1120)"
+                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-sm md:text-base"
+                      value={newCode}
+                      onChange={(e) => setNewCode(e.target.value)}
+                      disabled={loading}
+                    />
+                    <button
+                      onClick={handleAddCode}
+                      className="ml-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-all duration-300 disabled:bg-gray-400 flex items-center"
+                      disabled={loading || !newCode.trim() || !result?.data?.record_id}
+                    >
+                      {loading ? 'Analyzing...' : 'Analyze Code'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Add a custom CDT code to check if it&apos;s applicable to this scenario.
+                    The AI will analyze and provide a recommendation.
+                  </p>
                 </div>
 
                 {/* Submit Button */}
@@ -637,8 +692,8 @@ const Home = () => {
                     {submitting 
                       ? 'Submitting...' 
                       : areAllCodesSelected() 
-                        ? 'Submit Selected Codes' 
-                        : `Select All Codes (${getRemainingCodeCount()} remaining)`
+                        ? 'Submit Accepted Codes' 
+                        : `Accept All Codes (${getRemainingCodeCount()} remaining)`
                     }
                   </button>
                 </div>
