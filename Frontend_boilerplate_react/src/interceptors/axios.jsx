@@ -19,6 +19,7 @@ const apiInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 600000, // 10 minutes timeout
   withCredentials: true // Include cookies in requests (if needed for authentication)
 });
 

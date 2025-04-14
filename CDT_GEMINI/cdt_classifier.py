@@ -185,6 +185,10 @@ def classify_cdt_categories(scenario, temperature=0.0):
     chain = create_cdt_classifier(temperature)
     result = invoke_chain(chain, {"scenario": processed_scenario})["text"].strip()
     
+    # Debug: Print the raw result to see what's coming from the LLM
+    print("\nDEBUG - Raw LLM Response:")
+    print(trim_print(result, 100))
+    
     # This will hold just the range codes for API usage
     range_codes = []
     explanations = []
@@ -196,7 +200,12 @@ def classify_cdt_categories(scenario, temperature=0.0):
     # Skip the first empty section if it exists
     sections = [s for s in sections if s.strip()]
     
-    for section in sections:
+    print(f"\nDEBUG - Found {len(sections)} code range sections")
+    
+    for i, section in enumerate(sections):
+        print(f"\nDEBUG - Processing section {i+1}:")
+        print(trim_print(section, 100))
+        
         lines = section.strip().split('\n')
         
         # First line should be the code range
@@ -204,6 +213,7 @@ def classify_cdt_categories(scenario, temperature=0.0):
             continue
             
         code_range_line = lines[0].strip()
+        print(f"DEBUG - Code range line: {code_range_line}")
         
         # Extract CDT code range (e.g., "D0100-D0999")
         if " - " in code_range_line:
@@ -217,7 +227,7 @@ def classify_cdt_categories(scenario, temperature=0.0):
                 current_section = None
                 
                 # Process the remaining lines to extract explanation and doubt
-                for line in lines[1:]:
+                for line_idx, line in enumerate(lines[1:]):
                     line = line.strip()
                     
                     if not line:
@@ -225,8 +235,10 @@ def classify_cdt_categories(scenario, temperature=0.0):
                     
                     if line == "EXPLANATION:":
                         current_section = "explanation"
+                        print(f"DEBUG - Found EXPLANATION marker at line {line_idx+2}")
                     elif line == "DOUBT:":
                         current_section = "doubt"
+                        print(f"DEBUG - Found DOUBT marker at line {line_idx+2}")
                     elif current_section == "explanation":
                         if explanation:
                             explanation += "\n" + line
@@ -237,6 +249,34 @@ def classify_cdt_categories(scenario, temperature=0.0):
                             doubt += "\n" + line
                         else:
                             doubt = line
+                
+                # If we didn't find explicit EXPLANATION or DOUBT markers, try to extract content differently
+                # This handles cases where the LLM might format responses differently
+                if not explanation and not doubt and len(lines) > 1:
+                    # Look for content after the code range without explicit markers
+                    remaining_content = "\n".join(lines[1:]).strip()
+                    
+                    # Try to find explanation and doubt sections without markers
+                    exp_start = remaining_content.lower().find("explanation")
+                    doubt_start = remaining_content.lower().find("doubt")
+                    
+                    if exp_start != -1 and doubt_start != -1 and exp_start < doubt_start:
+                        # Extract content between "explanation" and "doubt"
+                        explanation = remaining_content[exp_start+len("explanation"):doubt_start].strip(":\n ")
+                        # Extract content after "doubt"
+                        doubt = remaining_content[doubt_start+len("doubt"):].strip(":\n ")
+                    elif exp_start != -1:
+                        # Only explanation found
+                        explanation = remaining_content[exp_start+len("explanation"):].strip(":\n ")
+                    elif doubt_start != -1:
+                        # Only doubt found
+                        doubt = remaining_content[doubt_start+len("doubt"):].strip(":\n ")
+                    else:
+                        # No markers found, treat all content as explanation
+                        explanation = remaining_content
+                
+                print(f"DEBUG - Final explanation: {trim_print(explanation, 50)}")
+                print(f"DEBUG - Final doubt: {trim_print(doubt, 50)}")
                 
                 # Only add to results if we have a valid code range
                 range_codes.append(range_code)

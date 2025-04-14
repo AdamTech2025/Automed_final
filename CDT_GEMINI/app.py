@@ -95,6 +95,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=86400,  # 24 hours
 )
 
 
@@ -1293,4 +1295,4 @@ if __name__ == "__main__":
         host = os.getenv("HOST", "0.0.0.0")
         
         print(f"Starting server on {host}:{port}")
-        uvicorn.run("app:app", host=host, port=port, reload=True)
+        uvicorn.run("app:app", host=host, port=port, reload=True, timeout_keep_alive=600, timeout_graceful_shutdown=120)
