@@ -17,8 +17,7 @@ except:
     pass
 
 # Get model name from environment variable, default to gpt-4o if not set
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
-
+ 
 def create_other_surgical_procedures_extractor(temperature=0.0):
     """
     Create a LangChain-based other surgical procedures code extractor.

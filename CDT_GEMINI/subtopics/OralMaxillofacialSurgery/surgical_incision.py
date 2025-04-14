@@ -14,8 +14,7 @@ from llm_services import create_chain, invoke_chain, get_llm_service, set_model_
 load_dotenv()
 
 # Get model name from environment variable, default to gpt-4o if not set
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
-
+ 
 def create_surgical_incision_extractor(temperature=0.0):
     """
     Create a LangChain-based surgical incision code extractor.
