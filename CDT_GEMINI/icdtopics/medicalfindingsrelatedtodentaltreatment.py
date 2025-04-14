@@ -13,8 +13,7 @@ from icdtopics.prompt import PROMPT
 load_dotenv()
 
 # Get model name from environment variable, default to gpt-4o if not set
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
-
+ 
 def create_medical_findings_dental_treatment_extractor(temperature=0.0):
     """
     Create a LangChain-based medical findings related to dental treatment code extractor.
