@@ -11,6 +11,12 @@ load_dotenv()
 # set_model_for_file("gemini-1.5-pro")
 
 
+# Helper function to trim long texts for printing
+def trim_print(text, max_length=200):
+    """Trim long text for readable console output"""
+    if text and len(text) > max_length:
+        return text[:max_length] + "..."
+    return text
 
 
 def create_cdt_classifier(temperature=0.0):
