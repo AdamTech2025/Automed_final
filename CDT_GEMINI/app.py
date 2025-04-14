@@ -9,6 +9,7 @@ import traceback
 from pydantic import BaseModel
 from typing import List, Optional
 import re
+import os
 
 # Configure logging
 logging.basicConfig(
@@ -84,7 +85,13 @@ active_analyses = {}
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://dentalcoder.vercel.app"],  # React app URL
+    allow_origins=[
+        "http://localhost:5173",
+        "https://dentalcoder.vercel.app", 
+        "https://automed.adamtechnologies.in", 
+        "http://automed.adamtechnologies.in",
+        os.getenv("FRONTEND_URL", "")  # Get from environment variable
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1274,9 +1281,16 @@ async def add_custom_code(request: CustomCodeRequest):
 
 # CLI command handling
 if __name__ == "__main__":
+    import uvicorn
+    
+    # Check if we're being asked to view a record
     if len(sys.argv) > 1 and sys.argv[1] == "view-record" and len(sys.argv) == 3:
         record_id = sys.argv[2]
         display_database_record(record_id)
     else:
-        import uvicorn
-        uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+        # Get port and host from environment variables with fallbacks
+        port = int(os.getenv("PORT", 8000))
+        host = os.getenv("HOST", "0.0.0.0")
+        
+        print(f"Starting server on {host}:{port}")
+        uvicorn.run("app:app", host=host, port=port, reload=True)

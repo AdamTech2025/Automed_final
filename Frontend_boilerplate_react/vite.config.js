@@ -7,12 +7,12 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8000', // Default local API URL
+        target: 'http://localhost:8000',
         changeOrigin: true,
         secure: false
       }
     },
     // Add allowed hosts for deployment environments
-    allowedHosts: ['automed.adamtechnologies.in', 'localhost']
+    allowedHosts: ['automed.adamtechnologies.in', 'localhost', 'python.adamtechnologies.in']
   }
 })
