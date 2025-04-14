@@ -1,21 +1,19 @@
 import os
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 from subtopics.prompt.prompt import PROMPT
 
 
-# Get model name from environment variable, default to gpt-4o if not set
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
 
-def create_apicoectomy_extractor(temperature=0.0):
+def create_apicoectomy_extractor():
     """
     Create a LangChain-based Apicoectomy/Periradicular Services code extractor.
     """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
-    
-    prompt_template = PromptTemplate(
-        template=f"""
+    prompt_template = f"""
 You are a highly experienced dental coding expert
 
 ### Before Picking a Code, Ask:
@@ -71,7 +69,7 @@ You are a highly experienced dental coding expert
 - Confirm the tooth is a molar and only one root is treated via radiograph.  
 - Assess the root-specific pathology and prior endodontic history.  
 - Check if additional roots are involved (use D3426 if applicable).  
-- Verify retrograde filling isn’t included (code D3430 separately).  
+- Verify retrograde filling isn't included (code D3430 separately).  
 **Notes:**  
 - Limited to one root—multi-root molars may need D3426.  
 - Excludes retrograde filling—code separately.  
@@ -85,7 +83,7 @@ You are a highly experienced dental coding expert
 - Use per additional root in the same surgical session.  
 **What to Check:**  
 - Confirm multiple roots are treated in one procedure via radiograph.  
-- Assess each root’s condition and surgical necessity.  
+- Assess each root's condition and surgical necessity.  
 - Check if used with D3421 or D3425 for the first root.  
 - Verify no retrograde filling is included (use D3430).  
 **Notes:**  
@@ -275,7 +273,7 @@ You are a highly experienced dental coding expert
 - Use per root amputated.  
 **What to Check:**  
 - Confirm the tooth is multi-rooted and crown is retained via radiograph.  
-- Assess the root’s condition (e.g., fracture, resorption).  
+- Assess the root's condition (e.g., fracture, resorption).  
 - Check if crown sectioning occurs (use D3920 instead).  
 - Verify restorability post-amputation.  
 **Notes:**  
@@ -319,8 +317,8 @@ You are a highly experienced dental coding expert
 
 ### Key Takeaways:
 - **Tooth and Root Specificity:** Codes vary by tooth type (anterior, premolar, molar) and root count—accuracy is essential.  
-- **Surgical Scope:** Codes reflect specific procedures (e.g., apicoectomy, resorption repair)—don’t assume volume equals complexity.  
-- **Add-Ons Separate:** Retrograde fillings, grafts, and restorations require additional coding—don’t bundle.  
+- **Surgical Scope:** Codes reflect specific procedures (e.g., apicoectomy, resorption repair)—don't assume volume equals complexity.  
+- **Add-Ons Separate:** Retrograde fillings, grafts, and restorations require additional coding—don't bundle.  
 - **Documentation Heavy:** Insurance often demands narratives, X-rays, and clinical justification for surgical codes.  
 - **Procedure Limits:** Some codes (e.g., D3501-D3503) exclude combination with others—check compatibility.
 
@@ -328,24 +326,43 @@ You are a highly experienced dental coding expert
 
 
 ### **Scenario:**
-"{{question}}"
+"{{scenario}}"
 
 {PROMPT}
-""",
-        input_variables=["question"]
-    )
+"""
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    prompt = PromptTemplate(template=prompt_template, input_variables=["scenario"])
+    return create_chain(prompt)
 
-def extract_apicoectomy_code(scenario, temperature=0.0):
+def extract_apicoectomy_code(scenario):
     """
     Extract Apicoectomy/Periradicular Services code(s) for a given scenario.
     """
-    chain = create_apicoectomy_extractor(temperature)
-    return chain.run(question=scenario).strip()
+    try:
+        extractor = create_apicoectomy_extractor()
+        result = invoke_chain(extractor, {"scenario": scenario})
+        return result.get("text", "").strip()
+    except Exception as e:
+        print(f"Error in apicoectomy code extraction: {str(e)}")
+        return None
 
 def activate_apicoectomy(scenario):
     """
     Activate Apicoectomy/Periradicular Services analysis and return results.
     """
-    return extract_apicoectomy_code(scenario) 
+    try:
+        result = extract_apicoectomy_code(scenario)
+        return result
+    except Exception as e:
+        print(f"Error activating apicoectomy analysis: {str(e)}")
+        return None
+
+# Example usage
+if __name__ == "__main__":
+    # Print the current Gemini model and temperature being used
+    llm_service = get_llm_service()
+    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
+    
+    scenario = "A patient has persistent pain in tooth #8 (maxillary right central incisor) despite having a root canal two years ago. Radiographs show a periapical lesion. The dentist performs an apicoectomy, removing the root tip and surgically sealing the canal. No retrograde filling material is placed."
+    result = activate_apicoectomy(scenario)
+    print(result) 

@@ -3,27 +3,20 @@ Module for extracting fixed partial denture retainer, abutment supported codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
+import sys
 from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 from subtopics.prompt.prompt import PROMPT
 
 
-# Load environment variables
-try:
-    load_dotenv()
-except:
-    pass
-
-# Get model name from environment variable, default to gpt-4o if not set
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
 
 def create_fpd_abutment_extractor():
     """
     Creates a LangChain-based extractor for fixed partial denture retainer, abutment supported codes.
     """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=0.0)    
     template = f"""
     You are a dental coding expert specializing in implant services.
     
@@ -111,7 +104,7 @@ def create_fpd_abutment_extractor():
     """
     
     prompt = PromptTemplate(template=template, input_variables=["scenario"])
-    return LLMChain(llm=llm, prompt=prompt)
+    return create_chain(prompt)
 
 def extract_fpd_abutment_code(scenario):
     """
@@ -119,8 +112,8 @@ def extract_fpd_abutment_code(scenario):
     """
     try:
         extractor = create_fpd_abutment_extractor()
-        result = extractor.invoke({"scenario": scenario}).get("text", "").strip()
-        return result
+        result = invoke_chain(extractor, {"scenario": scenario})
+        return result.get("text", "").strip()
     except Exception as e:
         print(f"Error in FPD abutment code extraction: {str(e)}")
         return None
@@ -145,4 +138,14 @@ def activate_fpd_abutment(scenario):
         return result
     except Exception as e:
         print(f"Error in activate_fpd_abutment: {str(e)}")
-        return "" 
+        return ""
+
+# Example usage
+if __name__ == "__main__":
+    # Print the current Gemini model and temperature being used
+    llm_service = get_llm_service()
+    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
+    
+    scenario = "A 3-unit fixed partial denture is being fabricated to replace tooth #4. The retainer on tooth #5 will be a porcelain-fused-to-high noble metal crown on a natural tooth, while the retainer on #3 will be a porcelain-fused-to-high noble metal crown supported by an implant abutment."
+    result = activate_fpd_abutment(scenario)
+    print(result) 

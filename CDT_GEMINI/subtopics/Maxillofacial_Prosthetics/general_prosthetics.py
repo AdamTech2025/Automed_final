@@ -3,32 +3,20 @@ Module for extracting general maxillofacial prosthetics codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
+import sys
 from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 from subtopics.prompt.prompt import PROMPT
 
 
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
-
-def activate_general_prosthetics(scenario):
+def create_general_prosthetics_extractor():
     """
-    Analyze a dental scenario to determine general maxillofacial prosthetics code.
-    
-    Args:
-        scenario (str): The dental scenario to analyze.
-        
-    Returns:
-        str: The identified general maxillofacial prosthetics code or empty string if none found.
+    Creates a LangChain-based extractor for general maxillofacial prosthetics codes.
     """
-    try:
-        llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=0.0)        
-        template = f"""
+    template = f"""
 You are a dental coding expert 
 
 GBefore picking a code, ask:
@@ -176,7 +164,7 @@ What to check: Check for erupted deciduous teeth for retention.
 Notes: Helps speech until further growth.
 Code: D5988
 When to use: For stabilization and occlusal support post-jaw fracture or trauma.
-What to check: Confirm it’s being used for healing and stabilization.
+What to check: Confirm it's being used for healing and stabilization.
 Notes: May include arch bars or existing dentures.
 Code: D5982
 When to use: To apply pressure and aid soft tissue healing.
@@ -199,11 +187,34 @@ Scenario:
 
 {PROMPT}
 """
+    
+    prompt = PromptTemplate(template=template, input_variables=["scenario"])
+    return create_chain(prompt)
+
+def extract_general_prosthetics_code(scenario):
+    """
+    Extracts general maxillofacial prosthetics code(s) for a given scenario.
+    """
+    try:
+        extractor = create_general_prosthetics_extractor()
+        result = invoke_chain(extractor, {"scenario": scenario})
+        return result.get("text", "").strip()
+    except Exception as e:
+        print(f"Error in general prosthetics code extraction: {str(e)}")
+        return None
+
+def activate_general_prosthetics(scenario):
+    """
+    Analyze a dental scenario to determine general maxillofacial prosthetics code.
+    
+    Args:
+        scenario (str): The dental scenario to analyze.
         
-        prompt = PromptTemplate(template=template, input_variables=["scenario"])
-        chain = LLMChain(llm=llm, prompt=prompt)
-        
-        result = chain.run(scenario=scenario).strip()
+    Returns:
+        str: The identified general maxillofacial prosthetics code or empty string if none found.
+    """
+    try:
+        result = extract_general_prosthetics_code(scenario)
         
         # Return empty string if no code found
         if result == "None" or not result or "not applicable" in result.lower():
@@ -212,4 +223,14 @@ Scenario:
         return result
     except Exception as e:
         print(f"Error in activate_general_prosthetics: {str(e)}")
-        return "" 
+        return ""
+
+# Example usage
+if __name__ == "__main__":
+    # Print the current Gemini model and temperature being used
+    llm_service = get_llm_service()
+    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
+    
+    scenario = "A 57-year-old male patient who had a partial maxillectomy due to oral cancer 3 months ago requires a definitive obturator prosthesis. The surgical site has completely healed, and the patient has been using an interim obturator which is no longer fitting properly."
+    result = activate_general_prosthetics(scenario)
+    print(result) 

@@ -1,28 +1,26 @@
 import os
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 from subtopics.prompt.prompt import PROMPT
 
 
-# Get model name from environment variable, default to gpt-4o if not set
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
 
-def create_endodontic_therapy_extractor(temperature=0.0):
+def create_endodontic_therapy_extractor():
     """
     Create a LangChain-based Endodontic Therapy code extractor.
     """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
-    
-    prompt_template = PromptTemplate(
-        template=f"""
+    prompt_template = f"""
 You are a highly experienced dental coding expert
 
 Before Picking a Code, Ask:
 - What was the primary reason the patient came in? Was it for a routine visit, or did the patient present with pain, swelling, or a specific endodontic issue?
 - Which tooth is being treated? Is it an anterior, premolar, or molar tooth?
 - Is the procedure a complete root canal, an obstruction treatment, an incomplete therapy, or a repair of a perforation?
-- Has the tooth’s condition been assessed with radiographs or clinical exams (e.g., pulp vitality, fractures, obstructions)?
+- Has the tooth's condition been assessed with radiographs or clinical exams (e.g., pulp vitality, fractures, obstructions)?
 - Is the treatment surgical or non-surgical, and was any perforation caused by the same provider?
 
 ---
@@ -101,7 +99,7 @@ Before Picking a Code, Ask:
 - The patient undergoes partial root canal therapy, but the procedure is aborted due to inoperability, unrestorability, or a fracture discovered during treatment.  
 - Use when significant time is spent before determining the tooth cannot be saved.  
 **What to Check:**  
-- Confirm the tooth’s condition (e.g., fracture, extensive decay) via exam or radiograph.  
+- Confirm the tooth's condition (e.g., fracture, extensive decay) via exam or radiograph.  
 - Assess time spent on diagnosis and initial treatment before stopping.  
 - Check if the tooth was deemed unrestorable or inoperable mid-procedure.  
 - Verify patient symptoms and consent for alternative treatment (e.g., extraction).  
@@ -117,10 +115,10 @@ Before Picking a Code, Ask:
 - The patient has a perforation in the root (due to resorption or decay) requiring non-surgical repair during endodontic treatment.  
 - Use when sealing the defect internally with biocompatible material (e.g., MTA).  
 **What to Check:**  
-- Confirm the perforation’s cause (resorption/decay, not provider error) via radiograph or exam.  
-- Assess the perforation’s location and size to ensure non-surgical repair is feasible.  
-- Check if the same provider caused the perforation (if so, this code doesn’t apply).  
-- Verify the tooth’s prognosis post-repair.  
+- Confirm the perforation's cause (resorption/decay, not provider error) via radiograph or exam.  
+- Assess the perforation's location and size to ensure non-surgical repair is feasible.  
+- Check if the same provider caused the perforation (if so, this code doesn't apply).  
+- Verify the tooth's prognosis post-repair.  
 **Notes:**  
 - Not for iatrogenic perforations by the same provider—those are typically not billable.  
 - Often used with D3310-D3330 if part of a broader root canal procedure.  
@@ -130,30 +128,49 @@ Before Picking a Code, Ask:
 
 ### Key Takeaways:
 - **Tooth Type Matters:** D3310 (anterior), D3320 (premolar), and D3330 (molar) depend on tooth location—accuracy is critical.  
-- **Scope vs. Volume:** Codes reflect the procedure’s focus (e.g., full therapy, obstruction, perforation), not just time spent.  
+- **Scope vs. Volume:** Codes reflect the procedure's focus (e.g., full therapy, obstruction, perforation), not just time spent.  
 - **Restoration Exclusion:** All therapy codes exclude final restorations—code separately for crowns or fillings.  
 - **Documentation:** Complex cases (e.g., D3331, D3332, D3333) need narratives and evidence for insurance approval.  
 - **Non-Surgical Focus:** These codes emphasize non-surgical approaches; surgical options (e.g., apicoectomy) use different codes.
 
 ### **Scenario:**
-"{{question}}"
+"{{scenario}}"
 
 {PROMPT}
-""",
-        input_variables=["question"]
-    )
+"""
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    prompt = PromptTemplate(template=prompt_template, input_variables=["scenario"])
+    return create_chain(prompt)
 
-def extract_endodontic_therapy_code(scenario, temperature=0.0):
+def extract_endodontic_therapy_code(scenario):
     """
     Extract Endodontic Therapy code(s) for a given scenario.
     """
-    chain = create_endodontic_therapy_extractor(temperature)
-    return chain.run(question=scenario).strip()
+    try:
+        extractor = create_endodontic_therapy_extractor()
+        result = invoke_chain(extractor, {"scenario": scenario})
+        return result.get("text", "").strip()
+    except Exception as e:
+        print(f"Error in endodontic therapy code extraction: {str(e)}")
+        return None
 
 def activate_endodontic_therapy(scenario):
     """
     Activate Endodontic Therapy analysis and return results.
     """
-    return extract_endodontic_therapy_code(scenario) 
+    try:
+        result = extract_endodontic_therapy_code(scenario)
+        return result
+    except Exception as e:
+        print(f"Error activating endodontic therapy analysis: {str(e)}")
+        return None
+
+# Example usage
+if __name__ == "__main__":
+    # Print the current Gemini model and temperature being used
+    llm_service = get_llm_service()
+    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
+    
+    scenario = "A patient presents with severe pain in tooth #8 (upper right central incisor). After examination and radiographs, the dentist diagnoses irreversible pulpitis and performs a complete root canal therapy on the tooth."
+    result = activate_endodontic_therapy(scenario)
+    print(result) 
