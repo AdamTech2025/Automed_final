@@ -8,7 +8,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 from subtopics.prompt.prompt import PROMPT
-
+from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
 # Load environment variables
 load_dotenv()
@@ -85,7 +85,7 @@ Scenario:
         prompt = PromptTemplate(template=template, input_variables=["scenario"])
         chain = LLMChain(llm=llm, prompt=prompt)
         
-        result = chain.run(scenario=scenario).strip()
+        result = invoke_chain(chain, {"scenario": scenario}).strip()
         
         # Return empty string if no code found
         if result == "None" or not result or "not applicable" in result.lower():

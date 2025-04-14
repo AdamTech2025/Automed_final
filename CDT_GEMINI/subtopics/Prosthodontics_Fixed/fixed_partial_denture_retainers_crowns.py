@@ -278,7 +278,7 @@ def extract_fixed_partial_denture_retainers_crowns_code(scenario, temperature=0.
     """
     try:
         chain = create_fixed_partial_denture_retainers_crowns_extractor(temperature)
-        result = chain.run(question=scenario)
+        result = invoke_chain(chain, {"question": scenario})
         print(f"Fixed partial denture retainers - crowns code result: {result}")
         return result.strip()
     except Exception as e:

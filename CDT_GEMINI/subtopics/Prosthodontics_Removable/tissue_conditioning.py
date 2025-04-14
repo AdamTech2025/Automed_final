@@ -8,7 +8,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 from subtopics.prompt.prompt import PROMPT
-
+from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
 # Load environment variables
 load_dotenv()
@@ -102,7 +102,7 @@ def extract_tissue_conditioning_code(scenario, temperature=0.0):
     """
     try:
         chain = create_tissue_conditioning_extractor(temperature)
-        result = chain.run(question=scenario)
+        result = invoke_chain(chain, {"question": scenario})
         print(f"Tissue conditioning code result: {result}")
         return result.strip()
     except Exception as e:

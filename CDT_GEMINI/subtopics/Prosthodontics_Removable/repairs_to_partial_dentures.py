@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-
+from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 # Add the project root to the path so we can import modules
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
@@ -137,7 +137,7 @@ def extract_repairs_to_partial_dentures_code(scenario, temperature=0.0):
     """
     try:
         chain = create_repairs_to_partial_dentures_extractor(temperature)
-        result = chain.run(question=scenario)
+        result = invoke_chain(chain, {"question": scenario})
         print(f"Repairs to partial dentures code result: {result}")
         return result.strip()
     except Exception as e:

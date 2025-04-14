@@ -8,6 +8,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 from subtopics.prompt.prompt import PROMPT
+from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
 
 # Load environment variables
@@ -74,7 +75,7 @@ def extract_unspecified_removable_prosthodontic_procedure_code(scenario, tempera
     """
     try:
         chain = create_unspecified_removable_prosthodontic_procedure_extractor(temperature)
-        result = chain.run(question=scenario)
+        result = invoke_chain(chain, {"question": scenario})
         print(f"Unspecified removable prosthodontic procedure code result: {result}")
         return result.strip()
     except Exception as e:
