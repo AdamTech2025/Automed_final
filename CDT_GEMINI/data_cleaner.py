@@ -1,9 +1,7 @@
 import os
-from dotenv import load_dotenv
 from langchain.prompts import PromptTemplate
 from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
-load_dotenv()
 
 # You can set a specific model for this file only
 # Uncomment and modify the line below to use a specific model
