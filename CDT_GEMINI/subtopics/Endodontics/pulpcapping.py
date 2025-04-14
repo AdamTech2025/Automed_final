@@ -1,21 +1,19 @@
 import os
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 from subtopics.prompt.prompt import PROMPT
 
 
-# Get model name from environment variable, default to gpt-4o if not set
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
 
-def create_pulp_capping_extractor(temperature=0.0):
+def create_pulp_capping_extractor():
     """
     Create a LangChain-based Pulp Capping code extractor.
     """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
-    
-    prompt_template = PromptTemplate(
-        template=f"""
+    prompt_template = f"""
 You are a highly experienced dental coding expert 
 
  Before picking a code, ask:
@@ -48,24 +46,43 @@ You are a highly experienced dental coding expert
 - **Documentation:** Clearly document pulp exposure status and materials used to support appropriate billing and case tracking.
 
 ### **Scenario:**
-"{{question}}"
+"{{scenario}}"
 
 {PROMPT}
-""",
-        input_variables=["question"]
-    )
+"""
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    prompt = PromptTemplate(template=prompt_template, input_variables=["scenario"])
+    return create_chain(prompt)
 
-def extract_pulp_capping_code(scenario, temperature=0.0):
+def extract_pulp_capping_code(scenario):
     """
     Extract Pulp Capping code(s) for a given scenario.
     """
-    chain = create_pulp_capping_extractor(temperature)
-    return chain.run(question=scenario).strip()
+    try:
+        extractor = create_pulp_capping_extractor()
+        result = invoke_chain(extractor, {"scenario": scenario})
+        return result.get("text", "").strip()
+    except Exception as e:
+        print(f"Error in pulp capping code extraction: {str(e)}")
+        return None
 
 def activate_pulp_capping(scenario):
     """
     Activate Pulp Capping analysis and return results.
     """
-    return extract_pulp_capping_code(scenario) 
+    try:
+        result = extract_pulp_capping_code(scenario)
+        return result
+    except Exception as e:
+        print(f"Error activating pulp capping analysis: {str(e)}")
+        return None
+
+# Example usage
+if __name__ == "__main__":
+    # Print the current Gemini model and temperature being used
+    llm_service = get_llm_service()
+    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
+    
+    scenario = "During a restoration of a deep cavity on tooth #30, the dentist accidentally exposes the pulp. The dentist immediately applies calcium hydroxide directly to the exposed pulp to promote healing before placing the final restoration."
+    result = activate_pulp_capping(scenario)
+    print(result) 

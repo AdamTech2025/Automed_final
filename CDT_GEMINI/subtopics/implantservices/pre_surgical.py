@@ -3,27 +3,20 @@ Module for extracting pre-surgical implant services codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
+import sys
 from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 from subtopics.prompt.prompt import PROMPT
 
 
-# Load environment variables
-try:
-    load_dotenv()
-except:
-    pass
-
-# Get model name from environment variable, default to gpt-4o if not set
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
 
 def create_pre_surgical_extractor():
     """
     Creates a LangChain-based extractor for pre-surgical implant services codes.
     """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=0.0)    
     template = f"""
     You are a dental coding expert specializing in implant services.
     
@@ -65,7 +58,7 @@ def create_pre_surgical_extractor():
     """
     
     prompt = PromptTemplate(template=template, input_variables=["scenario"])
-    return LLMChain(llm=llm, prompt=prompt)
+    return create_chain(prompt)
 
 def extract_pre_surgical_code(scenario):
     """
@@ -73,8 +66,8 @@ def extract_pre_surgical_code(scenario):
     """
     try:
         extractor = create_pre_surgical_extractor()
-        result = extractor.invoke({"scenario": scenario}).get("text", "").strip()
-        return result
+        result = invoke_chain(extractor, {"scenario": scenario})
+        return result.get("text", "").strip()
     except Exception as e:
         print(f"Error in pre-surgical code extraction: {str(e)}")
         return None
@@ -99,4 +92,14 @@ def activate_pre_surgical(scenario):
         return result
     except Exception as e:
         print(f"Error in activate_pre_surgical: {str(e)}")
-        return "" 
+        return ""
+
+# Example usage
+if __name__ == "__main__":
+    # Print the current Gemini model and temperature being used
+    llm_service = get_llm_service()
+    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
+    
+    scenario = "A patient needs three implants in the posterior mandible. Due to proximity to the inferior alveolar nerve, the dentist creates a specialized surgical guide based on CBCT data to ensure precise implant placement and avoid nerve damage."
+    result = activate_pre_surgical(scenario)
+    print(result) 

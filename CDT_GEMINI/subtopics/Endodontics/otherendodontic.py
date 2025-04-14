@@ -1,21 +1,19 @@
 import os
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 from subtopics.prompt.prompt import PROMPT
 
 
-# Get model name from environment variable, default to gpt-4o if not set
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
 
-def create_other_endodontic_extractor(temperature=0.0):
+def create_other_endodontic_extractor():
     """
     Create a LangChain-based Other Endodontic Procedures code extractor.
     """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
-    
-    prompt_template = PromptTemplate(
-        template=f"""
+    prompt_template = f"""
 You are a highly experienced dental coding expert
 
  Before Picking a Code, Ask:
@@ -38,7 +36,7 @@ You are a highly experienced dental coding expert
 - Confirm the tooth requires surgical isolation (e.g., deep caries, fractured below gumline) via exam or radiograph.  
 - Assess the complexity of achieving a dry field surgically.  
 - Check if part of another endodontic procedure (e.g., root canal) or standalone.  
-- Verify patient’s periodontal status and surgical feasibility.  
+- Verify patient's periodontal status and surgical feasibility.  
 **Notes:**  
 - Not for routine rubber dam use—specific to surgical isolation.  
 - Narrative may be required to justify surgical need for insurance.  
@@ -84,7 +82,7 @@ You are a highly experienced dental coding expert
 - Use for intentional coronal reduction and root submergence.  
 **What to Check:**  
 - Confirm the tooth is erupted and suitable for decoronation via radiograph.  
-- Assess the root’s condition and bone preservation goals (e.g., ridge maintenance).  
+- Assess the root's condition and bone preservation goals (e.g., ridge maintenance).  
 - Check patient age and treatment plan (e.g., future implant).  
 - Verify no infection contraindicates submergence.  
 **Notes:**  
@@ -112,11 +110,11 @@ You are a highly experienced dental coding expert
 **Heading:** Unspecified endodontic procedure, by report  
 **Description:** Used for a procedure that is not adequately described by a code. Describe the procedure.  
 **When to Use:**  
-- The patient undergoes an endodontic procedure that doesn’t fit standard codes (e.g., experimental technique, unique complication).  
+- The patient undergoes an endodontic procedure that doesn't fit standard codes (e.g., experimental technique, unique complication).  
 - Use as a catch-all with a detailed report.  
 **What to Check:**  
 - Confirm no specific code applies (e.g., D3410, D3331) via procedure review.  
-- Assess the procedure’s purpose, complexity, and outcome.  
+- Assess the procedure's purpose, complexity, and outcome.  
 - Check if diagnostic evidence (e.g., X-rays) supports the need.  
 - Verify patient consent for non-standard treatment.  
 **Notes:**  
@@ -128,32 +126,51 @@ You are a highly experienced dental coding expert
 
 ### Key Takeaways:
 - **Procedure Specificity:** Codes range from surgical isolation to unspecified services—match the intent precisely.  
-- **Scope Limits:** Codes reflect focused actions (e.g., hemisection excludes root canal)—don’t overcode volume.  
-- **Restoration Exclusion:** Many procedures (e.g., D3911, D3950) don’t include final restorations—code separately.  
+- **Scope Limits:** Codes reflect focused actions (e.g., hemisection excludes root canal)—don't overcode volume.  
+- **Restoration Exclusion:** Many procedures (e.g., D3911, D3950) don't include final restorations—code separately.  
 - **Documentation Heavy:** Unique procedures (e.g., D3999, D3921) need narratives and evidence for insurance.  
 - **Combination Rules:** Check restrictions (e.g., D3950 with D2952) to avoid billing conflicts.
 
 
 
 ### **Scenario:**
-"{{question}}"
+"{{scenario}}"
 
 {PROMPT}
-""",
-        input_variables=["question"]
-    )
+"""
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    prompt = PromptTemplate(template=prompt_template, input_variables=["scenario"])
+    return create_chain(prompt)
 
-def extract_other_endodontic_code(scenario, temperature=0.0):
+def extract_other_endodontic_code(scenario):
     """
     Extract Other Endodontic Procedures code(s) for a given scenario.
     """
-    chain = create_other_endodontic_extractor(temperature)
-    return chain.run(question=scenario).strip()
+    try:
+        extractor = create_other_endodontic_extractor()
+        result = invoke_chain(extractor, {"scenario": scenario})
+        return result.get("text", "").strip()
+    except Exception as e:
+        print(f"Error in other endodontic code extraction: {str(e)}")
+        return None
 
 def activate_other_endodontic(scenario):
     """
     Activate Other Endodontic Procedures analysis and return results.
     """
-    return extract_other_endodontic_code(scenario) 
+    try:
+        result = extract_other_endodontic_code(scenario)
+        return result
+    except Exception as e:
+        print(f"Error activating other endodontic analysis: {str(e)}")
+        return None
+
+# Example usage
+if __name__ == "__main__":
+    # Print the current Gemini model and temperature being used
+    llm_service = get_llm_service()
+    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
+    
+    scenario = "After completing a root canal on tooth #30, the dentist places a glass ionomer barrier over the canal orifices to prevent microleakage before scheduling the patient for a crown in two weeks."
+    result = activate_other_endodontic(scenario)
+    print(result) 

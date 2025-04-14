@@ -1,33 +1,26 @@
 """
-Module for extracting fixed partial denture retainer, implant supported codes.
+Module for extracting Fixed Partial Denture (FPD) supported by implant retainer codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
+import sys
 from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 from subtopics.prompt.prompt import PROMPT
 
 
-# Load environment variables
-try:
-    load_dotenv()
-except:
-    pass
-
-# Get model name from environment variable, default to gpt-4o if not set
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
 
 def create_fpd_implant_extractor():
     """
-    Creates a LangChain-based extractor for fixed partial denture retainer, implant supported codes.
+    Creates a LangChain-based extractor for Fixed Partial Denture (FPD) supported by implant retainer codes.
     """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=0.0)    
     template = f"""
     You are a dental coding expert specializing in implant services.
     
-  ## **Fixed Partial Denture (FPD) Retainer, Implant Supported** 
+    ## **Fixed Partial Denture (FPD) Supported by Implant Retainers** 
  
 ### **Before picking a code, ask:** 
 - What material is the FPD retainer made of? (porcelain/ceramic, metal, porcelain-fused-to-metal, etc.)
@@ -111,29 +104,30 @@ def create_fpd_implant_extractor():
     """
     
     prompt = PromptTemplate(template=template, input_variables=["scenario"])
-    return LLMChain(llm=llm, prompt=prompt)
+    return create_chain(prompt)
 
 def extract_fpd_implant_code(scenario):
     """
-    Extracts fixed partial denture retainer, implant supported code(s) for a given scenario.
+    Extracts Fixed Partial Denture (FPD) supported by implant retainer code(s) for a given scenario.
     """
     try:
         extractor = create_fpd_implant_extractor()
-        result = extractor.invoke({"scenario": scenario}).get("text", "").strip()
-        return result
+        result = invoke_chain(extractor, {"scenario": scenario})
+        return result.get("text", "").strip()
     except Exception as e:
         print(f"Error in FPD implant code extraction: {str(e)}")
         return None
 
 def activate_fpd_implant(scenario):
     """
-    Analyze a dental scenario to determine fixed partial denture retainer, implant supported code.
+    Analyze a dental scenario to determine the appropriate Fixed Partial Denture (FPD) 
+    supported by implant retainer code.
     
     Args:
         scenario (str): The dental scenario to analyze.
         
     Returns:
-        str: The identified fixed partial denture retainer, implant supported code or empty string if none found.
+        str: The identified FPD implant code or empty string if none found.
     """
     try:
         result = extract_fpd_implant_code(scenario)
@@ -145,4 +139,14 @@ def activate_fpd_implant(scenario):
         return result
     except Exception as e:
         print(f"Error in activate_fpd_implant: {str(e)}")
-        return "" 
+        return ""
+
+# Example usage
+if __name__ == "__main__":
+    # Print the current Gemini model and temperature being used
+    llm_service = get_llm_service()
+    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
+    
+    scenario = "A patient needs a 3-unit fixed partial denture to replace tooth #5. The restoration will have retainers on dental implants at positions #4 and #6. The dentist plans to use porcelain fused to high noble metal for the entire restoration."
+    result = activate_fpd_implant(scenario)
+    print(result) 
