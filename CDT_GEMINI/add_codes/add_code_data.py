@@ -1,14 +1,19 @@
 from langchain.prompts import PromptTemplate
-from llm_services import create_chain, invoke_chain, get_llm_service
+from llm_services import generate_response, get_service, set_model, set_temperature
 from database import MedicalCodingDB
+from typing import Dict, Any, Optional
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def Add_code_data(scenario: str, cdt_codes: str) -> str:
     """
     Analyze a dental scenario and determine relevance of provided CDT codes.
     """
-    prompt_template = PromptTemplate(
-        input_variables=["scenario", "cdt_codes"],
-        template="""
+    # Prepare the prompt template
+    template = """
 You are a dental coding assistant trained in analyzing clinical scenarios and determining the relevance of CDT (Current Dental Terminology) codes.
 
 Your task is to:
@@ -37,34 +42,29 @@ Do NOT go beyond what is clinically supported.
 
 Always stay concise, clear, and clinically grounded.
 """
-    )
 
     try:
-        llm = get_llm_service()
-        chain = create_chain(prompt_template)
-        response = invoke_chain(chain, {"scenario": scenario, "cdt_codes": cdt_codes})
+        # Format the prompt with the input values
+        formatted_prompt = template.format(scenario=scenario, cdt_codes=cdt_codes)
         
-        # Convert response to string if it's not already
-        if isinstance(response, dict):
-            if "text" in response:
-                response_text = response["text"]
-            elif "content" in response:
-                response_text = response["content"]
-            else:
-                response_text = str(response)
-        else:
-            response_text = str(response)
+        # Generate response using the LLM service
+        response_text = generate_response(formatted_prompt)
         
         # Store the analysis in the database
         db = MedicalCodingDB()
         record_id = db.add_code_analysis(scenario, cdt_codes, response_text)
-        print(f"✅ Analysis stored with ID: {record_id}")
+        logger.info(f"✅ Analysis stored with ID: {record_id}")
         
         return response_text
 
     except Exception as e:
         error_msg = f"Error during analysis: {str(e)}"
-        print(f"❌ {error_msg}")
+        logger.error(f"❌ {error_msg}")
         return error_msg
 
-# Test block
+# Test block for direct execution
+if __name__ == "__main__":
+    test_scenario = "Patient came in with pain in tooth #19. Clinical examination revealed deep caries reaching the pulp chamber. Decision was made to perform a root canal treatment followed by core buildup and crown placement."
+    test_code = "D3330 - Endodontic therapy, molar (excluding final restoration)"
+    result = Add_code_data(test_scenario, test_code)
+    print(result)
