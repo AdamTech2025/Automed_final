@@ -3,26 +3,30 @@ Module for extracting surgical periodontal services codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_surgical_services_extractor(temperature=0.0):
-    """
-    Create a LangChain-based surgical periodontal services code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class SurgicalServicesPeriodontics:
+    """Class to analyze and extract surgical periodontal services codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template=f"""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing surgical periodontal services."""
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert
 
 Before Picking a Code, Ask:
@@ -127,7 +131,7 @@ Before Picking a Code, Ask:
 - Check if osseous surgery is avoided (otherwise, see D4260).  
 - Verify quadrant-specific treatment.  
 **Notes:**  
-- Includes root planing—don’t code D4341 separately.  
+- Includes root planing—don't code D4341 separately.  
 - Use D4241 for fewer teeth.  
 - Narrative may detail flap type or diagnostic intent.  
 
@@ -143,7 +147,7 @@ Before Picking a Code, Ask:
 - Check no bone recontouring is done (see D4261 if so).  
 - Verify quadrant-specific application.  
 **Notes:**  
-- Includes root planing—don’t code D4342 separately.  
+- Includes root planing—don't code D4342 separately.  
 - Use D4240 for ≥4 teeth.  
 - Documentation of pocket depth required.  
 
@@ -177,7 +181,7 @@ Before Picking a Code, Ask:
 **Notes:**  
 - Not for diseased periodontium (see D4260).  
 - Narrative links to restorative goal for insurance.  
-- Per-tooth code—don’t use quadrant codes.  
+- Per-tooth code—don't use quadrant codes.  
 
 #### Code: D4260
 **Heading:** Osseous surgery (including elevation of a full thickness flap and closure) — four or more contiguous teeth or tooth bounded spaces per quadrant  
@@ -235,7 +239,7 @@ Before Picking a Code, Ask:
 - Use per extra site on retained teeth.  
 **What to Check:**  
 - Confirm D4263 is used and additional sites exist via radiograph.  
-- Assess each site’s defect and graft need.  
+- Assess each site's defect and graft need.  
 - Check not for edentulous spaces.  
 - Verify quadrant-specific application.  
 **Notes:**  
@@ -366,7 +370,7 @@ Before Picking a Code, Ask:
 - Check if edentulous (use D4278 if so).  
 - Verify surgical site condition.  
 **Notes:**  
-- Includes donor site—don’t code separately.  
+- Includes donor site—don't code separately.  
 - Use D4278 for edentulous areas.  
 - Narrative/X-rays support claim.  
 
@@ -526,7 +530,7 @@ Before Picking a Code, Ask:
 - Check esthetic/functional goals.  
 - Verify site-specific application.  
 **Notes:**  
-- Combines D4270/D4273 elements—don’t code separately.  
+- Combines D4270/D4273 elements—don't code separately.  
 - Narrative/X-rays justify complexity.  
 - Often for severe recession.  
 
@@ -660,42 +664,50 @@ Before Picking a Code, Ask:
 ### Key Takeaways:
 - **Tooth Count Matters:** Codes split by 1-3 vs. ≥4 teeth per quadrant—count accurately.  
 - **Surgical vs. Non-Surgical:** Distinguish procedures (e.g., D4341 vs. D4240) by scope, not effort.  
-- **Adjunctive Coding:** Grafts, barriers, and maintenance often pair with primary codes—don’t bundle.  
+- **Adjunctive Coding:** Grafts, barriers, and maintenance often pair with primary codes—don't bundle.  
 - **Healthy vs. Diseased:** Some codes (e.g., D4249) require healthy periodontium—verify status.  
 - **Documentation Critical:** Insurance demands perio charting, X-rays, and narratives for surgical/post-op codes.
 
-
-
-
-Scenario:
-"{{question}}"
+SCENARIO: {{scenario}}
 
 {PROMPT}
 """,
-        input_variables=["question"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    def extract_surgical_services_code(self, scenario: str) -> str:
+        """Extract surgical periodontal services code for a given scenario."""
+        try:
+            print(f"Analyzing surgical periodontal scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Surgical periodontal extract_surgical_services_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in surgical periodontal code extraction: {str(e)}")
+            return ""
+    
+    def activate_surgical_services(self, scenario: str) -> str:
+        """Activate the surgical periodontal services analysis process and return results."""
+        try:
+            result = self.extract_surgical_services_code(scenario)
+            if not result:
+                print("No surgical periodontal code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating surgical periodontal analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_surgical_services(scenario)
+        print(f"\n=== SURGICAL PERIODONTAL ANALYSIS RESULT ===")
+        print(f"SURGICAL PERIODONTAL CODE: {result if result else 'None'}")
 
-def extract_surgical_services_code(scenario, temperature=0.0):
-    """
-    Extract surgical periodontal services code(s) for a given scenario.
-    """
-    try:
-        chain = create_surgical_services_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Surgical periodontal services code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_surgical_services_code: {str(e)}")
-        return ""
-
-def activate_surgical_services(scenario):
-    """
-    Activate surgical periodontal services analysis and return results.
-    """
-    try:
-        return extract_surgical_services_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_surgical_services: {str(e)}")
-        return "" 
+surgical_services = SurgicalServicesPeriodontics()
+# Example usage
+if __name__ == "__main__":
+    scenario = input("Enter a surgical periodontal scenario: ")
+    surgical_services.run_analysis(scenario) 

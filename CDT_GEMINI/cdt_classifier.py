@@ -1,8 +1,11 @@
 import os
+import logging
 from dotenv import load_dotenv
 from langchain.prompts import PromptTemplate
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
-
+from llm_services import generate_response, get_service, set_model, set_temperature
+from typing import Dict, Any, Optional, List
+from llm_services import OPENROUTER_MODEL, DEFAULT_TEMP
+import re
 
 load_dotenv()
 
@@ -10,19 +13,12 @@ load_dotenv()
 # Uncomment and modify the line below to use a specific model
 # set_model_for_file("gemini-1.5-pro")
 
-
-# Helper function to trim long texts for printing
-def trim_print(text, max_length=200):
-    """Trim long text for readable console output"""
-    if text and len(text) > max_length:
-        return text[:max_length] + "..."
-    return text
-
-
-def create_cdt_classifier(temperature=0.0):
-    # Create the prompt template
-    prompt_template = PromptTemplate(
-        template="""
+class CDTClassifier:
+    """Class to handle CDT code classification for dental scenarios"""
+    
+    # DEFAULT_TEMP = 0.0
+    
+    PROMPT_TEMPLATE = """
 I. D0100-D0999 - Diagnostic Services This range includes all diagnostic procedures necessary to evaluate a patient's oral health status. It covers:
 Comprehensive and periodic oral evaluations (routine check-ups, new patient exams).
 Problem-focused and limited evaluations for emergencies or specific concerns.
@@ -160,6 +156,12 @@ Important Guidelines:
 
 5) For restorative procedures, pay careful attention to mention of posts, cores, buildups or similar structures used before crown placement, as these are separate billable services from the crown itself.
 
+6) CRITICAL: Always consider endodontic codes (D3000-D3999) when the scenario mentions any form of "root canal therapy", "pulpectomy", "pulpotomy", "retreatment", or any treatment related to the dental pulp or periapical tissues.
+
+7) If there is any mention of a drainage of abscess, incision, or drainage of a fistula, consider oral surgery codes (D7000-D7999).
+
+8) Remember that radiographic images (x-rays) always fall under diagnostic services (D0100-D0999), regardless of why they were taken.
+
 
 STRICT OUTPUT FORMAT - FOLLOW EXACTLY:
 
@@ -176,152 +178,210 @@ DOUBT:
 CODE_RANGE: D0100-D0999 - Diagnostic Services
 
 Repeat this exact format for each relevant code range. Do not add additional text, comments, or summaries outside of this format.
-        """,
-        input_variables=["scenario"]
-    )
-    
-    # Create the chain using our LLM service
-    return create_chain(prompt_template)
+        """
 
-def classify_cdt_categories(scenario, temperature=0.0):
-    # Use the already cleaned scenario directly
-    processed_scenario = scenario
-    
-    # Then classify it - rely on the LLM's analysis rather than keyword detection
-    chain = create_cdt_classifier(temperature)
-    result = invoke_chain(chain, {"scenario": processed_scenario})["text"].strip()
-    
-    # Debug: Print the raw result to see what's coming from the LLM
-    print("\nDEBUG - Raw LLM Response:")
-    print(trim_print(result, 100))
-    
-    # This will hold just the range codes for API usage
-    range_codes = []
-    explanations = []
-    doubts = []
-    
-    # Split the result by "CODE_RANGE:" to get each section
-    sections = result.split("CODE_RANGE:")
-    
-    # Skip the first empty section if it exists
-    sections = [s for s in sections if s.strip()]
-    
-    print(f"\nDEBUG - Found {len(sections)} code range sections")
-    
-    for i, section in enumerate(sections):
-        print(f"\nDEBUG - Processing section {i+1}:")
-        print(trim_print(section, 100))
+    def __init__(self, model: str = OPENROUTER_MODEL, temperature: float = DEFAULT_TEMP):
+        """Initialize the classifier with model and temperature settings"""
+        self.service = get_service()
+        self.configure(model, temperature)
+        self.logger = self._setup_logging()
+
+    def _setup_logging(self) -> logging.Logger:
+        """Configure logging for the classifier module"""
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[logging.StreamHandler()]
+        )
+        return logging.getLogger(__name__)
+
+    def configure(self, model: Optional[str] = None, temperature: Optional[float] = None) -> None:
+        """Configure model and temperature settings"""
+        if model:
+            set_model(model)
+        if temperature is not None:
+            set_temperature(temperature)
+
+    def format_prompt(self, scenario: str) -> str:
+        """Format the prompt template with the given scenario"""
+        return self.PROMPT_TEMPLATE.format(scenario=scenario)
+
+    def parse_response(self, response: str) -> Dict[str, Any]:
+        """Parse the LLM response into structured format"""
+        range_codes = []
+        explanations = []
+        doubts = []
         
-        lines = section.strip().split('\n')
+        sections = [s for s in response.split("CODE_RANGE:") if s.strip()]
         
-        # First line should be the code range
-        if not lines:
-            continue
+        for section in sections:
+            lines = section.strip().split('\n')
+            if not lines:
+                continue
+                
+            code_range_line = lines[0].strip()
+            if " - " in code_range_line:
+                code_parts = code_range_line.split(" - ")
+                if code_parts and code_parts[0].strip().startswith("D"):
+                    range_code = code_parts[0].strip()
+                    explanation = ""
+                    doubt = ""
+                    current_section = None
+                    
+                    for line in lines[1:]:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        
+                        if line == "EXPLANATION:":
+                            current_section = "explanation"
+                        elif line == "DOUBT:":
+                            current_section = "doubt"
+                        elif current_section == "explanation":
+                            explanation = (explanation + "\n" + line) if explanation else line
+                        elif current_section == "doubt":
+                            doubt = (doubt + "\n" + line) if doubt else line
+                    
+                    range_codes.append(range_code)
+                    explanations.append(explanation)
+                    doubts.append(doubt)
+        
+        formatted_results = [
+            {
+                "code_range": code,
+                "explanation": expl,
+                "doubt": doubt
+            }
+            for code, expl, doubt in zip(range_codes, explanations, doubts)
+        ]
+        
+        # At this point, we're not using the scenario parameter
+        # This is causing an error when _ensure_all_code_ranges tries to use it
+        
+        self.logger.info(f"Parsed {len(formatted_results)} code ranges")
+        return {
+            "formatted_results": formatted_results,
+            "range_codes_string": ",".join(range_codes)
+        }
+        
+    def _ensure_all_code_ranges(self, formatted_results: list, scenario: str) -> None:
+        """Ensure all relevant code ranges are included based on keywords in the scenario"""
+        scenario_lower = scenario.lower()
+        
+        # Extract current code ranges
+        current_ranges = [item["code_range"] for item in formatted_results]
+        
+        # Check for preventive services (D1000-D1999)
+        preventive_keywords = ["prophylaxis", "prophy", "cleaning", "routine recall", "fluoride", "sealant"]
+        if any(keyword in scenario_lower for keyword in preventive_keywords) and "D1000-D1999" not in current_ranges:
+            self.logger.info("Adding missing Preventive Services code range (D1000-D1999)")
+            formatted_results.append({
+                "code_range": "D1000-D1999",
+                "explanation": "The scenario mentions prophylaxis/cleaning services which are classified under preventive services.",
+                "doubt": "Added automatically based on keyword detection."
+            })
+        
+        # Check for endodontic services (D3000-D3999)
+        endodontic_keywords = ["root canal", "pulp", "endodontic", "pulpectomy", "pulpotomy", "retreatment", "periapical"]
+        if any(keyword in scenario_lower for keyword in endodontic_keywords) and "D3000-D3999" not in current_ranges:
+            self.logger.info("Adding missing Endodontic Services code range (D3000-D3999)")
+            formatted_results.append({
+                "code_range": "D3000-D3999",
+                "explanation": "The scenario mentions root canal therapy or related procedures which fall under endodontic services.",
+                "doubt": "Added automatically based on keyword detection."
+            })
+        
+        # Check for diagnostic services (D0100-D0999)
+        diagnostic_keywords = ["radiograph", "x-ray", "image", "examination", "eval", "exam"]
+        if any(keyword in scenario_lower for keyword in diagnostic_keywords) and "D0100-D0999" not in current_ranges:
+            self.logger.info("Adding missing Diagnostic Services code range (D0100-D0999)")
+            formatted_results.append({
+                "code_range": "D0100-D0999",
+                "explanation": "The scenario mentions radiographic imaging or examination procedures.",
+                "doubt": "Added automatically based on keyword detection."
+            })
             
-        code_range_line = lines[0].strip()
-        print(f"DEBUG - Code range line: {code_range_line}")
+        # Check for oral surgery (D7000-D7999)
+        surgery_keywords = ["extraction", "remove tooth", "incision", "drainage", "biopsy", "abscess", "fistula"]
+        has_surgery_keywords = any(keyword in scenario_lower for keyword in surgery_keywords)
+        has_pus_keywords = "pus" in scenario_lower or "draining" in scenario_lower
         
-        # Extract CDT code range (e.g., "D0100-D0999")
-        if " - " in code_range_line:
-            code_parts = code_range_line.split(" - ")
-            if code_parts and code_parts[0].strip().startswith("D"):
-                range_code = code_parts[0].strip()
-                
-                # Initialize variables for the current section
-                explanation = ""
-                doubt = ""
-                current_section = None
-                
-                # Process the remaining lines to extract explanation and doubt
-                for line_idx, line in enumerate(lines[1:]):
-                    line = line.strip()
-                    
-                    if not line:
-                        continue
-                    
-                    if line == "EXPLANATION:":
-                        current_section = "explanation"
-                        print(f"DEBUG - Found EXPLANATION marker at line {line_idx+2}")
-                    elif line == "DOUBT:":
-                        current_section = "doubt"
-                        print(f"DEBUG - Found DOUBT marker at line {line_idx+2}")
-                    elif current_section == "explanation":
-                        if explanation:
-                            explanation += "\n" + line
-                        else:
-                            explanation = line
-                    elif current_section == "doubt":
-                        if doubt:
-                            doubt += "\n" + line
-                        else:
-                            doubt = line
-                
-                # If we didn't find explicit EXPLANATION or DOUBT markers, try to extract content differently
-                # This handles cases where the LLM might format responses differently
-                if not explanation and not doubt and len(lines) > 1:
-                    # Look for content after the code range without explicit markers
-                    remaining_content = "\n".join(lines[1:]).strip()
-                    
-                    # Try to find explanation and doubt sections without markers
-                    exp_start = remaining_content.lower().find("explanation")
-                    doubt_start = remaining_content.lower().find("doubt")
-                    
-                    if exp_start != -1 and doubt_start != -1 and exp_start < doubt_start:
-                        # Extract content between "explanation" and "doubt"
-                        explanation = remaining_content[exp_start+len("explanation"):doubt_start].strip(":\n ")
-                        # Extract content after "doubt"
-                        doubt = remaining_content[doubt_start+len("doubt"):].strip(":\n ")
-                    elif exp_start != -1:
-                        # Only explanation found
-                        explanation = remaining_content[exp_start+len("explanation"):].strip(":\n ")
-                    elif doubt_start != -1:
-                        # Only doubt found
-                        doubt = remaining_content[doubt_start+len("doubt"):].strip(":\n ")
-                    else:
-                        # No markers found, treat all content as explanation
-                        explanation = remaining_content
-                
-                print(f"DEBUG - Final explanation: {trim_print(explanation, 50)}")
-                print(f"DEBUG - Final doubt: {trim_print(doubt, 50)}")
-                
-                # Only add to results if we have a valid code range
-                range_codes.append(range_code)
-                explanations.append(explanation)
-                doubts.append(doubt)
-    
-    # Create a comma-separated string of just the range codes
-    range_codes_string = ",".join(range_codes)
-    
-    # Create the formatted results
-    formatted_results = []
-    for i, range_code in enumerate(range_codes):
-        formatted_results.append({
-            "code_range": range_code,
-            "explanation": explanations[i] if i < len(explanations) else "",
-            "doubt": doubts[i] if i < len(doubts) else ""
-        })
-    
-    # Return the formatted results and the range codes string
-    return {
-        "formatted_results": formatted_results,
-        "range_codes_string": range_codes_string
-    }
+        if (has_surgery_keywords or has_pus_keywords) and "D7000-D7999" not in current_ranges:
+            self.logger.info("Adding missing Oral Surgery code range (D7000-D7999)")
+            formatted_results.append({
+                "code_range": "D7000-D7999",
+                "explanation": "The scenario mentions surgical procedures, extraction, or drainage of infection.",
+                "doubt": "Added automatically based on keyword detection."
+            })
 
+    def process(self, scenario: str) -> Dict[str, Any]:
+        """Process a dental scenario and return CDT classifications"""
+        try:
+            self.logger.info("Processing dental scenario")
+            formatted_prompt = self.format_prompt(scenario)
+            response = generate_response(formatted_prompt)
+            result = self.parse_response(response)
+            
+            # Check for missing important code ranges based on scenario keywords
+            self._ensure_all_code_ranges(result["formatted_results"], scenario)
+            
+            # Update the range_codes_string after potentially adding new codes
+            result["range_codes_string"] = ",".join([item["code_range"] for item in result["formatted_results"]])
+            
+            self.logger.info("Successfully processed dental scenario")
+            return result
+        except Exception as e:
+            self.logger.error(f"Error processing scenario: {str(e)}")
+            return {
+                "formatted_results": [],
+                "range_codes_string": "",
+                "error": str(e)
+            }
 
-# For testing if run directly
+    @property
+    def current_settings(self) -> Dict[str, Any]:
+        """Get current model settings"""
+        return {
+            "model": self.service.model,
+            "temperature": self.service.temperature
+        }
+
+class CDTClassifierCLI:
+    """Command Line Interface for the CDTClassifier"""
+    
+    def __init__(self):
+        self.classifier = CDTClassifier()
+
+    def print_settings(self):
+        """Print current model settings"""
+        settings = self.classifier.current_settings
+        print(f"Using model: {settings['model']} with temperature: {settings['temperature']}")
+
+    def print_results(self, result: Dict[str, Any]):
+        """Print classification results in a formatted way"""
+        if "error" in result:
+            print(f"\nError: {result['error']}")
+            return
+
+        print("\n=== CDT CODE RANGES ===")
+        for item in result["formatted_results"]:
+            print(f"CODE RANGE: {item['code_range']}")
+            print(f"EXPLANATION: {item['explanation']}")
+            print(f"DOUBT: {item['doubt']}")
+            print("-" * 50)
+        print(f"\nRange Codes String: {result['range_codes_string']}")
+
+    def run(self):
+        """Run the CLI interface"""
+        self.print_settings()
+        scenario = input("Enter a dental scenario to classify: ")
+        result = self.classifier.process(scenario)
+        self.print_results(result)
+
+def main():
+    """Main entry point for the script"""
+    cli = CDTClassifierCLI()
+    cli.run()
+
 if __name__ == "__main__":
-    # Print the current Gemini model and temperature being used
-    llm_service = get_llm_service()
-    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
-    
-    test_scenario = input("Enter a dental scenario to classify: ")
-    result = classify_cdt_categories(test_scenario)
-    
-    print("\n=== CDT CODE RANGES ===")
-    for item in result["formatted_results"]:
-        print(f"CODE RANGE: {item['code_range']}")
-        print(f"EXPLANATION: {item['explanation']}")
-        print(f"DOUBT: {item['doubt']}")
-        print("-" * 50)
-    
-    print(f"\nRange Codes String: {result['range_codes_string']}")
+    main() 

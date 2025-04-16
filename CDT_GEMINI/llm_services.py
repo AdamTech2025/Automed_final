@@ -3,9 +3,7 @@ import time
 import logging
 from typing import Dict, Any, Union
 from dotenv import load_dotenv
-import google.generativeai as genai
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.schema import HumanMessage
+from openai import OpenAI
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 
@@ -16,58 +14,84 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
-# Get Gemini configuration from environment
-GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "ggemini-2.0-flash-thinking-exp-01-21")
-GEMINI_TEMPERATURE = float(os.getenv("GEMINI_TEMPERATURE", "0.0"))
-
-# Initialize Gemini for direct API calls
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+# OpenRouter configuration
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-pro-preview-03-25")
+OPENROUTER_TEMPERATURE = float(os.getenv("OPENROUTER_TEMPERATURE", "0.0"))
+OPENROUTER_SITE_URL = os.getenv("OPENROUTER_SITE_URL", "")
+OPENROUTER_SITE_NAME = os.getenv("OPENROUTER_SITE_NAME", "")
+DEFAULT_TEMP = 0.0
 
 class LLMService:
-    def __init__(self, temperature=GEMINI_TEMPERATURE, max_retries=3, 
-                 retry_delay=2, gemini_model=GEMINI_MODEL):
+    def __init__(self, temperature=DEFAULT_TEMP, max_retries=3, 
+                 retry_delay=2, model=OPENROUTER_MODEL):
+        if not OPENROUTER_API_KEY:
+            raise ValueError("OpenRouter API key not found in environment variables")
+        
         self.temperature = temperature
         self.max_retries = max_retries
         self.retry_delay = retry_delay
-        self.gemini_model = gemini_model
-        
-        if not GEMINI_API_KEY:
-            raise ValueError("Gemini API key not found in environment variables")
-        
-        self._initialize_model()
+        self.model = model
+        self._initialize_client()
     
-    def set_model(self, model_name):
-        if model_name and model_name != self.gemini_model:
-            self.gemini_model = model_name
-            logger.info(f"Updating model to: {model_name}")
-            self._initialize_model()
+    def _initialize_client(self):
+        try:
+            self.client = OpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=OPENROUTER_API_KEY
+            )
+            logger.info(f"Initialized OpenRouter with model: {self.model} (temp: {self.temperature})")
+        except Exception as e:
+            logger.error(f"Failed to initialize OpenRouter: {e}")
+            raise ValueError(f"Failed to initialize client: {e}")
+    
+    def set_model(self, model_name: str):
+        if model_name and model_name != self.model:
+            self.model = model_name
+            logger.info(f"Updated model to: {model_name}")
             return True
         return False
     
-    def set_temperature(self, temperature):
+    def set_temperature(self, temperature: float):
         if temperature is not None and temperature != self.temperature:
             self.temperature = temperature
-            logger.info(f"Updating temperature to: {temperature}")
-            self._initialize_model()
+            logger.info(f"Updated temperature to: {temperature}")
             return True
         return False
     
-    def _initialize_model(self):
-        try:
-            self.gemini_llm = ChatGoogleGenerativeAI(
-                model=self.gemini_model,
-                temperature=self.temperature,
-                google_api_key=GEMINI_API_KEY
-            )
-            logger.info(f"Model: {self.gemini_model} (temp: {self.temperature})")
-        except Exception as e:
-            logger.error(f"Failed to initialize Gemini: {e}")
-            raise ValueError(f"Failed to initialize model: {e}")
+    def generate_response(self, prompt: Union[str, Dict], image_url: str = None):
+        for attempt in range(self.max_retries + 1):
+            try:
+                messages = []
+                if isinstance(prompt, str):
+                    content = [{"type": "text", "text": prompt}]
+                    if image_url:
+                        content.append({
+                            "type": "image_url",
+                            "image_url": {"url": image_url}
+                        })
+                    messages.append({"role": "user", "content": content})
+                elif isinstance(prompt, dict):
+                    messages.append(prompt)
+                
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=self.temperature,
+                    extra_headers={
+                        "HTTP-Referer": OPENROUTER_SITE_URL,
+                        "X-Title": OPENROUTER_SITE_NAME
+                    }
+                )
+                return response.choices[0].message.content.strip()
+            except Exception as e:
+                if attempt < self.max_retries:
+                    logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying...")
+                    time.sleep(self.retry_delay)
+                else:
+                    raise Exception(f"Failed after {self.max_retries} attempts: {e}")
     
-    def create_chain(self, prompt_template):
-        # Convert string to PromptTemplate if needed
+    def invoke_chain(self, prompt_template: Union[str, PromptTemplate], inputs: Dict[str, Any]):
         if isinstance(prompt_template, str):
             import re
             variables = list(set(re.findall(r'\{([^{}]*)\}', prompt_template)))
@@ -75,47 +99,24 @@ class LLMService:
                 template=prompt_template,
                 input_variables=variables
             )
-        return LLMChain(llm=self.gemini_llm, prompt=prompt_template)
-    
-    def generate_response(self, prompt):
-        for attempt in range(self.max_retries + 1):
-            try:
-                response = self.gemini_llm.invoke([HumanMessage(content=prompt)])
-                return response.content.strip()
-            except Exception as e:
-                if attempt < self.max_retries:
-                    time.sleep(self.retry_delay)
-                else:
-                    raise Exception(f"Failed after {self.max_retries} attempts: {e}")
-    
-    def invoke_chain(self, chain, inputs):
-        for attempt in range(self.max_retries + 1):
-            try:
-                return chain.invoke(inputs)
-            except Exception as e:
-                if attempt < self.max_retries:
-                    time.sleep(self.retry_delay)
-                else:
-                    raise Exception(f"Chain invocation failed after {self.max_retries} attempts: {e}")
+        formatted_prompt = prompt_template.format(**inputs)
+        return self.generate_response(formatted_prompt)
 
 # Singleton instance
 llm_service = LLMService()
 
 # Public API functions
-def get_llm_service():
+def get_service():
     return llm_service
 
-def set_model_for_file(model_name):
+def set_model(model_name: str):
     return llm_service.set_model(model_name)
 
-def set_temperature_for_file(temperature):
+def set_temperature(temperature: float):
     return llm_service.set_temperature(temperature)
 
-def create_chain(prompt_template):
-    return llm_service.create_chain(prompt_template)
+def generate_response(prompt: Union[str, Dict], image_url: str = None):
+    return llm_service.generate_response(prompt, image_url)
 
-def generate_response(prompt):
-    return llm_service.generate_response(prompt)
-
-def invoke_chain(chain, inputs):
-    return llm_service.invoke_chain(chain, inputs) 
+def process_prompt(prompt_template: Union[str, PromptTemplate], inputs: Dict[str, Any]):
+    return llm_service.process_prompt(prompt_template, inputs)

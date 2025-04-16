@@ -3,25 +3,29 @@ Module for extracting other periodontal services codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_other_periodontal_services_extractor(temperature=0.0):
-    """
-    Create a LangChain-based other periodontal services code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class OtherPeriodontalServices:
+    """Class to analyze and extract other periodontal services codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing other periodontal services."""
+        return PromptTemplate(
         template=f"""
 You are a highly experienced dental coding expert
 
@@ -35,10 +39,10 @@ You are a highly experienced dental coding expert
 ### D4910 - Periodontal Maintenance
 **When to use:**
 - For patients with a history of periodontal therapy (e.g., scaling/root planing, surgery) who require ongoing maintenance to prevent disease recurrence.
-- Performed at intervals determined by the dentist’s clinical evaluation, typically every 3-6 months, for the life of the dentition or implants.
+- Performed at intervals determined by the dentist's clinical evaluation, typically every 3-6 months, for the life of the dentition or implants.
 
 **What to check:**
-- Verify prior periodontal treatment in the patient’s chart (e.g., D4341, D4342, or surgical codes).
+- Verify prior periodontal treatment in the patient's chart (e.g., D4341, D4342, or surgical codes).
 - Assess current periodontal status (pocket depths, bleeding on probing, plaque/calculus levels).
 - Confirm the need for site-specific scaling/root planing or polishing based on clinical findings.
 
@@ -54,7 +58,7 @@ You are a highly experienced dental coding expert
 
 **What to check:**
 - Confirm the patient had recent periodontal surgery requiring dressings (e.g., gingivectomy, flap surgery).
-- Verify the provider performing the change isn’t affiliated with the original treating dentist’s practice.
+- Verify the provider performing the change isn't affiliated with the original treating dentist's practice.
 - Assess the condition of the surgical site (e.g., healing, infection, dressing integrity).
 
 **Notes:**
@@ -74,7 +78,7 @@ You are a highly experienced dental coding expert
 
 **Notes:**
 - Not widely reimbursed by insurance unless paired with a primary procedure; narrative may be required.
-- Documentation must specify quadrant(s), agent used, and clinical justification (e.g., “Q1 irrigated with 0.12% chlorhexidine due to localized gingivitis”).
+- Documentation must specify quadrant(s), agent used, and clinical justification (e.g., "Q1 irrigated with 0.12% chlorhexidine due to localized gingivitis").
 - Not for full-mouth irrigation; use D4999 if no quadrant-specific code applies.
 
 ### D4999 - Unspecified Periodontal Procedure, By Report
@@ -85,7 +89,7 @@ You are a highly experienced dental coding expert
 **What to check:**
 - Ensure no other periodontal code (e.g., D4910, D4341) accurately describes the procedure.
 - Assess the clinical necessity and complexity of the service (e.g., unusual tools, techniques, or time required).
-- Verify patient consent and understanding of the procedure’s purpose and potential out-of-pocket cost.
+- Verify patient consent and understanding of the procedure's purpose and potential out-of-pocket cost.
 
 **Notes:**
 - Requires a comprehensive report with procedure details, clinical findings, and justification for insurance submission.
@@ -93,43 +97,53 @@ You are a highly experienced dental coding expert
 - Approval and reimbursement vary widely; pre-authorization is recommended.
 
 ### Key Takeaways:
-- History Matters: D4910 hinges on prior periodontal therapy; always confirm the patient’s treatment background.
+- History Matters: D4910 hinges on prior periodontal therapy; always confirm the patient's treatment background.
 - Provider Specificity: D4920 is unique to external providers, making it situational and rare.
 - Adjunct vs. Primary: D4921 and D4999 often support other treatments—clarify their role in the care plan.
 - Narrative Precision: Unspecified (D4999) and less common codes (D4920, D4921) demand detailed documentation for approval.
 - Maintenance vs. Treatment: Distinguish ongoing care (D4910) from acute interventions to avoid coding overlap.
 
-
-
-Scenario:
-"{{question}}"
+SCENARIO: {{scenario}}
 
 {PROMPT}
 """,
-        input_variables=["question"]
+            input_variables=["scenario"]
     )
+
+    def extract_other_periodontal_services_code(self, scenario: str) -> str:
+        """Extract other periodontal services code for a given scenario."""
+        try:
+            print(f"Analyzing other periodontal services scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Other periodontal services extract_other_periodontal_services_code result: {code}")
+            return code
+        except Exception as e:
+                print(f"Error in other periodontal services code extraction: {str(e)}")
+                return ""
+
+    def activate_other_periodontal_services(self, scenario: str) -> str:
+        """Activate the other periodontal services analysis process and return results."""
+        try:
+            result = self.extract_other_periodontal_services_code(scenario)
+            if not result:
+                print("No other periodontal services code returned")
+                return ""
+            return result
+        except Exception as e:
+                print(f"Error activating other periodontal services analysis: {str(e)}")
+                return "" 
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_other_periodontal_services(scenario)
+        print(f"\n=== OTHER PERIODONTAL SERVICES ANALYSIS RESULT ===")
+        print(f"OTHER PERIODONTAL SERVICES CODE: {result if result else 'None'}")
 
-def extract_other_periodontal_services_code(scenario, temperature=0.0):
-    """
-    Extract other periodontal services code(s) for a given scenario.
-    """
-    try:
-        chain = create_other_periodontal_services_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Other periodontal services code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_other_periodontal_services_code: {str(e)}")
-        return ""
 
-def activate_other_periodontal_services(scenario):
-    """
-    Activate other periodontal services analysis and return results.
-    """
-    try:
-        return extract_other_periodontal_services_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_other_periodontal_services: {str(e)}")
-        return "" 
+other_periodontal_services = OtherPeriodontalServices()
+# Example usage
+if __name__ == "__main__":
+    scenario = input("Enter an other periodontal services scenario: ")
+    other_periodontal_services.run_analysis(scenario) 

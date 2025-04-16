@@ -4,28 +4,28 @@ Module for extracting complicated suturing codes.
 
 import os
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+from llm_services import LLMService, get_service, set_model, set_temperature
 
 # Load environment variables
 load_dotenv()
 
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_complicated_suturing_extractor(temperature=0.0):
-    """
-    Create a LangChain-based complicated suturing code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class ComplicatedSuturingServices:
+    """Class to analyze and extract complicated suturing codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing complicated suturing scenarios."""
+        from subtopics.prompt.prompt import PROMPT
+        return PromptTemplate(
         template=f"""
-You are a highly experienced dental coding expert specializing in oral surgical wound management,
+You are a dental coding expert specializing in oral and maxillofacial surgery,
 
-## **Complicated Suturing Procedures**
+## **Complicated Suturing (Wounds, Lacerations)**
 
 ### **Before picking a code, ask:**
 - What is the total length of the wound(s) being sutured (up to 5 cm or greater than 5 cm)?
@@ -71,34 +71,48 @@ You are a highly experienced dental coding expert specializing in oral surgical 
 - **Clear Distinction** - Clear documentation should distinguish between "more than simple interrupted sutures" (D7910) and "extensive mobilization and isolation of soft tissues" (D7911/D7912).
 
 Scenario:
-"{{question}}"
+"{{scenario}}"
 
 {PROMPT}
 """,
-        input_variables=["question"]
+            input_variables=["scenario"]
     )
+
+    def extract_complicated_suturing_code(self, scenario: str) -> str:
+        """Extract complicated suturing code for a given scenario."""
+        try:
+            print(f"Analyzing complicated suturing scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Complicated suturing extract code result: {code}")
+            
+            # Return empty string if no code found
+            if code == "None" or not code or "not applicable" in code.lower():
+                return ""
+                
+            return code
+        except Exception as e:
+            print(f"Error in extract_complicated_suturing_code: {str(e)}")
+            return ""
+
+    def activate_complicated_suturing(self, scenario: str) -> str:
+        """Activate the complicated suturing analysis process and return results."""
+        try:
+            return self.extract_complicated_suturing_code(scenario)
+        except Exception as e:
+            print(f"Error in activate_complicated_suturing: {str(e)}")
+            return "" 
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_complicated_suturing(scenario)
+        print(f"\n=== COMPLICATED SUTURING ANALYSIS RESULT ===")
+        print(f"COMPLICATED SUTURING CODE: {result if result else 'None'}")
 
-def extract_complicated_suturing_code(scenario, temperature=0.0):
-    """
-    Extract complicated suturing code(s) for a given scenario.
-    """
-    try:
-        chain = create_complicated_suturing_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Complicated suturing code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_complicated_suturing_code: {str(e)}")
-        return ""
 
-def activate_complicated_suturing(scenario):
-    """
-    Activate complicated suturing analysis and return results.
-    """
-    try:
-        return extract_complicated_suturing_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_complicated_suturing: {str(e)}")
-        return "" 
+complicated_suturing_service = ComplicatedSuturingServices()
+# Example usage
+if __name__ == "__main__":
+    scenario = input("Enter a complicated suturing scenario: ")
+    complicated_suturing_service.run_analysis(scenario) 

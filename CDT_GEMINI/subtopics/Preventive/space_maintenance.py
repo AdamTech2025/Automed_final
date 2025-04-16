@@ -1,28 +1,33 @@
 """
-Module for extracting space maintenance codes.
+Module for extracting space maintenance and space maintainers codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_space_maintenance_extractor(temperature=0.0):
-    """
-    Create a LangChain-based space maintenance code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class SpaceMaintenanceServices:
+    """Class to analyze and extract space maintenance and space maintainers codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template=f"""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.space_maintenance_prompt_template = self._create_space_maintenance_prompt_template()
+        self.space_maintainers_prompt_template = self._create_space_maintainers_prompt_template()
+    
+    def _create_space_maintenance_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing space maintenance services."""
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert
 
 ### Before picking a code, ask:
@@ -192,7 +197,7 @@ You are a highly experienced dental coding expert
   - Not for unilateral or removable appliances.
   - Record any follow-up care or observations post-removal.
 
-  #### Code: D1575 - Distal Shoe Space Maintainer — Fixed, Unilateral — Per Quadrant
+#### Code: D1575 - Distal Shoe Space Maintainer — Fixed, Unilateral — Per Quadrant
 - **When to use:**
   - Fabrication and delivery of a fixed, unilateral distal shoe space maintainer in one quadrant.
   - Designed to extend subgingivally and distally to guide the eruption of the first permanent molar after premature loss of a primary molar (typically the second primary molar).
@@ -212,51 +217,138 @@ You are a highly experienced dental coding expert
 ---
 
 ### Key Takeaways:
-- *Fixed vs. Removable:* Codes distinguish between fixed (D1510, D1516, D1517) and removable (D1520, D1526, D1527) appliances—choose based on design and patient needs.
-- *Unilateral vs. Bilateral:* Identify if the appliance affects one quadrant (D1510, D1520) or both sides (D1516, D1517, D1526, D1527) of an arch.
-- *Arch Specificity:* Maxillary (D1516, D1526) and mandibular (D1517, D1527) codes are distinct—verify the correct jaw.
-- *Maintenance Matters:* Re-cement/re-bond (D1551-D1553) and removal (D1556-D1558) codes apply only to prior placements—link to original code.
-- *Documentation Precision:* Specify quadrant, arch, appliance type, and clinical justification for accurate billing and audits.
+- *Fixed vs. Removable:* Match the appliance design to the code—fixed codes (D1510-D1517) vs. removable codes (D1520-D1527).
+- *Unilateral vs. Bilateral:* Carefully distinguish between single-quadrant devices (D1510/D1520) and those spanning both sides of an arch (D1516-D1517/D1526-D1527).
+- *Arch Specificity:* For bilateral appliances, always specify maxillary (D1516/D1526) or mandibular (D1517/D1527).
+- *Service Type:* Initial placement is distinct from repair (D1551-D1553) or removal (D1556-D1558)—don't bundle with placement codes.
+- *Documentation Precision:* Note quadrant, appliance design, and purpose (e.g., tooth loss prevention vs. distal guidance for D1575).
 
-
-Scenario:
-"{{question}}"
+Scenario: {{scenario}}
 
 {PROMPT}
 """,
-        input_variables=["question"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    def _create_space_maintainers_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing space maintainers services."""
+        return PromptTemplate(
+            template=f"""
+You are a highly experienced dental coding expert
 
-def extract_space_maintenance_code(scenario, temperature=0.0):
-    """
-    Extract space maintenance code(s) for a given scenario.
-    """
-    try:
-        # Check if the scenario specifically mentions bilateral maxillary removal
-        scenario_lower = scenario.lower()
-        if ("maxillary" in scenario_lower or "upper" in scenario_lower) and \
-           ("bilateral" in scenario_lower or "both sides" in scenario_lower) and \
-           ("remov" in scenario_lower or "take off" in scenario_lower or "take out" in scenario_lower):
-            print("Detected maxillary bilateral space maintainer removal scenario - selecting D1557")
-            return "D1557"
-        
-        # If not specifically about maxillary bilateral removal, use the general extractor
-        chain = create_space_maintenance_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Space maintenance code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_space_maintenance_code: {str(e)}")
-        return ""
+ Before picking a code, ask:
+- What was the primary reason the patient came in? Was it to guide the eruption of a permanent tooth due to premature primary tooth loss, or for another issue?
+- Is the space maintainer a distal shoe design, fixed, and unilateral?
+- Which quadrant is involved, and is the first permanent molar unerupted?
+- Is this for the initial fabrication and delivery, or does it involve follow-up, adjustments, or replacement?
+- Does the patient's dental history (e.g., early tooth loss, eruption patterns) justify the use of a distal shoe appliance?
 
-def activate_space_maintenance(scenario):
-    """
-    Activate space maintenance analysis and return results.
-    """
-    try:
-        return extract_space_maintenance_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_space_maintenance: {str(e)}")
-        return "" 
+---
+
+### Preventive Dental Codes: Space Maintainers
+
+#### Code: D1575 - Distal Shoe Space Maintainer — Fixed, Unilateral — Per Quadrant
+- **When to use:**
+  - Fabrication and delivery of a fixed, unilateral distal shoe space maintainer in one quadrant.
+  - Designed to extend subgingivally and distally to guide the eruption of the first permanent molar after premature loss of a primary molar (typically the second primary molar).
+- **What to check:**
+  - Confirm premature loss of a primary molar and the first permanent molar is unerupted, requiring guidance.
+  - Verify the appliance is fixed, unilateral, and uses a distal shoe design (e.g., a metal extension into the tissue).
+  - Assess the quadrant involved and ensure proper space for the erupting molar.
+  - Check radiographs to confirm the position of the unerupted molar and surrounding bone structure.
+  - Ensure this is for initial placement only, not follow-up or replacement.
+- **Notes:**
+  - Per-quadrant code—specify quadrant (e.g., UR, UL, LR, LL) in documentation.
+  - Distinct from other space maintainers (e.g., D1510) due to its subgingival extension and specific purpose.
+  - Does not include ongoing adjustments, follow-up visits, or replacement appliances after eruption—those are separate services.
+  - Typically used in pediatric patients with mixed dentition; requires careful monitoring due to tissue interaction.
+  - Documentation should include tooth number lost, molar eruption status, and appliance design details.
+
+---
+
+### Key Takeaways:
+- *Distal Shoe Specificity:* D1575 is unique for its subgingival and distal extension to guide an unerupted first permanent molar—don't confuse with other space maintainers.
+- *Initial Placement Only:* Covers fabrication and delivery; subsequent adjustments or replacements aren't included and may require narrative or different coding.
+- *Quadrant-Based:* Always identify the specific quadrant treated for accurate billing and tracking.
+- *Patient Monitoring:* Due to its invasive design, regular follow-ups are critical (though not billable under D1575) to ensure proper eruption and tissue health.
+- *Documentation Precision:* Link the code to premature tooth loss, unerupted molar position, and appliance specifics to justify its use.
+
+Scenario: {{scenario}}
+
+{PROMPT}
+""",
+            input_variables=["scenario"]
+        )
+
+    def extract_space_maintenance_code(self, scenario: str) -> str:
+        """Extract space maintenance code(s) for a given scenario."""
+        try:
+            print(f"Analyzing space maintenance scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.space_maintenance_prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Space maintenance extract_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in space maintenance code extraction: {str(e)}")
+            return ""
+    
+    def extract_space_maintainers_code(self, scenario: str) -> str:
+        """Extract space maintainers code(s) for a given scenario."""
+        try:
+            # First check if this is about bilateral maxillary space maintainer removal
+            scenario_lower = scenario.lower()
+            if ("maxillary" in scenario_lower or "upper" in scenario_lower) and \
+               ("bilateral" in scenario_lower or "both sides" in scenario_lower) and \
+               ("remov" in scenario_lower or "take off" in scenario_lower or "take out" in scenario_lower):
+                print("Space maintainers module: This is a maxillary bilateral removal scenario - deferring to space_maintenance")
+                return ""  # Return empty so that the D1557 code is used from space_maintenance analysis
+            
+            # Only proceed with chain if not a maxillary bilateral removal scenario
+            print(f"Analyzing space maintainers scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.space_maintainers_prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Space maintainers extract_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in space maintainers code extraction: {str(e)}")
+            return ""
+            
+    def activate_space_maintenance(self, scenario: str) -> str:
+        """Activate the space maintenance analysis process and return results."""
+        try:
+            # First try the space_maintainers analysis for distal shoe scenarios
+            maintainers_result = self.extract_space_maintainers_code(scenario)
+            if maintainers_result:
+                return maintainers_result
+                
+            # Then try regular space maintenance if no distal shoe code was found
+            result = self.extract_space_maintenance_code(scenario)
+            if not result:
+                print("No space maintenance code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating space maintenance analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_space_maintenance(scenario)
+        print(f"\n=== SPACE MAINTENANCE ANALYSIS RESULT ===")
+        print(f"SPACE MAINTENANCE CODE: {result if result else 'None'}")
+
+    # Legacy methods for backward compatibility
+    def activate_space_maintainers(self, scenario: str) -> str:
+        """Activate the space maintainers analysis process and return results."""
+        try:
+            return self.extract_space_maintainers_code(scenario)
+        except Exception as e:
+            print(f"Error activating space maintainers analysis: {str(e)}")
+            return ""
+
+space_maintenance_service = SpaceMaintenanceServices()
+# Example usage
+if __name__ == "__main__":
+    scenario = input("Enter a space maintenance dental scenario: ")
+    space_maintenance_service.run_analysis(scenario) 

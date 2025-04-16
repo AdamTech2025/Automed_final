@@ -4,24 +4,24 @@ Module for extracting open fractures codes.
 
 import os
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+from llm_services import LLMService, get_service, set_model, set_temperature
 
 # Load environment variables
 load_dotenv()
 
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_open_fractures_extractor(temperature=0.0):
-    """
-    Create a LangChain-based open fractures code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class OpenFracturesServices:
+    """Class to analyze and extract open fractures codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing open fractures scenarios."""
+        from subtopics.prompt.prompt import PROMPT
+        return PromptTemplate(
         template=f"""
 You are a highly experienced dental coding expert specializing in oral and maxillofacial trauma management,
 
@@ -102,34 +102,48 @@ You are a highly experienced dental coding expert specializing in oral and maxil
 - **Complication Management** - For complex cases, documentation should address potential complications and monitoring strategy.
 
 Scenario:
-"{{question}}"
+"{{scenario}}"
 
 {PROMPT}
 """,
-        input_variables=["question"]
+            input_variables=["scenario"]
     )
+
+    def extract_open_fractures_code(self, scenario: str) -> str:
+        """Extract open fractures code for a given scenario."""
+        try:
+            print(f"Analyzing open fractures scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Open fractures extract code result: {code}")
+            
+            # Return empty string if no code found
+            if code == "None" or not code or "not applicable" in code.lower():
+                return ""
+                
+            return code
+        except Exception as e:
+            print(f"Error in extract_open_fractures_code: {str(e)}")
+            return ""
+
+    def activate_open_fractures(self, scenario: str) -> str:
+        """Activate the open fractures analysis process and return results."""
+        try:
+            return self.extract_open_fractures_code(scenario)
+        except Exception as e:
+            print(f"Error in activate_open_fractures: {str(e)}")
+            return ""
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_open_fractures(scenario)
+        print(f"\n=== OPEN FRACTURES ANALYSIS RESULT ===")
+        print(f"OPEN FRACTURES CODE: {result if result else 'None'}")
 
-def extract_open_fractures_code(scenario, temperature=0.0):
-    """
-    Extract open fractures code(s) for a given scenario.
-    """
-    try:
-        chain = create_open_fractures_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Open fractures code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_open_fractures_code: {str(e)}")
-        return ""
 
-def activate_open_fractures(scenario):
-    """
-    Activate open fractures analysis and return results.
-    """
-    try:
-        return extract_open_fractures_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_open_fractures: {str(e)}")
-        return "" 
+open_fractures_service = OpenFracturesServices()
+# Example usage
+if __name__ == "__main__":
+    scenario = input("Enter an open fractures scenario: ")
+    open_fractures_service.run_analysis(scenario) 

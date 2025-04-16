@@ -3,26 +3,30 @@ Module for extracting interim prosthesis codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_interim_prosthesis_extractor(temperature=0.0):
-    """
-    Create a LangChain-based interim prosthesis code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class InterimProsthesisServices:
+    """Class to analyze and extract interim prosthesis codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template=f"""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing interim prosthesis services."""
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert
 ### **Before picking a code, ask:**
 - What was the primary reason the patient came in?
@@ -40,10 +44,10 @@ You are a highly experienced dental coding expert
 **What to Check:**  
 - Ensure the denture is truly **interim**, not final.  
 - Verify extractions or surgeries have recently occurred or are planned.  
-- Check the patient’s healing progress and estimated timeline for final prosthesis.  
+- Check the patient's healing progress and estimated timeline for final prosthesis.  
 - Document the treatment plan including final prosthesis intent.  
 **Notes:**  
-- This is typically **not covered** as a “final prosthesis” by insurance — emphasize it is **transitional**.  
+- This is typically **not covered** as a "final prosthesis" by insurance — emphasize it is **transitional**.  
 - May require a narrative stating the **reason for interim use** (e.g., surgical healing, bone remodeling).  
 - Final denture fabrication should be coded separately (e.g., D5110).
 
@@ -91,7 +95,7 @@ You are a highly experienced dental coding expert
 - Identify and document which teeth are being temporarily replaced.  
 **Notes:**  
 - This is **not a definitive partial denture**—plan and document for final prosthetic restoration.  
-- Reimbursement may require documentation showing why the patient can’t receive final treatment immediately.
+- Reimbursement may require documentation showing why the patient can't receive final treatment immediately.
 ### **Key Takeaways:**
 - **Temporary Solution:** Interim prostheses are not meant for long-term use but aid in function, aesthetics, and healing.  
 - **Patient Education:** Clearly explain that adjustments may be required as the tissues heal.  
@@ -99,41 +103,46 @@ You are a highly experienced dental coding expert
 - **Transition to Definitive Prosthesis:** Ensure a plan is in place for the final prosthetic solution once healing is complete.  
 
 
-Scenario:
-"{{question}}"
+Scenario: {{scenario}}
 
 {PROMPT}
 """,
-        input_variables=["question"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template)
-
-def extract_interim_prosthesis_code(scenario, temperature=0.0):
-    """
-    Extract interim prosthesis code(s) for a given scenario.
-    """
-    try:
-        chain = create_interim_prosthesis_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Interim prosthesis code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_interim_prosthesis_code: {str(e)}")
-        return ""
-
-def activate_interim_prosthesis(scenario):
-    """
-    Activate interim prosthesis analysis and return results.
-    """
-    try:
-        return extract_interim_prosthesis_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_interim_prosthesis: {str(e)}")
-        return ""
+    def extract_interim_prosthesis_code(self, scenario: str) -> str:
+        """Extract interim prosthesis code(s) for a given scenario."""
+        try:
+            print(f"Analyzing interim prosthesis scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Interim prosthesis extract_interim_prosthesis_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in interim prosthesis code extraction: {str(e)}")
+            return ""
+    
+    def activate_interim_prosthesis(self, scenario: str) -> str:
+        """Activate the interim prosthesis analysis process and return results."""
+        try:
+            result = self.extract_interim_prosthesis_code(scenario)
+            if not result:
+                print("No interim prosthesis code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating interim prosthesis analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_interim_prosthesis(scenario)
+        print(f"\n=== INTERIM PROSTHESIS ANALYSIS RESULT ===")
+        print(f"INTERIM PROSTHESIS CODE: {result if result else 'None'}")
 
 # Example usage
 if __name__ == "__main__":
-    scenario = "Patient needs a temporary upper partial denture while implants are healing for a fixed prosthesis."
-    result = activate_interim_prosthesis(scenario)
-    print(result) 
+    interim_prosthesis_service = InterimProsthesisServices()
+    scenario = input("Enter an interim prosthesis dental scenario: ")
+    interim_prosthesis_service.run_analysis(scenario) 

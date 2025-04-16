@@ -1,18 +1,29 @@
 import os
 import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+
+# Add the parent directory to the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(current_dir))
 sys.path.append(parent_dir)
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
 
-
-def create_tests_and_examinations_extractor():
-    """
-    Create a LangChain-based Tests and Examinations extractor.
-    """
-    template = f"""
+class TestsAndExaminationsServices:
+    """Class to analyze and extract tests and examinations codes based on dental scenarios."""
+    
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing tests and examinations."""
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert
 
 ### **General Guidelines for Selecting Codes:**
@@ -20,7 +31,6 @@ You are a highly experienced dental coding expert
 2. **Check Testing Methodology:** Ensure proper sample collection and analysis.
 3. **Document Findings:** Properly record test results and their implications for treatment.
 4. **Ensure Compliance:** Follow lab regulations and public health guidelines.
-
 
 ## Tests and Examinations - Detailed Guidelines
 
@@ -277,40 +287,44 @@ You are a highly experienced dental coding expert
 Scenario: {{scenario}}
 
 {PROMPT}
-"""
+""",
+            input_variables=["scenario"]
+        )
     
-    prompt = PromptTemplate(template=template, input_variables=["scenario"])
-    return create_chain(prompt)
+    def extract_tests_and_examinations_code(self, scenario: str) -> str:
+        """Extract tests and examinations code(s) for a given scenario."""
+        try:
+            print(f"Analyzing tests and examinations scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Tests and examinations extract_tests_and_examinations_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in tests and examinations code extraction: {str(e)}")
+            return ""
+    
+    def activate_tests_and_examinations(self, scenario: str) -> str:
+        """Activate the tests and examinations analysis process and return results."""
+        try:
+            result = self.extract_tests_and_examinations_code(scenario)
+            if not result:
+                print("No tests and examinations code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating tests and examinations analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_tests_and_examinations(scenario)
+        print(f"\n=== TESTS AND EXAMINATIONS ANALYSIS RESULT ===")
+        print(f"TESTS AND EXAMINATIONS CODE: {result if result else 'None'}")
 
-def extract_tests_and_examinations_code(scenario):
-    """
-    Extract Tests and Examinations code(s) for a given scenario.
-    """
-    try:
-        extractor = create_tests_and_examinations_extractor()
-        result = invoke_chain(extractor, {"scenario": scenario})
-        return result.get("text", "").strip()
-    except Exception as e:
-        print(f"Error in tests and examinations code extraction: {str(e)}")
-        return None
-
-def activate_tests_and_examinations(scenario):
-    """
-    Activate Tests and Examinations analysis and return results.
-    """
-    try:
-        result = extract_tests_and_examinations_code(scenario)
-        return result
-    except Exception as e:
-        print(f"Error activating tests and examinations analysis: {str(e)}")
-        return None
-
+tests_service = TestsAndExaminationsServices()
 # Example usage
 if __name__ == "__main__":
-    # Print the current Gemini model and temperature being used
-    llm_service = get_llm_service()
-    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
-    
-    scenario = "A patient with a history of diabetes has their HbA1c levels measured in the dental office prior to an extraction procedure."
-    result = activate_tests_and_examinations(scenario)
-    print(result)
+    tests_service = TestsAndExaminationsServices()
+    scenario = input("Enter a tests and examinations dental scenario: ")
+    tests_service.run_analysis(scenario)

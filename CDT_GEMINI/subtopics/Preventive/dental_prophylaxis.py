@@ -3,31 +3,35 @@ Module for extracting dental prophylaxis codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_dental_prophylaxis_extractor(temperature=0.0):
-    """
-    Create a LangChain-based dental prophylaxis code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class DentalProphylaxisServices:
+    """Class to analyze and extract dental prophylaxis codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template=f"""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing dental prophylaxis services."""
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert
 
 Before picking a code, ask:
 - What was the primary reason the patient came in? Was it for a routine cleaning, or to address a specific issue like pain or sensitivity?
-- What is the patient’s age and dentition status? Are they in permanent/transitional dentition (adult) or primary/transitional dentition (child)?
+- What is the patient's age and dentition status? Are they in permanent/transitional dentition (adult) or primary/transitional dentition (child)?
 - Are there any additional factors like heavy calculus buildup, staining, or medical conditions that might affect the procedure?
 - Is this a standalone prophylaxis, or is it paired with other diagnostic/treatment codes?
 - Does the patient have implants or other restorations that need consideration during the cleaning?
@@ -42,7 +46,7 @@ Before picking a code, ask:
   - Routine cleaning to remove plaque, calculus, and stains as part of preventive care.
   - Patient presents for a scheduled maintenance visit without specific complaints.
 - **What to check:**
-  - Confirm the patient’s age and dentition status (permanent/transitional, not primary).
+  - Confirm the patient's age and dentition status (permanent/transitional, not primary).
   - Assess the presence of plaque, calculus, and extrinsic stains on teeth and implants.
   - Evaluate oral health history for conditions like gingivitis or periodontal disease that might require a different code (e.g., D4346 or D4910).
   - Perform a basic oral exam to ensure no acute issues are present.
@@ -58,14 +62,14 @@ Before picking a code, ask:
   - Routine cleaning to remove plaque, calculus, and stains as part of preventive care.
   - Patient presents for a scheduled pediatric maintenance visit without specific complaints.
 - **What to check:**
-  - Verify the patient’s age and dentition status (primary/transitional, not fully permanent).
+  - Verify the patient's age and dentition status (primary/transitional, not fully permanent).
   - Inspect for plaque, calculus, and stains on primary teeth, transitional teeth, or implants (if present).
-  - Review the child’s dental and medical history for factors like caries risk or developmental issues.
+  - Review the child's dental and medical history for factors like caries risk or developmental issues.
   - Ensure the procedure aligns with pediatric preventive goals (e.g., fluoride application may follow but is coded separately).
 - **Notes:**
   - This code is specific to younger patients with developing dentition; switch to D1110 once permanent dentition dominates.
   - Focus is on controlling local irritants; extensive treatment (e.g., for caries or gingivitis) requires different codes.
-  - Parental education on oral hygiene may be part of the visit but isn’t billable under this code.
+  - Parental education on oral hygiene may be part of the visit but isn't billable under this code.
   - Documentation should note the dentition stage and any findings like early staining or minimal calculus.
 
 ---
@@ -75,40 +79,51 @@ Before picking a code, ask:
 - *Routine vs. Therapeutic:* Prophylaxis codes are for preventive cleanings, not treatment of active disease—choose wisely based on intent.
 - *Scope Over Volume:* Even if the cleaning takes extra time due to staining or calculus, stick to the prophylaxis code unless scaling/root planing is performed.
 - *Patient History:* Review medical/dental history to avoid miscoding if underlying conditions (e.g., diabetes, periodontal issues) complicate the visit.
-- *Documentation is Key:* Clearly note the patient’s dentition, findings, and procedure details to justify the code if audited.
+- *Documentation is Key:* Clearly note the patient's dentition, findings, and procedure details to justify the code if audited.
 
 
 
 
-Scenario:
-"{{question}}"
+Scenario: {{scenario}}
 
 {PROMPT}
 """,
-        input_variables=["question"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    def extract_dental_prophylaxis_code(self, scenario: str) -> str:
+        """Extract dental prophylaxis code(s) for a given scenario."""
+        try:
+            print(f"Analyzing dental prophylaxis scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Dental prophylaxis extract_dental_prophylaxis_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in dental prophylaxis code extraction: {str(e)}")
+            return ""
+    
+    def activate_dental_prophylaxis(self, scenario: str) -> str:
+        """Activate the dental prophylaxis analysis process and return results."""
+        try:
+            result = self.extract_dental_prophylaxis_code(scenario)
+            if not result:
+                print("No dental prophylaxis code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating dental prophylaxis analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_dental_prophylaxis(scenario)
+        print(f"\n=== DENTAL PROPHYLAXIS ANALYSIS RESULT ===")
+        print(f"DENTAL PROPHYLAXIS CODE: {result if result else 'None'}")
 
-def extract_dental_prophylaxis_code(scenario, temperature=0.0):
-    """
-    Extract dental prophylaxis code(s) for a given scenario.
-    """
-    try:
-        chain = create_dental_prophylaxis_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Dental prophylaxis code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_dental_prophylaxis_code: {str(e)}")
-        return ""
-
-def activate_dental_prophylaxis(scenario):
-    """
-    Activate dental prophylaxis analysis and return results.
-    """
-    try:
-        return extract_dental_prophylaxis_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_dental_prophylaxis: {str(e)}")
-        return "" 
+dental_prophylaxis_service = DentalProphylaxisServices()
+# Example usage
+if __name__ == "__main__":
+    scenario = input("Enter a dental prophylaxis dental scenario: ")
+    dental_prophylaxis_service.run_analysis(scenario) 

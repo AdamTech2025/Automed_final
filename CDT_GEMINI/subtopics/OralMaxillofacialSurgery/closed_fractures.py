@@ -4,30 +4,25 @@ Module for extracting treatment of closed fractures codes.
 
 import os
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+from llm_services import LLMService, get_service, set_model, set_temperature
 
 # Load environment variables
 load_dotenv()
 
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def activate_closed_fractures(scenario):
-    """
-    Analyze a dental scenario to determine closed fractures treatment code.
+class ClosedFracturesServices:
+    """Class to analyze and extract closed fractures treatment codes based on dental scenarios."""
     
-    Args:
-        scenario (str): The dental scenario to analyze.
-        
-    Returns:
-        str: The identified closed fractures treatment code or empty string if none found.
-    """
-    try:
-        llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=0.0)        
-        template = f"""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing closed fractures treatment scenarios."""
+        from subtopics.prompt.prompt import PROMPT
+        return PromptTemplate(
+            template=f"""
 You are a dental coding expert specializing in oral and maxillofacial trauma management,
 
 ## **Closed Fractures Treatment**
@@ -108,18 +103,45 @@ Scenario:
 "{{scenario}}"
 
 {PROMPT}
-"""
-        
-        prompt = PromptTemplate(template=template, input_variables=["scenario"])
-        chain = LLMChain(llm=llm, prompt=prompt)
-        
-        result = invoke_chain(chain, {"scenario": scenario}).strip()
-        
-        # Return empty string if no code found
-        if result == "None" or not result or "not applicable" in result.lower():
-            return ""
+""",
+            input_variables=["scenario"]
+        )
+    
+    def extract_closed_fractures_code(self, scenario: str) -> str:
+        """Extract closed fractures treatment code for a given scenario."""
+        try:
+            print(f"Analyzing closed fractures scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Closed fractures extract code result: {code}")
             
-        return result
-    except Exception as e:
-        print(f"Error in activate_closed_fractures: {str(e)}")
-        return "" 
+            # Return empty string if no code found
+            if code == "None" or not code or "not applicable" in code.lower():
+                return ""
+                
+            return code
+        except Exception as e:
+            print(f"Error in extract_closed_fractures_code: {str(e)}")
+            return ""
+    
+    def activate_closed_fractures(self, scenario: str) -> str:
+        """Activate the closed fractures treatment analysis process and return results."""
+        try:
+            return self.extract_closed_fractures_code(scenario)
+        except Exception as e:
+            print(f"Error in activate_closed_fractures: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_closed_fractures(scenario)
+        print(f"\n=== CLOSED FRACTURES TREATMENT ANALYSIS RESULT ===")
+        print(f"CLOSED FRACTURES TREATMENT CODE: {result if result else 'None'}")
+
+
+closed_fractures_service = ClosedFracturesServices()
+# Example usage
+if __name__ == "__main__":
+    scenario = input("Enter a closed fractures treatment scenario: ")
+    closed_fractures_service.run_analysis(scenario) 

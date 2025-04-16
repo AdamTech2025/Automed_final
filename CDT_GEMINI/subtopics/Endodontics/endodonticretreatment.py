@@ -1,19 +1,29 @@
 import os
 import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+
+# Add the parent directory to the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(current_dir))
 sys.path.append(parent_dir)
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
 
-
-
-def create_endodontic_retreatment_extractor():
-    """
-    Create a LangChain-based Endodontic Retreatment code extractor.
-    """
-    prompt_template = f"""
+class EndodonticRetreatmentServices:
+    """Class to analyze and extract endodontic retreatment codes based on dental scenarios."""
+    
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing endodontic retreatment."""
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert
 
 ### Before Picking a Code, Ask:
@@ -84,46 +94,47 @@ You are a highly experienced dental coding expert
 - **Restoration Exclusion:** Final restorations are coded separately—don't bundle them into retreatment codes.  
 - **Documentation Matters:** Insurance often demands narratives and imaging to support retreatment necessity.
 
-
-
-### **Scenario:**
-"{{scenario}}"
+Scenario: {{scenario}}
 
 {PROMPT}
-"""
+""",
+            input_variables=["scenario"]
+        )
     
-    prompt = PromptTemplate(template=prompt_template, input_variables=["scenario"])
-    return create_chain(prompt)
+    def extract_endodontic_retreatment_code(self, scenario: str) -> str:
+        """Extract endodontic retreatment code(s) for a given scenario."""
+        try:
+            print(f"Analyzing endodontic retreatment scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Endodontic retreatment extract_endodontic_retreatment_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in endodontic retreatment code extraction: {str(e)}")
+            return ""
+    
+    def activate_endodontic_retreatment(self, scenario: str) -> str:
+        """Activate the endodontic retreatment analysis process and return results."""
+        try:
+            result = self.extract_endodontic_retreatment_code(scenario)
+            if not result:
+                print("No endodontic retreatment code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating endodontic retreatment analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_endodontic_retreatment(scenario)
+        print(f"\n=== ENDODONTIC RETREATMENT ANALYSIS RESULT ===")
+        print(f"ENDODONTIC RETREATMENT CODE: {result if result else 'None'}")
 
-def extract_endodontic_retreatment_code(scenario):
-    """
-    Extract Endodontic Retreatment code(s) for a given scenario.
-    """
-    try:
-        extractor = create_endodontic_retreatment_extractor()
-        result = invoke_chain(extractor, {"scenario": scenario})
-        return result.get("text", "").strip()
-    except Exception as e:
-        print(f"Error in endodontic retreatment code extraction: {str(e)}")
-        return None
-
-def activate_endodontic_retreatment(scenario):
-    """
-    Activate Endodontic Retreatment analysis and return results.
-    """
-    try:
-        result = extract_endodontic_retreatment_code(scenario)
-        return result
-    except Exception as e:
-        print(f"Error activating endodontic retreatment analysis: {str(e)}")
-        return None
-
+endodontic_retreatment_service = EndodonticRetreatmentServices()
 # Example usage
 if __name__ == "__main__":
-    # Print the current Gemini model and temperature being used
-    llm_service = get_llm_service()
-    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
-    
-    scenario = "A patient comes in with pain in tooth #3 (upper right first molar). Radiographs show a periapical lesion on a tooth that had root canal therapy 3 years ago. The dentist determines retreatment is necessary and removes the old filling material, recleans and reshapes the canals, and places new filling material."
-    result = activate_endodontic_retreatment(scenario)
-    print(result) 
+    retreatment_service = EndodonticRetreatmentServices()
+    scenario = input("Enter an endodontic retreatment dental scenario: ")
+    retreatment_service.run_analysis(scenario)

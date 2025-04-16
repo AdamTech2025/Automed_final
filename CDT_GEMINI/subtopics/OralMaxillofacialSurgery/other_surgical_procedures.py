@@ -4,27 +4,25 @@ Module for extracting other oral and maxillofacial surgical procedures codes.
 
 import os
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+from llm_services import LLMService, get_service, set_model, set_temperature
 
 # Load environment variables
-try:
-    load_dotenv()
-except:
-    pass
+load_dotenv()
 
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_other_surgical_procedures_extractor(temperature=0.0):
-    """
-    Create a LangChain-based other surgical procedures code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class OtherSurgicalProceduresServices:
+    """Class to analyze and extract other surgical procedures codes based on dental scenarios."""
     
-    template = f"""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing other surgical procedures scenarios."""
+        from subtopics.prompt.prompt import PROMPT
+        return PromptTemplate(
+            template=f"""
     You are a dental coding expert specializing in oral and maxillofacial surgery.
     
   ## **Other Surgical Procedures** 
@@ -197,70 +195,50 @@ def create_other_surgical_procedures_extractor(temperature=0.0):
 **Note:** This procedure involves creating a surgical access flap to expose the previously placed bone plate and associated screws, carefully removing all hardware components, managing the surgical site including any necessary bone recontouring, and closing the flap with appropriate suturing techniques.
 **Clinical Considerations:** Performed after the device has served its purpose in orthodontic treatment, with timing based on treatment completion or any complications necessitating early removal.
 **Documentation Specifics:** Records should address the original placement date, reason for removal (treatment completion or complications), condition of surrounding tissues, any bone defects requiring management, and post-removal instructions.
- 
-#### **Code: D7299** – *Removal of temporary anchorage device, requiring flap* 
-**Use when:** Surgically removing a temporary anchorage device (not a plate) requiring flap reflection.
-**Check:** Verify that a mucoperiosteal flap is necessary for removal of the anchorage device.
-**Note:** This procedure involves creating a surgical access flap to expose a previously placed temporary anchorage device that cannot be removed with a flapless approach (due to tissue overgrowth, device fracture, or other complications), carefully removing the device with appropriate instrumentation, managing the surgical site, and closing with appropriate suturing.
-**Indications for Flap:** Documentation should explain why a flap is required for removal rather than a simpler flapless approach, such as significant tissue overgrowth, osseointegration requiring osteotomy, or device fracture.
-**Site Management:** Records should address how the remaining defect in the bone is managed following device removal and any recommendations for healing or follow-up.
- 
-#### **Code: D7300** – *Removal of temporary anchorage device without flap* 
-**Use when:** Removing a temporary anchorage device without the need for flap reflection.
-**Check:** Document that the device can be accessed and removed transmucosally without a surgical flap.
-**Note:** This minimally invasive procedure involves direct removal of a temporary anchorage device through the existing access in the gingiva without requiring flap reflection, typically performed by reversing the insertion process using the appropriate driver to unscrew and retrieve the device.
-**Patient Management:** Simpler and less invasive than flap procedures, usually requiring only topical or minimal local anesthesia, with minimal post-operative discomfort and rapid healing.
-**Documentation Considerations:** Records should note the condition of the device and surrounding tissues upon removal, any difficulties encountered during retrieval, and confirmation that all components were successfully removed.
- 
----
- 
-### **Salivary Procedures**
- 
-#### **Code: D7979** – *Non-surgical sialolithotomy* 
-**Use when:** Removing a stone from a salivary duct without requiring surgical incision.
-**Check:** Verify that the stone is accessible through the ductal opening without requiring surgical access.
-**Note:** This minimally invasive procedure involves removal of a salivary stone (sialolith) from Wharton's duct (submandibular) or Stensen's duct (parotid) using non-surgical techniques such as ductal dilation, salivary stimulation, manipulation, basket retrieval, or minimally invasive intraoral procedures that do not require surgical incision into the duct.
-**Procedural Distinction:** Differs from surgical sialolithotomy (D7980) which requires an incision into the duct or gland to access and remove the stone.
-**Clinical Indications:** Most appropriate for anterior stones that are palpable or visible, smaller stones without significant ductal strictures, or when patient factors favor the least invasive approach.
- 
----
- 
-### **Key Takeaways:** 
-- Other surgical procedures encompass a diverse range of techniques addressing varied clinical situations from sinus communications to tooth repositioning to diagnostic procedures.
-- Temporary anchorage device codes are differentiated based on whether they involve plates or single devices, and whether flap reflection is required for placement or removal.
-- Corticotomy procedures are coded based on the number of teeth involved (1-3 vs. 4+) per quadrant.
-- Diagnostic procedures range from minimally invasive cytological sampling to more definitive hard or soft tissue biopsies.
-- Tooth repositioning procedures include reimplantation of avulsed teeth, transplantation between sites, and movement within the same socket.
-- Proper documentation must specify the exact nature of the procedure, rationale, technique, materials used, and any additional procedures performed concurrently.
-- When multiple related procedures are performed together (such as exposure of an impacted tooth and placement of an orthodontic attachment), each should be coded separately.
-    
-    SCENARIO: {{question}}
-    
-    {PROMPT}
-    """
-    
-    prompt = PromptTemplate(template=template, input_variables=["question"])
-    return LLMChain(llm=llm, prompt=prompt)
 
-def extract_other_surgical_procedures_code(scenario, temperature=0.0):
-    """
-    Extract other surgical procedures code(s) for a given scenario.
-    """
-    try:
-        chain = create_other_surgical_procedures_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Other surgical procedures code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_other_surgical_procedures_code: {str(e)}")
-        return ""
+Scenario:
+"{{scenario}}"
 
-def activate_other_surgical_procedures(scenario):
-    """
-    Activate other surgical procedures analysis and return results.
-    """
-    try:
-        return extract_other_surgical_procedures_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_other_surgical_procedures: {str(e)}")
-        return "" 
+{PROMPT}
+""",
+            input_variables=["scenario"]
+        )
+    
+    def extract_other_surgical_procedures_code(self, scenario: str) -> str:
+        """Extract other surgical procedures code for a given scenario."""
+        try:
+            print(f"Analyzing other surgical procedures scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Other surgical procedures extract code result: {code}")
+            
+            # Return empty string if no code found
+            if code == "None" or not code or "not applicable" in code.lower():
+                return ""
+                
+            return code
+        except Exception as e:
+            print(f"Error in extract_other_surgical_procedures_code: {str(e)}")
+            return ""
+    
+    def activate_other_surgical_procedures(self, scenario: str) -> str:
+        """Activate the other surgical procedures analysis process and return results."""
+        try:
+            return self.extract_other_surgical_procedures_code(scenario)
+        except Exception as e:
+            print(f"Error in activate_other_surgical_procedures: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_other_surgical_procedures(scenario)
+        print(f"\n=== OTHER SURGICAL PROCEDURES ANALYSIS RESULT ===")
+        print(f"OTHER SURGICAL PROCEDURES CODE: {result if result else 'None'}")
+
+
+other_surgical_procedures_service = OtherSurgicalProceduresServices()
+# Example usage
+if __name__ == "__main__":
+    scenario = input("Enter an other surgical procedures scenario: ")
+    other_surgical_procedures_service.run_analysis(scenario) 

@@ -3,299 +3,242 @@ Module for extracting fixed partial denture retainers - crowns codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file    
 
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_fixed_partial_denture_retainers_crowns_extractor(temperature=0.0):
-    """
-    Create a LangChain-based fixed partial denture retainers - crowns code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class FixedPartialDentureRetainersCrownsServices:
+    """Class to analyze and extract fixed partial denture retainers crowns codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template=f"""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing fixed partial denture retainers crowns services."""
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert
-### Before picking a code, ask:
-- What was the primary reason the patient came in? Was it to replace a missing tooth with a fixed partial denture or to address a specific issue with an existing retainer crown?
-- What material is being used for the retainer crown (e.g., resin, porcelain, metal, or a combination)?
-- Is the procedure for a permanent restoration, or is it an interim solution requiring further treatment?
-- What type of metal (if any) is involved—high noble, noble, predominantly base, titanium, or none?
-- Does the patient have any allergies, aesthetic preferences, or functional concerns that influence material choice?
 
-#### Code: D6710  
-**Heading:** Retainer crown – indirect resin-based composite  
-**When to Use:**  
-- Used for fixed prosthodontic retainers made from indirect resin composite materials.  
-- Selected when esthetics and cost are prioritized over longevity and durability.  
-**What to Check:**  
-- Ensure the restoration is **not** being used as a provisional or temporary prosthesis.  
-- Confirm the patient has no contraindications to resin-based materials (e.g., bruxism).  
-**Notes:**  
-- Not intended as a temporary restoration.  
-- Longevity may be less than metal or porcelain-based options.
+### **Before picking a code, ask:**
+- What was the primary reason the patient came in?
+- What is the material of the crown retainer (e.g., porcelain, metal, zirconia)?
+- Is this a new crown retainer or a repair/replacement?
+- Which tooth or teeth are involved?
+- What is the condition of the abutment tooth (e.g., heavily restored, minimal preparation)?
 
 ---
 
-#### Code: D6720  
-**Heading:** Retainer crown – resin with high noble metal  
-**When to Use:**  
-- Use when the prosthodontic retainer is constructed with resin over a **high noble metal** substructure.  
-- Common in cases where esthetics are secondary to strength and biocompatibility.  
-**What to Check:**  
-- Ensure documentation includes alloy content (must meet ADA definition of “high noble metal”).  
-- Confirm retention needs and substructure support.  
-**Notes:**  
-- Offers high strength and excellent fit due to high noble content.  
+### **Code: D6710**  
+**Heading:** Retainer Crown - Indirect Resin-Based Composite  
+**Use when:** The patient needs a crown made of indirect resin-based composite to serve as a retainer in a fixed partial denture.  
+**Check:** Verify that the crown is fabricated from laboratory-processed composite resin, not direct composite.  
+**Note:** This offers a more economical option than porcelain or metal, but with less durability for long-term use.
 
 ---
 
-#### Code: D6721  
-**Heading:** Retainer crown – resin with predominantly base metal  
-**When to Use:**  
-- For crowns using resin veneering over a **predominantly base metal** core.  
-- Economical alternative with reasonable strength.  
-**What to Check:**  
-- Identify the alloy type used; verify it meets base metal standards.  
-- Evaluate esthetic zones where metal discoloration could be a concern.  
-**Notes:**  
-- May be less biocompatible or prone to corrosion over time than noble metals.
+### **Code: D6720**  
+**Heading:** Retainer Crown - Resin with High Noble Metal  
+**Use when:** The patient needs a crown with a high noble metal substructure and resin facing to serve as a retainer.  
+**Check:** Confirm the use of high noble metal (significant gold content) with resin overlay.  
+**Note:** Provides good strength from the metal with esthetic resin facing. More economical than PFM but less esthetic than all-ceramic.
 
 ---
 
-#### Code: D6722  
-**Heading:** Retainer crown – resin with noble metal  
-**When to Use:**  
-- Applied when using a resin veneer over a **noble metal** alloy base.  
-- Mid-range option offering a balance of strength, esthetics, and cost.  
-**What to Check:**  
-- Document noble metal content and any resin material types used.  
-- Review margin integrity and occlusal stress.  
-**Notes:**  
-- Not as durable as full metal or porcelain fused restorations.
+### **Code: D6721**  
+**Heading:** Retainer Crown - Resin with Predominantly Base Metal  
+**Use when:** The patient needs a crown with a predominantly base metal substructure and resin facing as a retainer.  
+**Check:** Verify the use of base metal (e.g., nickel-chromium) with resin overlay.  
+**Note:** More economical option than noble metal crowns, but may present biocompatibility issues for patients with metal sensitivities.
 
 ---
 
-#### Code: D6740  
-**Heading:** Retainer crown – porcelain/ceramic  
-**When to Use:**  
-- For retainers where esthetics are the **primary** concern (e.g., anterior FPD).  
-- Suitable when metal-free restorations are requested or needed.  
-**What to Check:**  
-- Assess occlusion—ceramic crowns can be brittle under high force.  
-- Check esthetic needs and alignment.  
-**Notes:**  
-- Offers superior esthetics; may be contraindicated in heavy occlusion areas.
+### **Code: D6722**  
+**Heading:** Retainer Crown - Resin with Noble Metal  
+**Use when:** The patient needs a crown with a noble metal substructure and resin facing to serve as a retainer.  
+**Check:** Confirm the use of noble metal (contains precious metals but less than high noble) with resin overlay.  
+**Note:** A middle-ground option between high noble and base metal in terms of cost and properties.
 
 ---
 
-#### Code: D6750  
-**Heading:** Retainer crown – porcelain fused to high noble metal  
-**When to Use:**  
-- Best for fixed bridges requiring esthetics and strength.  
-- The gold alloy base provides excellent fit and longevity.  
-**What to Check:**  
-- Verify high noble metal content (e.g., gold >60%).  
-- Ensure the patient doesn't require a full-metal or all-ceramic alternative.  
-**Notes:**  
-- Gold alloy base minimizes corrosion and improves tissue response.
+### **Code: D6740**  
+**Heading:** Retainer Crown - Porcelain/Ceramic  
+**Use when:** The patient needs an all-ceramic crown to serve as a retainer in a fixed partial denture.  
+**Check:** Verify the crown is entirely made of ceramic or porcelain with no metal substructure.  
+**Note:** Provides excellent esthetics, especially for anterior bridges. Consider occlusal forces and span length when using all-ceramic retainers.
 
 ---
 
-#### Code: D6751  
-**Heading:** Retainer crown – porcelain fused to predominantly base metal  
-**When to Use:**  
-- For retainers in less visible areas where cost is a concern.  
-- Combines strength of base metal with porcelain esthetics.  
-**What to Check:**  
-- Ensure base metal usage is documented (nickel-chromium, cobalt-chromium, etc.).  
-**Notes:**  
-- May show more wear on opposing dentition compared to ceramic.
+### **Code: D6750**  
+**Heading:** Retainer Crown - Porcelain Fused to High Noble Metal  
+**Use when:** The patient needs a porcelain-fused-to-high-noble-metal crown as a retainer.  
+**Check:** Confirm the use of high noble metal with porcelain overlay for esthetics.  
+**Note:** Combines strength of gold alloy with the esthetics of porcelain. Good for posterior and anterior regions.
 
 ---
 
-#### Code: D6752  
-**Heading:** Retainer crown – porcelain fused to noble metal  
-**When to Use:**  
-- Middle-ground option for esthetics and durability.  
-- Less expensive than high noble, better longevity than base metal.  
-**What to Check:**  
-- Confirm noble metal content (~25%–60%).  
-- Evaluate tissue biocompatibility and restoration site.  
-**Notes:**  
-- Good esthetic and functional compromise.
+### **Code: D6751**  
+**Heading:** Retainer Crown - Porcelain Fused to Predominantly Base Metal  
+**Use when:** The patient needs a porcelain-fused-to-base-metal crown as a retainer.  
+**Check:** Verify the use of predominantly base metal with porcelain overlay.  
+**Note:** More affordable than high noble metal. Monitor for potential metal allergies or gingival discoloration over time.
 
 ---
 
-#### Code: D6753  
-**Heading:** Retainer crown – porcelain fused to titanium and titanium alloys  
-**When to Use:**  
-- Often used in patients with metal allergies or implant-related prosthetics.  
-**What to Check:**  
-- Confirm titanium compatibility with adjacent materials and soft tissue.  
-**Notes:**  
-- Excellent biocompatibility; slightly lower esthetic translucency.
+### **Code: D6752**  
+**Heading:** Retainer Crown - Porcelain Fused to Noble Metal  
+**Use when:** The patient needs a porcelain-fused-to-noble-metal crown as a retainer.  
+**Check:** Confirm the use of noble metal with porcelain overlay.  
+**Note:** Provides a balance between cost and biocompatibility compared to high noble and base metal options.
 
 ---
 
-#### Code: D6780  
-**Heading:** Retainer crown – ¾ cast high noble metal  
-**When to Use:**  
-- Chosen when full coverage is not needed; ideal for preserving tooth structure.  
-**What to Check:**  
-- Evaluate remaining tooth structure and ability to bond partial coverage crown.  
-**Notes:**  
-- Requires precise prep; not recommended for high caries risk.
+### **Code: D6753**  
+**Heading:** Retainer Crown - Porcelain Fused to Titanium and Titanium Alloys  
+**Use when:** The patient needs a porcelain-fused-to-titanium crown as a retainer.  
+**Check:** Verify the use of titanium substructure with porcelain overlay.  
+**Note:** Excellent biocompatibility option for patients with allergies to conventional dental alloys.
 
 ---
 
-#### Code: D6781  
-**Heading:** Retainer crown – ¾ cast predominantly base metal  
-**When to Use:**  
-- For cost-sensitive cases where full crown isn't needed.  
-**What to Check:**  
-- Ensure adequate prep and that patient understands limitations in longevity and esthetics.  
-**Notes:**  
-- Strength is acceptable but esthetics and long-term performance may vary.
+### **Code: D6780**  
+**Heading:** Retainer Crown - 3/4 Cast High Noble Metal  
+**Use when:** The patient needs a three-quarter cast crown made of high noble metal as a retainer.  
+**Check:** Confirm this is a partial coverage restoration (covering three of the four axial surfaces) in high noble metal.  
+**Note:** More conservative option that preserves tooth structure while providing retention for the bridge.
 
 ---
 
-#### Code: D6782  
-**Heading:** Retainer crown – ¾ cast noble metal  
-**When to Use:**  
-- Moderate-cost option between high noble and base metal.  
-**What to Check:**  
-- Confirm metal composition and margin fit.  
-**Notes:**  
-- Less esthetic due to visible metal.
+### **Code: D6781**  
+**Heading:** Retainer Crown - 3/4 Cast Predominantly Base Metal  
+**Use when:** The patient needs a three-quarter cast crown made of predominantly base metal as a retainer.  
+**Check:** Verify this is a partial coverage restoration in predominantly base metal.  
+**Note:** Economical option for cases where full coverage is not required and some tooth structure can be preserved.
 
 ---
 
-#### Code: D6783  
-**Heading:** Retainer crown – ¾ porcelain/ceramic  
-**When to Use:**  
-- For patients needing partial esthetic coverage in anterior or premolar areas.  
-**What to Check:**  
-- Ensure prep design and occlusal forces are compatible with ceramic.  
-**Notes:**  
-- Preserves more tooth structure but fragile under bruxing forces.
+### **Code: D6782**  
+**Heading:** Retainer Crown - 3/4 Cast Noble Metal  
+**Use when:** The patient needs a three-quarter cast crown made of noble metal as a retainer.  
+**Check:** Confirm this is a partial coverage restoration in noble metal.  
+**Note:** Mid-range option in terms of cost and properties for partial coverage bridge retainers.
 
 ---
 
-#### Code: D6784  
-**Heading:** Retainer crown – ¾ titanium and titanium alloys  
-**When to Use:**  
-- Typically used in implant-retained restorations or patients with sensitivities.  
-**What to Check:**  
-- Titanium selection must align with the clinical setting (e.g., implant platforms).  
-**Notes:**  
-- Highly biocompatible; esthetic limitations exist.
+### **Code: D6783**  
+**Heading:** Retainer Crown - 3/4 Porcelain/Ceramic  
+**Use when:** The patient needs a three-quarter crown made of porcelain/ceramic as a retainer.  
+**Check:** Verify this is a partial coverage restoration entirely in ceramic material.  
+**Note:** Provides good esthetics while preserving some tooth structure. Consider carefully for high-stress areas.
 
 ---
 
-#### Code: D6790  
-**Heading:** Retainer crown – full cast high noble metal  
-**When to Use:**  
-- Ideal for posterior fixed bridges needing maximum durability.  
-**What to Check:**  
-- Ensure patient is okay with lack of esthetics (visible gold).  
-**Notes:**  
-- Gold standard for strength and marginal seal.
+### **Code: D6784**  
+**Heading:** Retainer Crown - 3/4 Titanium and Titanium Alloys  
+**Use when:** The patient needs a three-quarter crown made of titanium as a retainer.  
+**Check:** Confirm this is a partial coverage restoration in titanium.  
+**Note:** Biocompatible option for patients with metal allergies who also benefit from partial coverage design.
 
 ---
 
-#### Code: D6791  
-**Heading:** Retainer crown – full cast predominantly base metal  
-**When to Use:**  
-- Used when strength is needed and esthetics are not a concern.  
-**What to Check:**  
-- Base metal type and allergy considerations.  
-**Notes:**  
-- Cost-effective but may lead to tissue sensitivity over time.
+### **Code: D6790**  
+**Heading:** Retainer Crown - Full Cast High Noble Metal  
+**Use when:** The patient needs a full cast crown made entirely of high noble metal as a retainer.  
+**Check:** Verify the crown is fabricated completely from high noble metal with no porcelain or resin facing.  
+**Note:** Extremely durable option, ideal for posterior bridges with significant occlusal forces.
 
 ---
 
-#### Code: D6792  
-**Heading:** Retainer crown – full cast noble metal  
-**When to Use:**  
-- Solid crown for functional areas with moderate cost sensitivity.  
-**What to Check:**  
-- Document noble metal percentage.  
-**Notes:**  
-- Compromise between full cast gold and cheaper base metal crowns.
+### **Code: D6791**  
+**Heading:** Retainer Crown - Full Cast Predominantly Base Metal  
+**Use when:** The patient needs a full cast crown made entirely of predominantly base metal as a retainer.  
+**Check:** Confirm the crown is fabricated completely from base metal.  
+**Note:** Economical and strong option for posterior bridges. Screen for potential metal sensitivities.
 
 ---
 
-#### Code: D6793  
-**Heading:** Provisional retainer crown – further treatment or diagnosis pending  
-**When to Use:**  
-- Temporarily placed when more diagnostics or treatment planning is needed.  
-**What to Check:**  
-- Ensure this is not confused with a routine temporary crown.  
-**Notes:**  
-- Not to be used as a temporary restoration for final prosthesis waiting period.
+### **Code: D6792**  
+**Heading:** Retainer Crown - Full Cast Noble Metal  
+**Use when:** The patient needs a full cast crown made entirely of noble metal as a retainer.  
+**Check:** Verify the crown is fabricated completely from noble metal.  
+**Note:** Good middle-ground option for full cast retainers in terms of cost and properties.
 
 ---
 
-#### Code: D6794  
-**Heading:** Retainer crown – titanium and titanium alloys  
-**When to Use:**  
-- Used especially in patients with metal sensitivities or implant scenarios.  
-**What to Check:**  
-- Verify compatibility with implant components if relevant.  
-**Notes:**  
-- Superior tissue response; not esthetically ideal in visible zones.
+### **Code: D6793**  
+**Heading:** Interim Retainer Crown - Further Treatment or Completion of Diagnosis Necessary Prior to Final Impression  
+**Use when:** The patient needs a temporary crown to serve as a bridge retainer while awaiting final treatment decisions.  
+**Check:** Confirm this is truly an interim restoration, not a permanent retainer crown.  
+**Note:** Used when diagnosis is incomplete or when healing must occur before final impressions.
 
-### Key Takeaways:
-- **Material Matters:** Match the crown material to patient needs—durability (metals), aesthetics (porcelain), or biocompatibility (titanium).
-- **Full vs. Partial Coverage:** Use 3/4 crowns to preserve tooth structure when possible; full crowns for maximum strength.
-- **Permanent vs. Interim:** Reserve D6793 for temporary solutions; all others are permanent restorations.
-- **Patient Preferences:** Discuss aesthetics, cost, and longevity to align code choice with patient expectations.
-- **Post-Placement Checks:** Always verify occlusion, fit, and patient comfort after seating any retainer crown.
+---
 
-Scenario:
-"{{question}}"
+### **Code: D6794**  
+**Heading:** Retainer Crown - Titanium and Titanium Alloys  
+**Use when:** The patient needs a full cast crown made entirely of titanium as a retainer.  
+**Check:** Verify the crown is fabricated completely from titanium.  
+**Note:** Highly biocompatible option for patients with metal sensitivities. Lightweight yet strong.
+
+---
+
+### **Key Takeaways:**
+- **Material Selection:** Material choice impacts code selection, durability, esthetics, and cost.
+- **Full vs. Partial Coverage:** Three-quarter crowns (D6780-D6784) preserve more tooth structure but may not be suitable for all abutment teeth.
+- **Metal Type Matters:** Distinguish between high noble, noble, and base metals based on precious metal content.
+- **Biocompatibility:** Consider titanium options (D6753, D6784, D6794) for patients with metal allergies.
+- **Interim vs. Definitive:** Interim retainer crowns (D6793) should only be used temporarily while awaiting final treatment.
+
+Scenario: {{scenario}}
 
 {PROMPT}
 """,
-        input_variables=["question"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    def extract_fixed_partial_denture_retainers_crowns_code(self, scenario: str) -> str:
+        """Extract fixed partial denture retainers crowns code(s) for a given scenario."""
+        try:
+            print(f"Analyzing fixed partial denture retainers crowns scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Fixed partial denture retainers crowns extract_fixed_partial_denture_retainers_crowns_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in fixed partial denture retainers crowns code extraction: {str(e)}")
+            return ""
+    
+    def activate_fixed_partial_denture_retainers_crowns(self, scenario: str) -> str:
+        """Activate the fixed partial denture retainers crowns analysis process and return results."""
+        try:
+            result = self.extract_fixed_partial_denture_retainers_crowns_code(scenario)
+            if not result:
+                print("No fixed partial denture retainers crowns code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating fixed partial denture retainers crowns analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_fixed_partial_denture_retainers_crowns(scenario)
+        print(f"\n=== FIXED PARTIAL DENTURE RETAINERS CROWNS ANALYSIS RESULT ===")
+        print(f"FIXED PARTIAL DENTURE RETAINERS CROWNS CODE: {result if result else 'None'}")
 
-def extract_fixed_partial_denture_retainers_crowns_code(scenario, temperature=0.0):
-    """
-    Extract fixed partial denture retainers - crowns code(s) for a given scenario.
-    """
-    try:
-        chain = create_fixed_partial_denture_retainers_crowns_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Fixed partial denture retainers - crowns code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_fixed_partial_denture_retainers_crowns_code: {str(e)}")
-        return ""
-
-def activate_fixed_partial_denture_retainers_crowns(scenario):
-    """
-    Activate fixed partial denture retainers - crowns analysis and return results.
-    """
-    try:
-        return extract_fixed_partial_denture_retainers_crowns_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_fixed_partial_denture_retainers_crowns: {str(e)}")
-        return ""
+# Create and export service instance
+fixed_partial_denture_retainers_crowns_service = FixedPartialDentureRetainersCrownsServices()
 
 # Example usage
 if __name__ == "__main__":
-    scenario = "Patient needs a three-unit bridge to replace a missing molar. The abutment teeth will need full cast crown retainers made from high noble metal."
-    result = activate_fixed_partial_denture_retainers_crowns(scenario)
-    print(result) 
+    scenario = input("Enter a fixed partial denture retainers crowns dental scenario: ")
+    fixed_partial_denture_retainers_crowns_service.run_analysis(scenario) 

@@ -3,34 +3,37 @@ Module for extracting other preventive services codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
-
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_other_preventive_services_extractor(temperature=0.0):
-    """
-    Create a LangChain-based other preventive services code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class OtherPreventiveServices:
+    """Class to analyze and extract other preventive services codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template=f"""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing other preventive services."""
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert
 
  Before picking a code, ask:
 - What was the primary reason the patient came in? Was it for routine prevention, or to address a specific risk factor like caries, periodontal disease, or substance use?
-- What is the patient’s risk profile? Are they at high risk for caries, oral disease, or behavioral health issues?
+- What is the patient's risk profile? Are they at high risk for caries, oral disease, or behavioral health issues?
 - Is the service educational (counseling/instructions) or a physical intervention (sealant/medicament)?
-- Does the patient’s dental or medical history support the need for this preventive measure?
+- Does the patient's dental or medical history support the need for this preventive measure?
 - Are there specific teeth or conditions targeted, or is this a general preventive service?
 
 ---
@@ -42,7 +45,7 @@ You are a highly experienced dental coding expert
   - Patient receives counseling on diet and food choices to manage caries or periodontal disease.
   - Part of a preventive or treatment plan for patients with dietary-related oral health risks.
 - **What to check:**
-  - Assess patient’s dietary habits (e.g., sugar intake, acidic foods) linked to caries or gum issues.
+  - Assess patient's dietary habits (e.g., sugar intake, acidic foods) linked to caries or gum issues.
   - Confirm counseling is specific to dental disease control, not general nutrition advice.
   - Review dental history for active caries or periodontal conditions justifying the service.
 - **Notes:**
@@ -55,7 +58,7 @@ You are a highly experienced dental coding expert
   - Patient receives tobacco cessation or prevention counseling to reduce oral disease risk.
   - Aimed at improving outcomes for dental therapies affected by tobacco use.
 - **What to check:**
-  - Verify patient’s tobacco use history (e.g., smoking, chewing) and related oral findings.
+  - Verify patient's tobacco use history (e.g., smoking, chewing) and related oral findings.
   - Ensure counseling addresses specific oral risks (e.g., cancer, periodontal disease).
   - Check if cessation aids or referrals were provided as part of the session.
 - **Notes:**
@@ -68,7 +71,7 @@ You are a highly experienced dental coding expert
   - Patient receives education on oral, behavioral, and systemic effects of high-risk substance use (e.g., alcohol, opioids, cannabis, vaping).
   - Targets prevention or management of substance-related oral health issues.
 - **What to check:**
-  - Identify patient’s substance use patterns and administration methods (e.g., inhaling, ingesting).
+  - Identify patient's substance use patterns and administration methods (e.g., inhaling, ingesting).
   - Assess oral signs like enamel erosion, xerostomia, or soft tissue damage tied to substance use.
   - Confirm counseling addresses specific health effects, not just general warnings.
 - **Notes:**
@@ -81,7 +84,7 @@ You are a highly experienced dental coding expert
   - Patient receives personalized home care instructions (e.g., brushing, flossing techniques).
   - Part of preventive education to improve oral hygiene practices.
 - **What to check:**
-  - Evaluate patient’s current oral hygiene skills and areas needing improvement.
+  - Evaluate patient's current oral hygiene skills and areas needing improvement.
   - Confirm instructions are tailored (e.g., use of interdental brushes, specific techniques).
   - Check if aids like floss or mouthwash were demonstrated or recommended.
 - **Notes:**
@@ -96,7 +99,7 @@ You are a highly experienced dental coding expert
 - **What to check:**
   - Confirm tooth is caries-free and sealant-eligible (e.g., deep pits/fissures).
   - Verify preparation method (e.g., etching) and sealant material used.
-  - Assess patient’s caries risk to justify the procedure.
+  - Assess patient's caries risk to justify the procedure.
 - **Notes:**
   - Per-tooth code—bill separately for each tooth treated.
   - Not for teeth with existing restorations or decay extending into dentin.
@@ -108,7 +111,7 @@ You are a highly experienced dental coding expert
   - Includes sealant placement in non-carious radiating fissures/pits.
 - **What to check:**
   - Confirm lesion is active but shallow (enamel-only, no dentin involvement).
-  - Verify patient’s moderate-to-high caries risk status.
+  - Verify patient's moderate-to-high caries risk status.
   - Ensure procedure includes both restoration and sealant components.
 - **Notes:**
   - For permanent teeth only; bridges preventive and restorative care.
@@ -117,7 +120,7 @@ You are a highly experienced dental coding expert
 
 #### Code: D1353 - Sealant Repair — Per Tooth
 - **When to use:**
-  - Repair or replacement of a previously placed sealant that’s damaged or lost.
+  - Repair or replacement of a previously placed sealant that's damaged or lost.
   - Applied to maintain decay prevention on a specific tooth.
 - **What to check:**
   - Confirm prior sealant placement and current condition (e.g., chipped, worn).
@@ -158,48 +161,51 @@ You are a highly experienced dental coding expert
 
 ### Key Takeaways:
 - *Counseling vs. Application:* D1310-D1330 focus on education; D1351-D1355 involve physical interventions—match intent to code.
-- *Risk-Based Coding:* Patient’s caries or disease risk drives code selection (e.g., D1352 for high-risk patients).
+- *Risk-Based Coding:* Patient's caries or disease risk drives code selection (e.g., D1352 for high-risk patients).
 - *Per-Tooth Specificity:* Codes like D1351-D1355 require tooth numbers and detailed notes for billing accuracy.
 - *Patient Education:* Counseling codes (D1310-D1321) enhance outcomes but need specific oral health ties to justify use.
 - *Documentation Precision:* Link services to patient history, risk factors, and procedure details to support claims.
 
-
-Scenario:
-"{{question}}"
+Scenario: {{scenario}}
 
 {PROMPT}
 """,
-        input_variables=["question"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template)
-
-def extract_other_preventive_services_code(scenario, temperature=0.0):
-    """
-    Extract the most applicable other preventive services code from a scenario.
+    def extract_other_preventive_services_code(self, scenario: str) -> str:
+        """Extract other preventive services code(s) for a given scenario."""
+        try:
+            print(f"Analyzing other preventive services scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Other preventive services extract_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in other preventive services code extraction: {str(e)}")
+            return ""
     
-    Args:
-        scenario (str): The dental scenario
-        temperature (float): The temperature setting for the model
-        
-    Returns:
-        str: The extracted code or empty string
-    """
-    try:
-        chain = create_other_preventive_services_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Other preventive services code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_other_preventive_services_code: {str(e)}")
-        return ""
+    def activate_other_preventive_services(self, scenario: str) -> str:
+        """Activate the other preventive services analysis process and return results."""
+        try:
+            result = self.extract_other_preventive_services_code(scenario)
+            if not result:
+                print("No other preventive services code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating other preventive services analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_other_preventive_services(scenario)
+        print(f"\n=== OTHER PREVENTIVE SERVICES ANALYSIS RESULT ===")
+        print(f"OTHER PREVENTIVE SERVICES CODE: {result if result else 'None'}")
 
-def activate_other_preventive_services(scenario):
-    """
-    Activate other preventive services analysis and return results.
-    """
-    try:
-        return extract_other_preventive_services_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_other_preventive_services: {str(e)}")
-        return "" 
+other_preventive_service = OtherPreventiveServices()
+# Example usage
+if __name__ == "__main__":
+    scenario = input("Enter an other preventive services dental scenario: ")
+    other_preventive_service.run_analysis(scenario) 

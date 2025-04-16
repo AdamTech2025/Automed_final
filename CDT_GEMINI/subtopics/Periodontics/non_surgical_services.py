@@ -3,25 +3,29 @@ Module for extracting non-surgical periodontal services codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_non_surgical_services_extractor(temperature=0.0):
-    """
-    Create a LangChain-based non-surgical periodontal services code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class NonSurgicalServicesPeriodontics:
+    """Class to analyze and extract non-surgical periodontal services codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing non-surgical periodontal services."""
+        return PromptTemplate(
         template=f"""
 You are a highly experienced dental coding expert
 
@@ -40,10 +44,10 @@ Before picking a code, ask:
 **What to check:**
 - Confirm the teeth or crowns involved are structurally sound enough for intra-coronal splinting.
 - Assess the degree of mobility and periodontal status (e.g., pocket depths, bone loss).
-- Verify patient’s bite and occlusion to ensure splinting won’t disrupt function.
+- Verify patient's bite and occlusion to ensure splinting won't disrupt function.
 
 **Notes:**
-- This is not a standalone treatment; it’s an adjunct to periodontal therapy or restorative work.
+- This is not a standalone treatment; it's an adjunct to periodontal therapy or restorative work.
 - Requires precise documentation of the teeth involved and the method of splinting (e.g., composite, wire).
 - Not appropriate if teeth are too compromised to support the splint.
 
@@ -65,7 +69,7 @@ Before picking a code, ask:
 ### D4341 - Periodontal Scaling and Root Planing — Four or More Teeth per Quadrant
 **When to use:**
 - For patients with diagnosed periodontal disease requiring therapeutic scaling and root planing on four or more teeth per quadrant.
-- Indicated when there’s plaque, calculus, and rough root surfaces due to disease progression.
+- Indicated when there's plaque, calculus, and rough root surfaces due to disease progression.
 
 **What to check:**
 - Confirm periodontal disease via charting (pocket depths ≥4mm, bleeding on probing, bone loss).
@@ -73,7 +77,7 @@ Before picking a code, ask:
 - Assess for systemic factors (e.g., diabetes) that may influence healing.
 
 **Notes:**
-- This is not a preventive procedure; it’s therapeutic and requires a periodontal diagnosis.
+- This is not a preventive procedure; it's therapeutic and requires a periodontal diagnosis.
 - May involve local anesthesia and multiple visits depending on severity.
 - Documentation must include quadrant(s) treated and clinical findings (e.g., pocket depths pre- and post-treatment).
 
@@ -84,11 +88,11 @@ Before picking a code, ask:
 
 **What to check:**
 - Verify periodontal disease with clinical evidence (e.g., pocket depths, calculus, bone loss) on 1-3 teeth per quadrant.
-- Ensure the rest of the quadrant doesn’t qualify for D4341 (4+ teeth).
+- Ensure the rest of the quadrant doesn't qualify for D4341 (4+ teeth).
 - Check for adjacent tissue health to rule out broader inflammation.
 
 **Notes:**
-- Requires precise documentation of which teeth are treated and why (e.g., “Tooth #3, 5mm pocket with calculus”).
+- Requires precise documentation of which teeth are treated and why (e.g., "Tooth #3, 5mm pocket with calculus").
 - Not for prophylaxis; must be tied to a periodontal diagnosis.
 - May be a precursor to more extensive treatment if disease progresses.
 
@@ -114,12 +118,12 @@ Before picking a code, ask:
 
 **What to check:**
 - Assess the extent of plaque/calculus buildup obscuring periodontal assessment.
-- Confirm that a comprehensive evaluation (e.g., D0150, D0160) isn’t possible without debridement.
-- Check patient’s ability to tolerate the procedure (may need anesthesia).
+- Confirm that a comprehensive evaluation (e.g., D0150, D0160) isn't possible without debridement.
+- Check patient's ability to tolerate the procedure (may need anesthesia).
 
 **Notes:**
-- Not a definitive treatment; it’s preparatory for a future periodontal diagnosis.
-- Documentation must justify why a full exam couldn’t be completed initially.
+- Not a definitive treatment; it's preparatory for a future periodontal diagnosis.
+- Documentation must justify why a full exam couldn't be completed initially.
 - Typically followed by a recall visit for detailed charting and treatment planning.
 
 ### D4381 - Localized Delivery of Antimicrobial Agents via a Controlled Release Vehicle into Diseased Crevicular Tissue, Per Tooth
@@ -130,7 +134,7 @@ Before picking a code, ask:
 **What to check:**
 - Confirm periodontal disease with pockets ≥4mm post-scaling/root planing that remain unresponsive.
 - Identify specific teeth and pocket depths for treatment.
-- Verify patient isn’t allergic to the antimicrobial agent used.
+- Verify patient isn't allergic to the antimicrobial agent used.
 
 **Notes:**
 - Requires prior scaling/root planing; not a standalone treatment.
@@ -144,35 +148,47 @@ Before picking a code, ask:
 - Adjunct Procedures: Splinting (D4322/D4323) and antimicrobials (D4381) enhance stability or therapy, not replace it.
 - Documentation is King: Insurers require detailed narratives (e.g., pocket depths, tooth numbers, clinical justification) for approval.
 
-
-
-{{question}}
+SCENARIO: {{scenario}}
 {PROMPT}
 """,
-        input_variables=["question"]    
+            input_variables=["scenario"]
     )
+
+    def extract_non_surgical_services_code(self, scenario: str) -> str:
+        """Extract non-surgical periodontal services code for a given scenario."""
+        try:
+            print(f"Analyzing non-surgical periodontal scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Non-surgical periodontal extract_non_surgical_services_code result: {code}")
+            return code
+        except Exception as e:
+            
+                print(f"Error in non-surgical periodontal code extraction: {str(e)}")
+                return ""
+
+    def activate_non_surgical_services(self, scenario: str) -> str:
+        """Activate the non-surgical periodontal services analysis process and return results."""
+        try:
+            result = self.extract_non_surgical_services_code(scenario)
+            if not result:
+                print("No non-surgical periodontal code returned")
+                return ""
+            return result
+        except Exception as e:
+                print(f"Error activating non-surgical periodontal analysis: {str(e)}")
+                return "" 
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_non_surgical_services(scenario)
+        print(f"\n=== NON-SURGICAL PERIODONTAL ANALYSIS RESULT ===")
+        print(f"NON-SURGICAL PERIODONTAL CODE: {result if result else 'None'}")
 
-def extract_non_surgical_services_code(scenario, temperature=0.0):
-    """
-    Extract non-surgical periodontal services code(s) for a given scenario.
-    """
-    try:
-        chain = create_non_surgical_services_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Non-surgical periodontal services code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_non_surgical_services_code: {str(e)}")
-        return ""
 
-def activate_non_surgical_services(scenario):
-    """
-    Activate non-surgical periodontal services analysis and return results.
-    """
-    try:
-        return extract_non_surgical_services_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_non_surgical_services: {str(e)}")
-        return "" 
+non_surgical_services = NonSurgicalServicesPeriodontics()
+# Example usage
+if __name__ == "__main__":
+    scenario = input("Enter a non-surgical periodontal scenario: ")
+    non_surgical_services.run_analysis(scenario) 

@@ -3,26 +3,30 @@ Module for extracting gold foil restorations codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_gold_foil_restorations_extractor(temperature=0.0):
-    """
-    Create a LangChain-based gold foil restorations code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class GoldFoilRestorationsServices:
+    """Class to analyze and extract gold foil restorations codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template=f"""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing gold foil restorations services."""
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert
 
 
@@ -43,9 +47,9 @@ You are a highly experienced dental coding expert
   - Typically for small caries or defects limited to a single surface (e.g., occlusal or facial).
 - **What to check:**
   - Confirm the restoration involves only one surface (e.g., occlusal, buccal, lingual).
-  - Verify the use of gold foil (not amalgam or composite) and the tooth’s condition (e.g., minimal caries).
+  - Verify the use of gold foil (not amalgam or composite) and the tooth's condition (e.g., minimal caries).
   - Ensure the procedure includes preparation, gold foil condensation, and finishing.
-  - Check that the lesion size and location suit gold foil’s conservative approach.
+  - Check that the lesion size and location suit gold foil's conservative approach.
 - **Notes:**
   - Per-tooth code—specify tooth number and surface in documentation.
   - Rare today due to labor-intensive technique; often chosen for durability or patient preference.
@@ -86,47 +90,51 @@ You are a highly experienced dental coding expert
 
 ### Key Takeaways:
 - *Surface Count Drives Coding:* Codes escalate from D2410 to D2430 based on the number of surfaces restored—count accurately.
-- *Gold Foil Specificity:* These codes are exclusive to gold foil restorations—don’t confuse with amalgam (D2140-D2161) or composite (D2330-D2394).
+- *Gold Foil Specificity:* These codes are exclusive to gold foil restorations—don't confuse with amalgam (D2140-D2161) or composite (D2330-D2394).
 - *Conservative Use:* Gold foil is suited for small, precise restorations—larger defects may warrant alternative materials.
-- *Patient Education:* Discuss gold foil’s longevity and esthetic trade-offs, though not billable under these codes.
+- *Patient Education:* Discuss gold foil's longevity and esthetic trade-offs, though not billable under these codes.
 - *Documentation Precision:* Specify tooth number, surfaces restored, and clinical justification (e.g., caries size) to support claims and audits.
 
-
-Scenario:
-"{{question}}"
+SCENARIO: {{scenario}}
 
 {PROMPT}
 """,
-        input_variables=["question"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template)
-
-def extract_gold_foil_restorations_code(scenario, temperature=0.0):
-    """
-    Extract gold foil restorations code(s) for a given scenario.
-    """
-    try:
-        chain = create_gold_foil_restorations_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Gold foil restorations code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_gold_foil_restorations_code: {str(e)}")
-        return ""
-
-def activate_gold_foil_restorations(scenario):
-    """
-    Activate gold foil restorations analysis and return results.
-    """
-    try:
-        return extract_gold_foil_restorations_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_gold_foil_restorations: {str(e)}")
-        return ""
+    def extract_gold_foil_restorations_code(self, scenario: str) -> str:
+        """Extract gold foil restorations code(s) for a given scenario."""
+        try:
+            print(f"Analyzing gold foil restorations scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Gold foil restorations extract_gold_foil_restorations_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in gold foil restorations code extraction: {str(e)}")
+            return ""
+    
+    def activate_gold_foil_restorations(self, scenario: str) -> str:
+        """Activate the gold foil restorations analysis process and return results."""
+        try:
+            result = self.extract_gold_foil_restorations_code(scenario)
+            if not result:
+                print("No gold foil restorations code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating gold foil restorations analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_gold_foil_restorations(scenario)
+        print(f"\n=== GOLD FOIL RESTORATIONS ANALYSIS RESULT ===")
+        print(f"GOLD FOIL RESTORATIONS CODE: {result if result else 'None'}")
 
 # Example usage
 if __name__ == "__main__":
-    scenario = "Patient requests a gold foil restoration on the occlusal surface of tooth #14."
-    result = activate_gold_foil_restorations(scenario)
-    print(result) 
+    gold_foil_restorations_service = GoldFoilRestorationsServices()
+    scenario = input("Enter a gold foil restorations dental scenario: ")
+    gold_foil_restorations_service.run_analysis(scenario) 

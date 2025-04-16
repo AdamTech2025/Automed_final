@@ -3,26 +3,30 @@ Module for extracting crown codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_crowns_extractor(temperature=0.0):
-    """
-    Create a LangChain-based crowns code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class CrownsServices:
+    """Class to analyze and extract crown codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template=f"""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing crown services."""
+        return PromptTemplate(
+            template=f"""
     You are a highly experienced dental coding expert
 
 Before picking a code, ask:**
@@ -145,45 +149,46 @@ Before picking a code, ask:**
 
 This document provides a structured approach for selecting the correct restorative crown codes, ensuring accurate treatment planning and billing.
 
-
-
-
-
-Scenario:
-"{{question}}"
+SCENARIO: {{scenario}}
 
 {PROMPT}
 """,
-        input_variables=["question"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template)
-
-def extract_crowns_code(scenario, temperature=0.0):
-    """
-    Extract crowns code(s) for a given scenario.
-    """
-    try:
-        chain = create_crowns_extractor(temperature)
-        result = invoke_chain(chain, {"scenario": scenario})
-        print(f"Crowns code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_crowns_code: {str(e)}")
-        return ""
-
-def activate_crowns(scenario):
-    """
-    Activate crowns analysis and return results.
-    """
-    try:
-        return extract_crowns_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_crowns: {str(e)}")
-        return ""
+    def extract_crowns_code(self, scenario: str) -> str:
+        """Extract crown code(s) for a given scenario."""
+        try:
+            print(f"Analyzing crowns scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Crowns extract_crowns_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in crowns code extraction: {str(e)}")
+            return ""
+    
+    def activate_crowns(self, scenario: str) -> str:
+        """Activate the crowns analysis process and return results."""
+        try:
+            result = self.extract_crowns_code(scenario)
+            if not result:
+                print("No crowns code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating crowns analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_crowns(scenario)
+        print(f"\n=== CROWNS ANALYSIS RESULT ===")
+        print(f"CROWNS CODE: {result if result else 'None'}")
 
 # Example usage
 if __name__ == "__main__":
-    scenario = "Patient needs a full porcelain crown on tooth #8 after root canal treatment."
-    result = activate_crowns(scenario)
-    print(result) 
+    crowns_service = CrownsServices()
+    scenario = input("Enter a crowns dental scenario: ")
+    crowns_service.run_analysis(scenario) 

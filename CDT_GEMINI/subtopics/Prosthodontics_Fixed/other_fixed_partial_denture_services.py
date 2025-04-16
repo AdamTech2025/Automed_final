@@ -3,26 +3,30 @@ Module for extracting other fixed partial denture services codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_other_fixed_partial_denture_services_extractor(temperature=0.0):
-    """
-    Create a LangChain-based other fixed partial denture services code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class OtherFixedPartialDentureServicesServices:
+    """Class to analyze and extract other fixed partial denture services codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template=f"""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing other fixed partial denture services services."""
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert
 
 Before picking a code, ask:
@@ -70,7 +74,7 @@ Before picking a code, ask:
 
 ### Code: D6999  
 **Heading:** unspecified fixed prosthodontic procedure, by report  
-- **When to use:** When a fixed prosthodontic procedure doesn’t fit any specific code and requires a detailed narrative description.  
+- **When to use:** When a fixed prosthodontic procedure doesn't fit any specific code and requires a detailed narrative description.  
 - **What to check:** Ensure no other code applies and provide a thorough report detailing the procedure, materials, and purpose. Verify clinical necessity and uniqueness.  
 - **Notes:** Use sparingly; narrative must justify the procedure for insurance approval. Common for experimental or highly customized work; include photos if possible.
 
@@ -83,41 +87,48 @@ Before picking a code, ask:
 
 
 
-Scenario:
-"{{question}}"
+Scenario: {{scenario}}
 
 {PROMPT}
 """,
-        input_variables=["question"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    def extract_other_fixed_partial_denture_services_code(self, scenario: str) -> str:
+        """Extract other fixed partial denture services code(s) for a given scenario."""
+        try:
+            print(f"Analyzing other fixed partial denture services scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Other fixed partial denture services extract_other_fixed_partial_denture_services_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in other fixed partial denture services code extraction: {str(e)}")
+            return ""
+    
+    def activate_other_fixed_partial_denture_services(self, scenario: str) -> str:
+        """Activate the other fixed partial denture services analysis process and return results."""
+        try:
+            result = self.extract_other_fixed_partial_denture_services_code(scenario)
+            if not result:
+                print("No other fixed partial denture services code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating other fixed partial denture services analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_other_fixed_partial_denture_services(scenario)
+        print(f"\n=== OTHER FIXED PARTIAL DENTURE SERVICES ANALYSIS RESULT ===")
+        print(f"OTHER FIXED PARTIAL DENTURE SERVICES CODE: {result if result else 'None'}")
 
-def extract_other_fixed_partial_denture_services_code(scenario, temperature=0.0):
-    """
-    Extract other fixed partial denture services code(s) for a given scenario.
-    """
-    try:
-        chain = create_other_fixed_partial_denture_services_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Other fixed partial denture services code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_other_fixed_partial_denture_services_code: {str(e)}")
-        return ""
-
-def activate_other_fixed_partial_denture_services(scenario):
-    """
-    Activate other fixed partial denture services analysis and return results.
-    """
-    try:
-        return extract_other_fixed_partial_denture_services_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_other_fixed_partial_denture_services: {str(e)}")
-        return ""
+# Create and export service instance
+other_fixed_partial_denture_services_service = OtherFixedPartialDentureServicesServices()
 
 # Example usage
 if __name__ == "__main__":
-    scenario = "Patient's 3-year-old fixed partial denture has a fractured pontic due to material failure and needs repair."
-    result = activate_other_fixed_partial_denture_services(scenario)
-    print(result) 
+    scenario = input("Enter an other fixed partial denture services dental scenario: ")
+    other_fixed_partial_denture_services_service.run_analysis(scenario) 

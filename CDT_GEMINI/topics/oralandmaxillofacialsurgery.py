@@ -1,8 +1,13 @@
 import os
 import sys
+import asyncio
 from dotenv import load_dotenv
 from langchain.prompts import PromptTemplate
-from llm_services import create_chain, invoke_chain, get_llm_service
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+from sub_topic_registry import SubtopicRegistry
+
+# Load environment variables
 load_dotenv()
 
 # Add the root directory to the Python path
@@ -10,38 +15,94 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 sys.path.append(root_dir)
 
-# Now import modules
+# Import modules
 from topics.prompt import PROMPT
-from subtopics.OralMaxillofacialSurgery import (
-    activate_extractions,
-    activate_other_surgical_procedures,
-    activate_alveoloplasty,
-    activate_vestibuloplasty,
-    activate_excision_soft_tissue,
-    activate_excision_intra_osseous,
-    activate_excision_bone_tissue,
-    activate_surgical_incision,
-    activate_closed_fractures,
-    activate_open_fractures,
-    activate_tmj_dysfunctions,
-    activate_traumatic_wounds,
-    activate_complicated_suturing,
-    activate_other_repair_procedures
-)
 
-def analyze_oral_maxillofacial_surgery(scenario):
-    """
-    Analyze an oral and maxillofacial surgery scenario and return relevant code ranges.
+# Import service objects from subtopics with fallback mechanism
+try:
+    from subtopics.OralMaxillofacialSurgery.alveoloplasty import alveoloplasty_service
+    from subtopics.OralMaxillofacialSurgery.excision_soft_tissue import excision_soft_tissue_service
+    from subtopics.OralMaxillofacialSurgery.excision_intra_osseous import excision_intra_osseous_service
+    from subtopics.OralMaxillofacialSurgery.excision_bone_tissue import excision_bone_tissue_service
+    from subtopics.OralMaxillofacialSurgery.extractions import extractions_service
+    from subtopics.OralMaxillofacialSurgery.closed_fractures import closed_fractures_service
+    from subtopics.OralMaxillofacialSurgery.open_fractures import open_fractures_service
+    from subtopics.OralMaxillofacialSurgery.other_surgical_procedures import other_surgical_procedures_service
+    from subtopics.OralMaxillofacialSurgery.surgical_incision import surgical_incision_service
+    from subtopics.OralMaxillofacialSurgery.tmj_dysfunctions import tmj_dysfunctions_service
+    from subtopics.OralMaxillofacialSurgery.traumatic_wounds import traumatic_wounds_service
+    from subtopics.OralMaxillofacialSurgery.complicated_suturing import complicated_suturing_service
+    from subtopics.OralMaxillofacialSurgery.other_repair_procedures import other_repair_procedures_service
+    from subtopics.OralMaxillofacialSurgery.vestibuloplasty import vestibuloplasty_service
     
-    Args:
-        scenario (str): The dental scenario text to analyze
-        
-    Returns:
-        str: The identified oral and maxillofacial surgery code range(s)
-    """
-    try:
-        # Create the prompt template
-        prompt_template = PromptTemplate(
+except ImportError as e:
+    print(f"Warning: Could not import subtopics for OralMaxillofacialSurgery: {str(e)}")
+    print(f"Current sys.path: {sys.path}")
+    # Define fallback functions
+    def activate_extractions(scenario): return None
+    def activate_other_surgical_procedures(scenario): return None
+    def activate_alveoloplasty(scenario): return None
+    def activate_vestibuloplasty(scenario): return None
+    def activate_excision_soft_tissue(scenario): return None
+    def activate_excision_intra_osseous(scenario): return None
+    def activate_excision_bone_tissue(scenario): return None
+    def activate_surgical_incision(scenario): return None
+    def activate_closed_fractures(scenario): return None
+    def activate_open_fractures(scenario): return None
+    def activate_tmj_dysfunctions(scenario): return None
+    def activate_traumatic_wounds(scenario): return None
+    def activate_complicated_suturing(scenario): return None
+    def activate_other_repair_procedures(scenario): return None
+
+class OralMaxillofacialSurgeryServices:
+    """Class to analyze and activate oral and maxillofacial surgery services based on dental scenarios."""
+    
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+        self.registry = SubtopicRegistry()
+        self._register_subtopics()
+    
+    def _register_subtopics(self):
+        """Register all subtopics for parallel activation."""
+        try:
+            self.registry.register("D7111-D7140", extractions_service.activate_extractions, 
+                                "Extractions (D7111-D7140)")
+            self.registry.register("D7210-D7251", extractions_service.activate_extractions, 
+                                "Surgical Extractions (D7210-D7251)")
+            self.registry.register("D7260-D7297", other_surgical_procedures_service.activate_other_surgical_procedures, 
+                                "Other Surgical Procedures (D7260-D7297)")
+            self.registry.register("D7310-D7321", alveoloplasty_service.activate_alveoloplasty, 
+                                "Alveoloplasty (D7310-D7321)")
+            self.registry.register("D7340-D7350", vestibuloplasty_service.activate_vestibuloplasty, 
+                                "Vestibuloplasty (D7340-D7350)")
+            self.registry.register("D7410-D7465", excision_soft_tissue_service.activate_excision_soft_tissue, 
+                                "Excision of Soft Tissue Lesions (D7410-D7465)")
+            self.registry.register("D7440-D7461", excision_intra_osseous_service.activate_excision_intra_osseous, 
+                                "Excision of Intra-Osseous Lesions (D7440-D7461)")
+            self.registry.register("D7471-D7490", excision_bone_tissue_service.activate_excision_bone_tissue, 
+                                "Excision of Bone Tissue (D7471-D7490)")
+            self.registry.register("D7510-D7560", surgical_incision_service.activate_surgical_incision, 
+                                "Surgical Incision (D7510-D7560)")
+            self.registry.register("D7610-D7780", closed_fractures_service.activate_closed_fractures, 
+                                "Treatment of Closed Fractures (D7610-D7780)")
+            self.registry.register("D7610-D7780", open_fractures_service.activate_open_fractures, 
+                                "Treatment of Open Fractures (D7610-D7780)")
+            self.registry.register("D7810-D7880", tmj_dysfunctions_service.activate_tmj_dysfunctions, 
+                                "Reduction of Dislocation (D7810-D7880)")
+            self.registry.register("D7910-D7912", traumatic_wounds_service.activate_traumatic_wounds, 
+                                "Repair of Traumatic Wounds (D7910-D7912)")
+            self.registry.register("D7911-D7912", complicated_suturing_service.activate_complicated_suturing, 
+                                "Complicated Suturing (D7911-D7912)")
+            self.registry.register("D7920-D7999", other_repair_procedures_service.activate_other_repair_procedures, 
+                                "Other Repair Procedures (D7920-D7999)")
+        except Exception as e:
+            print(f"Error registering subtopics: {str(e)}")
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing oral and maxillofacial surgery services."""
+        return PromptTemplate(
             template=f"""
 You are a highly experienced dental coding expert with over 15 years of expertise in ADA dental codes. 
 Your task is to analyze the given scenario and determine the most applicable oral and maxillofacial surgery code range(s) based on the following classifications:
@@ -147,179 +208,70 @@ List them in order of relevance, with the most relevant first.
 """,
             input_variables=["scenario"]
         )
-        
-        # Create the chain using our LLM service
-        chain = create_chain(prompt_template)
-        
-        # Use the provided scenario directly
-        print(f"Analyzing oral and maxillofacial surgery scenario: {scenario[:100]}...")
-        
-        # Use invoke through our LLM service
-        result = invoke_chain(chain, {"scenario": scenario})
-        
-        # Extract the text from the result
-        code_range = result.get("text", "").strip()
-        
-        print(f"Oral & Maxillofacial Surgery analyze_oral_maxillofacial_surgery result: {code_range}")
-        return code_range
-    except Exception as e:
-        print(f"Error in analyze_oral_maxillofacial_surgery: {str(e)}")
-        return ""
-
-def activate_oral_maxillofacial_surgery(scenario):
-    """
-    Activate oral and maxillofacial surgery analysis and return the results with specific subtopic activations.
     
-    Args:
-        scenario (str): The dental scenario text to analyze
-        
-    Returns:
-        dict: A dictionary containing the code range, subtopic and specific codes
-    """
-    try:
-        # Get the code range from the analysis
-        oral_surgery_result = analyze_oral_maxillofacial_surgery(scenario)
-        if not oral_surgery_result:
-            print("No oral and maxillofacial surgery result returned")
+    def analyze_oral_maxillofacial_surgery(self, scenario: str) -> str:
+        """Analyze the scenario to determine applicable code ranges."""
+        try:
+            print(f"Analyzing oral and maxillofacial surgery scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code_range = result.strip()
+            print(f"Oral & Maxillofacial Surgery analyze_oral_maxillofacial_surgery result: {code_range}")
+            return code_range
+        except Exception as e:
+            print(f"Error in analyze_oral_maxillofacial_surgery: {str(e)}")
+            return ""
+    
+    async def activate_oral_maxillofacial_surgery(self, scenario: str) -> dict:
+        """Activate relevant subtopics in parallel and return detailed results."""
+        try:
+            # Get the code range from the analysis
+            oral_surgery_result = self.analyze_oral_maxillofacial_surgery(scenario)
+            if not oral_surgery_result:
+                print("No oral and maxillofacial surgery result returned")
+                return {}
+            
+            print(f"Oral & Maxillofacial Surgery Result in activate_oral_maxillofacial_surgery: {oral_surgery_result}")
+            
+            # Activate subtopics in parallel using the registry
+            result = await self.registry.activate_all(scenario, oral_surgery_result)
+            
+            # Initialize lists from registry results
+            topic_result = result["topic_result"]
+            activated_subtopics = result["activated_subtopics"]
+            
+            # Special case for sialoliths
+            if "sialolith" in scenario.lower() and "D7260-D7297" not in oral_surgery_result:
+                print("Activating subtopic: Other Surgical Procedures (D7260-D7297) - Sialolithotomy")
+                code = other_surgical_procedures_service.activate_other_surgical_procedures(scenario)
+                if code:
+                    topic_result.append(code)
+                    activated_subtopics.append("Other Surgical Procedures (D7260-D7297) - Sialolithotomy")
+            
+            # Return a dictionary with the required fields
+            return {
+                "code_range": oral_surgery_result,
+                "activated_subtopics": activated_subtopics,
+                "codes": topic_result
+            }
+        except Exception as e:
+            print(f"Error in oral and maxillofacial surgery analysis: {str(e)}")
             return {}
-        
-        print(f"Oral & Maxillofacial Surgery Result in activate_oral_maxillofacial_surgery: {oral_surgery_result}")
-        
-        # Process specific oral and maxillofacial surgery subtopics based on the result
-        specific_codes = []
-        activated_subtopics = []
-        
-        # Check for each subtopic and activate if applicable
-        if "D7111-D7251" in oral_surgery_result:
-            print("Activating subtopic: Extractions (D7111-D7251)")
-            extractions_code = activate_extractions(scenario)
-            if extractions_code:
-                specific_codes.append(extractions_code)
-                activated_subtopics.append("Extractions (D7111-D7251)")
-                
-        if "D7260-D7297" in oral_surgery_result:
-            print("Activating subtopic: Other Surgical Procedures (D7260-D7297)")
-            other_surgical_code = activate_other_surgical_procedures(scenario)
-            if other_surgical_code:
-                specific_codes.append(other_surgical_code)
-                activated_subtopics.append("Other Surgical Procedures (D7260-D7297)")
-                
-        # For sialoliths, also check other surgical procedures even if not explicitly in the result
-        if "sialolith" in scenario.lower() and "D7260-D7297" not in oral_surgery_result:
-            print("Activating subtopic: Other Surgical Procedures (D7260-D7297) - Sialolithotomy")
-            other_surgical_code = activate_other_surgical_procedures(scenario)
-            if other_surgical_code:
-                specific_codes.append(other_surgical_code)
-                activated_subtopics.append("Other Surgical Procedures (D7260-D7297) - Sialolithotomy")
-                
-        if "D7310-D7321" in oral_surgery_result:
-            print("Activating subtopic: Alveoloplasty (D7310-D7321)")
-            alveoloplasty_code = activate_alveoloplasty(scenario)
-            if alveoloplasty_code:
-                specific_codes.append(alveoloplasty_code)
-                activated_subtopics.append("Alveoloplasty (D7310-D7321)")
-                
-        if "D7340-D7350" in oral_surgery_result:
-            print("Activating subtopic: Vestibuloplasty (D7340-D7350)")
-            vestibuloplasty_code = activate_vestibuloplasty(scenario)
-            if vestibuloplasty_code:
-                specific_codes.append(vestibuloplasty_code)
-                activated_subtopics.append("Vestibuloplasty (D7340-D7350)")
-                
-        if "D7410-D7465" in oral_surgery_result:
-            print("Activating subtopic: Excision of Soft Tissue Lesions (D7410-D7465)")
-            soft_tissue_code = activate_excision_soft_tissue(scenario)
-            if soft_tissue_code:
-                specific_codes.append(soft_tissue_code)
-                activated_subtopics.append("Excision of Soft Tissue Lesions (D7410-D7465)")
-                
-        if "D7440-D7461" in oral_surgery_result:
-            print("Activating subtopic: Excision of Intra-Osseous Lesions (D7440-D7461)")
-            intra_osseous_code = activate_excision_intra_osseous(scenario)
-            if intra_osseous_code:
-                specific_codes.append(intra_osseous_code)
-                activated_subtopics.append("Excision of Intra-Osseous Lesions (D7440-D7461)")
-                
-        if "D7471-D7490" in oral_surgery_result:
-            print("Activating subtopic: Excision of Bone Tissue (D7471-D7490)")
-            bone_tissue_code = activate_excision_bone_tissue(scenario)
-            if bone_tissue_code:
-                specific_codes.append(bone_tissue_code)
-                activated_subtopics.append("Excision of Bone Tissue (D7471-D7490)")
-                
-        if "D7509-D7560" in oral_surgery_result:
-            print("Activating subtopic: Surgical Incision (D7509-D7560)")
-            surgical_incision_code = activate_surgical_incision(scenario)
-            if surgical_incision_code:
-                specific_codes.append(surgical_incision_code)
-                activated_subtopics.append("Surgical Incision (D7509-D7560)")
-                
-        if "D7610-D7680" in oral_surgery_result:
-            print("Activating subtopic: Treatment of Closed Fractures (D7610-D7680)")
-            closed_fractures_code = activate_closed_fractures(scenario)
-            if closed_fractures_code:
-                specific_codes.append(closed_fractures_code)
-                activated_subtopics.append("Treatment of Closed Fractures (D7610-D7680)")
-                
-        if "D7710-D7780" in oral_surgery_result:
-            print("Activating subtopic: Treatment of Open Fractures (D7710-D7780)")
-            open_fractures_code = activate_open_fractures(scenario)
-            if open_fractures_code:
-                specific_codes.append(open_fractures_code)
-                activated_subtopics.append("Treatment of Open Fractures (D7710-D7780)")
-                
-        if "D7810-D7899" in oral_surgery_result:
-            print("Activating subtopic: TMJ Dysfunctions (D7810-D7899)")
-            tmj_code = activate_tmj_dysfunctions(scenario)
-            if tmj_code:
-                specific_codes.append(tmj_code)
-                activated_subtopics.append("TMJ Dysfunctions (D7810-D7899)")
-                
-        if "D7910" in oral_surgery_result:
-            print("Activating subtopic: Repair of Traumatic Wounds (D7910)")
-            traumatic_wounds_code = activate_traumatic_wounds(scenario)
-            if traumatic_wounds_code:
-                specific_codes.append(traumatic_wounds_code)
-                activated_subtopics.append("Repair of Traumatic Wounds (D7910)")
-                
-        if "D7911-D7912" in oral_surgery_result:
-            print("Activating subtopic: Complicated Suturing (D7911-D7912)")
-            complicated_suturing_code = activate_complicated_suturing(scenario)
-            if complicated_suturing_code:
-                specific_codes.append(complicated_suturing_code)
-                activated_subtopics.append("Complicated Suturing (D7911-D7912)")
-                
-        if "D7920-D7999" in oral_surgery_result:
-            print("Activating subtopic: Other Repair Procedures (D7920-D7999)")
-            other_repair_code = activate_other_repair_procedures(scenario)
-            if other_repair_code:
-                specific_codes.append(other_repair_code)
-                activated_subtopics.append("Other Repair Procedures (D7920-D7999)")
-        
-        # Choose the primary subtopic (either the first activated or a default)
-        primary_subtopic = activated_subtopics[0] if activated_subtopics else "Extractions (D7111-D7251)"
-        
-        # Return the results in standardized format
-        return {
-            "code_range": oral_surgery_result,
-            "subtopic": primary_subtopic,
-            "activated_subtopics": activated_subtopics,
-            "codes": specific_codes
-        }
-    except Exception as e:
-        print(f"Error in oral and maxillofacial surgery analysis: {str(e)}")
-        return {}
+    
+    async def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = await self.activate_oral_maxillofacial_surgery(scenario)
+        print(f"\n=== ORAL & MAXILLOFACIAL SURGERY ANALYSIS RESULT ===")
+        print(f"CODE RANGE: {result.get('code_range', 'None')}")
+        print(f"ACTIVATED SUBTOPICS: {', '.join(result.get('activated_subtopics', []))}")
+        print(f"SPECIFIC CODES: {', '.join(result.get('codes', []))}")
 
+oral_surgery_service = OralMaxillofacialSurgeryServices()
 # Example usage
 if __name__ == "__main__":
-    # Print the current Gemini model and temperature being used
-    llm_service = get_llm_service()
-    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
+    async def main():
+        oral_surgery_service = OralMaxillofacialSurgeryServices()
+        scenario = input("Enter an oral and maxillofacial surgery scenario: ")
+        await oral_surgery_service.run_analysis(scenario)
     
-    scenario = input("Enter an oral and maxillofacial surgery scenario: ")
-    result = activate_oral_maxillofacial_surgery(scenario)
-    print(f"\n=== ORAL & MAXILLOFACIAL SURGERY ANALYSIS RESULT ===")
-    print(f"CODE RANGE: {result.get('code_range', 'None')}")
-    print(f"PRIMARY SUBTOPIC: {result.get('subtopic', 'None')}")
-    print(f"ACTIVATED SUBTOPICS: {', '.join(result.get('activated_subtopics', []))}")
-    print(f"SPECIFIC CODES: {', '.join(result.get('codes', []))}")
+    asyncio.run(main())

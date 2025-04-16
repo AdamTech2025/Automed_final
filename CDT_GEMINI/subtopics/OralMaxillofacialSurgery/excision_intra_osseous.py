@@ -4,25 +4,25 @@ Module for extracting excision of intra-osseous lesions codes.
 
 import os
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+from llm_services import LLMService, get_service, set_model, set_temperature
 
 # Load environment variables
 load_dotenv()
 
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_excision_intra_osseous_extractor(temperature=0.0):
-    """
-    Create a LangChain-based excision of intra-osseous lesions code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class ExcisionIntraOsseousServices:
+    """Class to analyze and extract excision of intra-osseous lesions codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template=f"""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing excision of intra-osseous lesions scenarios."""
+        from subtopics.prompt.prompt import PROMPT
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert specializing in oral and maxillofacial pathology,
 
 ## **Excision of Intra-Osseous Lesions**
@@ -86,34 +86,48 @@ You are a highly experienced dental coding expert specializing in oral and maxil
 - **Follow-up Protocol** - The planned approach for monitoring healing and assessing for recurrence should be included, particularly for lesions with higher recurrence potential.
 
 Scenario:
-"{{question}}"
+"{{scenario}}"
 
 {PROMPT}
 """,
-        input_variables=["question"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    def extract_excision_intra_osseous_code(self, scenario: str) -> str:
+        """Extract excision of intra-osseous lesions code for a given scenario."""
+        try:
+            print(f"Analyzing excision of intra-osseous lesions scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Excision of intra-osseous lesions extract code result: {code}")
+            
+            # Return empty string if no code found
+            if code == "None" or not code or "not applicable" in code.lower():
+                return ""
+                
+            return code
+        except Exception as e:
+            print(f"Error in extract_excision_intra_osseous_code: {str(e)}")
+            return ""
+    
+    def activate_excision_intra_osseous(self, scenario: str) -> str:
+        """Activate the excision of intra-osseous lesions analysis process and return results."""
+        try:
+            return self.extract_excision_intra_osseous_code(scenario)
+        except Exception as e:
+            print(f"Error in activate_excision_intra_osseous: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_excision_intra_osseous(scenario)
+        print(f"\n=== EXCISION OF INTRA-OSSEOUS LESIONS ANALYSIS RESULT ===")
+        print(f"EXCISION OF INTRA-OSSEOUS LESIONS CODE: {result if result else 'None'}")
 
-def extract_excision_intra_osseous_code(scenario, temperature=0.0):
-    """
-    Extract excision of intra-osseous lesions code(s) for a given scenario.
-    """
-    try:
-        chain = create_excision_intra_osseous_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Excision of intra-osseous lesions code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_excision_intra_osseous_code: {str(e)}")
-        return ""
 
-def activate_excision_intra_osseous(scenario):
-    """
-    Activate excision of intra-osseous lesions analysis and return results.
-    """
-    try:
-        return extract_excision_intra_osseous_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_excision_intra_osseous: {str(e)}")
-        return "" 
+excision_intra_osseous_service = ExcisionIntraOsseousServices()
+# Example usage
+if __name__ == "__main__":
+    scenario = input("Enter an excision of intra-osseous lesions scenario: ")
+    excision_intra_osseous_service.run_analysis(scenario) 

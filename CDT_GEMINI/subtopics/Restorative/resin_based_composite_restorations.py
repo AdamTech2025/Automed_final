@@ -3,34 +3,37 @@ Module for extracting resin-based composite restorations codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
-
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_resin_based_composite_restorations_extractor(temperature=0.0):
-    """
-    Create a LangChain-based resin-based composite restorations code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class ResinBasedCompositeRestorationsServices:
+    """Class to analyze and extract resin-based composite restorations codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template=f"""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing resin-based composite restorations services."""
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert
 
 ### Before picking a code, ask:
 - What was the primary reason the patient came in? Was it to restore a carious lesion, erosion, or trauma, or for a cosmetic concern?
 - Is the restoration on an anterior or posterior tooth, and how many surfaces are involved?
 - Does the restoration involve the incisal angle (anterior) or full crown coverage?
-- Is the lesion into the dentin (posterior), or is this a preventive procedure (which wouldn’t apply)?
+- Is the lesion into the dentin (posterior), or is this a preventive procedure (which wouldn't apply)?
 - Are there any complicating factors (e.g., patient preference, occlusion issues) that might affect coding?
 
 ---
@@ -57,7 +60,7 @@ You are a highly experienced dental coding expert
 - **What to check:**
   - Confirm two surfaces are restored on an anterior tooth (e.g., mesial and incisal, or facial and lingual).
   - Verify preparation and composite placement across both surfaces.
-  - Check that the incisal angle isn’t involved (use D2335 if it is).
+  - Check that the incisal angle isn't involved (use D2335 if it is).
 - **Notes:**
   - Per-tooth code—document tooth number and surfaces (e.g., MF).
   - Common for proximal caries with facial extension in anterior teeth.
@@ -70,7 +73,7 @@ You are a highly experienced dental coding expert
 - **What to check:**
   - Confirm three surfaces are restored on an anterior tooth (e.g., MFD).
   - Verify the extent of decay or damage and composite application across all surfaces.
-  - Ensure the incisal angle isn’t involved (use D2335 if it is).
+  - Ensure the incisal angle isn't involved (use D2335 if it is).
 - **Notes:**
   - Per-tooth code—list tooth number and surfaces in documentation.
   - Often used for extensive anterior restorations without incisal angle loss.
@@ -96,7 +99,7 @@ You are a highly experienced dental coding expert
 - **What to check:**
   - Confirm the restoration covers the entire anterior tooth (all surfaces).
   - Verify the procedure involves extensive preparation and composite buildup.
-  - Assess if the tooth’s structure is too compromised for lesser codes (e.g., D2335).
+  - Assess if the tooth's structure is too compromised for lesser codes (e.g., D2335).
 - **Notes:**
   - Per-tooth code—specify tooth number and full coverage in documentation.
   - Not for partial restorations—use D2330-D2335 for fewer surfaces.
@@ -163,43 +166,46 @@ You are a highly experienced dental coding expert
 - *Patient Education:* Discuss composite benefits (esthetics) and care, though not billable under these codes.
 - *Documentation Precision:* Record tooth number, surfaces, dentin involvement (posterior), and clinical justification to support claims and audits.
 
-
-
-Scenario:
-"{{question}}"
+SCENARIO: {{scenario}}
 
 {PROMPT}
 """,
-        input_variables=["question"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template)
-
-def extract_resin_based_composite_restorations_code(scenario, temperature=0.0):
-    """
-    Extract resin-based composite restorations code(s) for a given scenario.
-    """
-    try:
-        chain = create_resin_based_composite_restorations_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Resin-based composite restorations code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_resin_based_composite_restorations_code: {str(e)}")
-        return ""
-
-def activate_resin_based_composite_restorations(scenario):
-    """
-    Activate resin-based composite restorations analysis and return results.
-    """
-    try:
-        return extract_resin_based_composite_restorations_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_resin_based_composite_restorations: {str(e)}")
-        return ""
+    def extract_resin_based_composite_restorations_code(self, scenario: str) -> str:
+        """Extract resin-based composite restorations code(s) for a given scenario."""
+        try:
+            print(f"Analyzing resin-based composite restorations scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Resin-based composite restorations extract_resin_based_composite_restorations_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in resin-based composite restorations code extraction: {str(e)}")
+            return ""
+    
+    def activate_resin_based_composite_restorations(self, scenario: str) -> str:
+        """Activate the resin-based composite restorations analysis process and return results."""
+        try:
+            result = self.extract_resin_based_composite_restorations_code(scenario)
+            if not result:
+                print("No resin-based composite restorations code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating resin-based composite restorations analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_resin_based_composite_restorations(scenario)
+        print(f"\n=== RESIN-BASED COMPOSITE RESTORATIONS ANALYSIS RESULT ===")
+        print(f"RESIN-BASED COMPOSITE RESTORATIONS CODE: {result if result else 'None'}")
 
 # Example usage
 if __name__ == "__main__":
-    scenario = "Patient has a cavity on the mesial and distal surfaces of tooth #8 and needs a composite filling."
-    result = activate_resin_based_composite_restorations(scenario)
-    print(result) 
+    resin_based_composite_restorations_service = ResinBasedCompositeRestorationsServices()
+    scenario = input("Enter a resin-based composite restorations dental scenario: ")
+    resin_based_composite_restorations_service.run_analysis(scenario) 

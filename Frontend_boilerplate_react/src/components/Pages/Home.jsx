@@ -16,25 +16,25 @@ const Home = () => {
 
   // Check if there are questions in the result
   useEffect(() => {
-    if (result && (result.data.cdt_questions?.length > 0 || result.data.icd_questions?.length > 0)) {
+    if (result && result.data.questioner_data && result.data.questioner_data.has_questions) {
       setShowQuestioner(true);
     } else {
       setShowQuestioner(false);
     }
   }, [result]);
 
-  // At the beginning of the component, add a debug effect
+  // Initialize expanded topics state
   useEffect(() => {
-    if (result?.data?.subtopics_data) {
-      console.log("Subtopics data received:", result.data.subtopics_data);
+    if (result?.data?.topics_results?.subtopic_data) {
+      console.log("Subtopics data received:", result.data.topics_results.subtopic_data);
       // Initialize expanded topics state
       const initialExpandedState = {};
-      Object.keys(result.data.subtopics_data).forEach(topic => {
+      Object.keys(result.data.topics_results.subtopic_data).forEach(topic => {
         initialExpandedState[topic] = false;
       });
       setExpandedTopics(initialExpandedState);
     }
-  }, [result?.data?.subtopics_data]);
+  }, [result?.data?.topics_results?.subtopic_data]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -123,9 +123,12 @@ const Home = () => {
   };
 
   const handleCopyCodes = () => {
-    const acceptedCodes = result.data.inspector_results.codes.join(', ');
+    if (!result?.data?.inspector_results) return;
     
-    let textToCopy = `Accepted: ${acceptedCodes}`;
+    const cdtCodes = result.data.inspector_results.cdt?.codes || [];
+    const icdCodes = result.data.inspector_results.icd?.codes || [];
+    
+    let textToCopy = `CDT Codes: ${cdtCodes.join(', ')}\nICD Codes: ${icdCodes.join(', ')}`;
     
     navigator.clipboard.writeText(textToCopy).then(() => {
       alert('Codes copied to clipboard!');
@@ -139,18 +142,20 @@ const Home = () => {
     let foundTopic = null;
     let codeIndex = -1;
     
-    // Search through all topics and their specific_codes to find the matching code
-    Object.keys(result.data.subtopics_data).forEach(topic => {
-      const topicData = result.data.subtopics_data[topic];
-      if (topicData.specific_codes) {
-        topicData.specific_codes.forEach((codeData, index) => {
-          if (codeData && codeData.code === code) {
-            foundTopic = topic;
-            codeIndex = index;
-          }
-        });
-      }
-    });
+    // Search through all topics and their codes to find the matching code
+    if (result?.data?.topics_results?.subtopic_data) {
+      Object.keys(result.data.topics_results.subtopic_data).forEach(topic => {
+        const topicData = result.data.topics_results.subtopic_data[topic];
+        if (topicData) {
+          topicData.forEach((codeData, index) => {
+            if (codeData && codeData.code === code) {
+              foundTopic = topic;
+              codeIndex = index;
+            }
+          });
+        }
+      });
+    }
 
     if (foundTopic) {
       console.log(`Found code ${code} in topic ${foundTopic} at index ${codeIndex}`);
@@ -184,16 +189,23 @@ const Home = () => {
   };
 
   const renderCodeSection = (topic) => {
-    if (!result?.data?.subtopics_data?.[topic]) return null;
+    if (!result?.data?.topics_results?.subtopic_data?.[topic]) return null;
     
-    const { topic_name, activated_subtopics, specific_codes } = result.data.subtopics_data[topic];
+    const topicData = result.data.topics_results.subtopic_data[topic];
     const isExpanded = expandedTopics[topic];
     
+    // Get corresponding topic info from the active topics list
+    const topicInfo = result.data.topics_results.topic_result?.find(t => 
+      t.activated_subtopics?.some(st => st.includes(topic))
+    );
+    
+    const topicName = topicInfo?.topic || topic;
+    
     // Skip if no valid codes
-    if (!specific_codes || specific_codes.length === 0) return null;
+    if (!topicData || topicData.length === 0) return null;
     
     // Skip if all codes are "none"
-    const hasValidCodes = specific_codes.some(code => code && code.code && code.code !== 'none');
+    const hasValidCodes = topicData.some(code => code && code.code && code.code !== 'none' && code.code.toLowerCase() !== 'none');
     if (!hasValidCodes) return null;
     
     return (
@@ -202,7 +214,7 @@ const Home = () => {
           className={`flex items-center justify-between p-4 ${topic === 'custom_codes' ? 'bg-blue-50' : 'bg-gray-50'} rounded-lg cursor-pointer hover:bg-gray-100 transition-colors`}
           onClick={() => toggleTopic(topic)}
         >
-          <h3 className="text-lg font-semibold">{topic_name}</h3>
+          <h3 className="text-lg font-semibold">{topicName}</h3>
           <div className="transform transition-transform duration-300">
             {isExpanded ? '▼' : '▶'}
           </div>
@@ -211,17 +223,12 @@ const Home = () => {
         <div className={`overflow-hidden transition-all duration-300 ease-in-out ${
           isExpanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'
         }`}>
-          {specific_codes.map((codeData, index) => {
-            if (!codeData || !codeData.code || codeData.code === 'none') return null;
+          {topicData.map((codeData, index) => {
+            if (!codeData || !codeData.code || codeData.code === 'none' || codeData.code.toLowerCase() === 'none') return null;
 
             const isAccepted = selectedCodes.accepted.includes(codeData.code);
             const isDenied = selectedCodes.denied.includes(codeData.code);
             
-            // Determine which subtopic to use (if any)
-            const subtopicText = activated_subtopics && activated_subtopics.length > index 
-              ? activated_subtopics[index] 
-              : codeData.code;
-
             return (
               <div 
                 key={`topic-${index}-${topic}-${codeData.code}`}
@@ -231,16 +238,6 @@ const Home = () => {
                   'bg-white border-gray-200'
                 }`}
               >
-                <h4 className="font-medium text-gray-700 mb-2 p-4 flex justify-between items-center">
-                  <span>{subtopicText}</span>
-                  {topic === 'custom_codes' && 'isApplicable' in codeData && (
-                    <span className={`text-sm px-2 py-1 rounded-full ${
-                      codeData.isApplicable ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                    }`}>
-                      {codeData.isApplicable ? 'Applicable' : 'Not Applicable'}
-                    </span>
-                  )}
-                </h4>
                 <div 
                   id={`code-${codeData.code}`} 
                   className={`p-4 rounded-lg shadow-sm border transition-colors duration-300 ${
@@ -320,7 +317,10 @@ const Home = () => {
   const renderInspectorResults = () => {
     if (!result?.data?.inspector_results) return null;
 
-    const { codes, explanation } = result.data.inspector_results;
+    const cdtCodes = result.data.inspector_results.cdt?.codes || [];
+    const icdCodes = result.data.inspector_results.icd?.codes || [];
+    const cdtExplanation = result.data.inspector_results.cdt?.explanation || '';
+    const icdExplanation = result.data.inspector_results.icd?.explanation || '';
 
     return (
       <div className="mt-8 p-4 bg-blue-50 rounded-lg border border-blue-200 ai-final-analysis-content relative">
@@ -338,15 +338,15 @@ const Home = () => {
         </div>
         
         <div className="mb-4">
-          <h4 className="font-medium text-gray-700 mb-2">Selected Codes:</h4>
+          <h4 className="font-medium text-gray-700 mb-2">CDT Codes:</h4>
           <div className="flex flex-wrap gap-2">
-            {codes.map((code, index) => {
+            {cdtCodes.map((code, index) => {
               const isAccepted = selectedCodes.accepted.includes(code);
               const isDenied = selectedCodes.denied.includes(code);
               
               return (
                 <span 
-                  key={`code-${index}-${code}`}
+                  key={`cdt-code-${index}-${code}`}
                   onClick={() => scrollToCode(code)}
                   className={`cursor-pointer px-3 py-1 rounded-full text-sm transition-all duration-200 ${
                     isAccepted 
@@ -361,70 +361,45 @@ const Home = () => {
               );
             })}
           </div>
+          <p className="text-sm text-gray-600 mt-2">{cdtExplanation}</p>
         </div>
 
-        <div>
-          <h4 className="font-medium text-gray-700 mb-2">Explanation:</h4>
-          <p className="text-sm text-gray-600">{explanation}</p>
+        <div className="mb-4">
+          <h4 className="font-medium text-gray-700 mb-2">ICD Codes:</h4>
+          <div className="flex flex-wrap gap-2">
+            {icdCodes.map((code, index) => (
+              <span 
+                key={`icd-code-${index}-${code}`}
+                className="px-3 py-1 rounded-full text-sm bg-purple-100 text-purple-800"
+              >
+                {code}
+              </span>
+            ))}
+          </div>
+          <p className="text-sm text-gray-600 mt-2">{icdExplanation}</p>
         </div>
       </div>
     );
   };
 
-  // Update the areAllCodesSelected function to count codes from subtopics_data instead
+  // Update the areAllCodesSelected function to count codes from inspector_results
   const areAllCodesSelected = () => {
-    if (!result?.data?.subtopics_data) return false;
+    if (!result?.data?.inspector_results) return false;
     
-    // Collect all valid codes from subtopics_data
-    const allCodes = [];
-    
-    Object.keys(result.data.subtopics_data).forEach(topic => {
-      const topicData = result.data.subtopics_data[topic];
-      if (topicData.specific_codes) {
-        topicData.specific_codes.forEach(codeData => {
-          // Only count valid codes (not 'none')
-          if (codeData && codeData.code && codeData.code !== 'none') {
-            // For custom codes, only count if applicable
-            if (topic === 'custom_codes' && 'isApplicable' in codeData && !codeData.isApplicable) {
-              return; // Skip this code
-            }
-            allCodes.push(codeData.code);
-          }
-        });
-      }
-    });
+    const cdtCodes = result.data.inspector_results.cdt?.codes || [];
     
     // Check if all codes have been accepted
-    return allCodes.length > 0 && allCodes.every(code => selectedCodes.accepted.includes(code));
+    return cdtCodes.length > 0 && cdtCodes.every(code => selectedCodes.accepted.includes(code));
   };
 
   // Add a function to get the count of remaining codes to select
   const getRemainingCodeCount = () => {
-    if (!result?.data?.subtopics_data) return 0;
+    if (!result?.data?.inspector_results) return 0;
     
-    // Count total valid codes
-    let totalCodes = 0;
-    let acceptedCount = 0;
+    const cdtCodes = result.data.inspector_results.cdt?.codes || [];
+    const acceptedCount = cdtCodes.filter(code => selectedCodes.accepted.includes(code)).length;
     
-    Object.keys(result.data.subtopics_data).forEach(topic => {
-      const topicData = result.data.subtopics_data[topic];
-      if (topicData.specific_codes) {
-        topicData.specific_codes.forEach(codeData => {
-          if (codeData && codeData.code && codeData.code !== 'none') {
-            // For custom codes, only count if applicable
-            if (topic === 'custom_codes' && 'isApplicable' in codeData && !codeData.isApplicable) {
-              return; // Skip this code
-            }
-            totalCodes++;
-            if (selectedCodes.accepted.includes(codeData.code)) {
-              acceptedCount++;
-            }
-          }
-        });
-      }
-    });
-    
-    return totalCodes - acceptedCount;
+    return cdtCodes.length - acceptedCount;
   };
 
   // Add a function to render the selected codes section
@@ -497,8 +472,12 @@ const Home = () => {
         // Add the new code to the appropriate topic or create a new topic
         const codeData = response.data.code_data;
         
-        if (!updatedResult.data.subtopics_data) {
-          updatedResult.data.subtopics_data = {};
+        if (!updatedResult.data.topics_results) {
+          updatedResult.data.topics_results = {};
+        }
+        
+        if (!updatedResult.data.topics_results.subtopic_data) {
+          updatedResult.data.topics_results.subtopic_data = {};
         }
         
         // Extract applicability status from the explanation
@@ -512,15 +491,12 @@ const Home = () => {
         }
         
         // Either add to "Custom Codes" topic or create it
-        if (!updatedResult.data.subtopics_data.custom_codes) {
-          updatedResult.data.subtopics_data.custom_codes = {
-            topic_name: "Custom Added Codes",
-            specific_codes: []
-          };
+        if (!updatedResult.data.topics_results.subtopic_data.custom_codes) {
+          updatedResult.data.topics_results.subtopic_data.custom_codes = [];
         }
         
         // Add the new code data with parsed information
-        updatedResult.data.subtopics_data.custom_codes.specific_codes.push({
+        updatedResult.data.topics_results.subtopic_data.custom_codes.push({
           code: codeData.code,
           explanation: reason || codeData.explanation,
           doubt: codeData.doubt || "None",
@@ -529,10 +505,10 @@ const Home = () => {
         
         // If there are inspector results, add the code there too if applicable
         if (updatedResult.data.inspector_results) {
-          if (isApplicable) {
+          if (isApplicable && updatedResult.data.inspector_results.cdt) {
             // Add to accepted codes if applicable
-            if (!updatedResult.data.inspector_results.codes.includes(codeData.code)) {
-              updatedResult.data.inspector_results.codes.push(codeData.code);
+            if (!updatedResult.data.inspector_results.cdt.codes.includes(codeData.code)) {
+              updatedResult.data.inspector_results.cdt.codes.push(codeData.code);
             }
           }
         }
@@ -572,8 +548,8 @@ const Home = () => {
           isVisible={showQuestioner}
           onClose={handleQuestionerClose}
           questions={{
-            cdt_questions: result?.data?.cdt_questions || [],
-            icd_questions: result?.data?.icd_questions || []
+            cdt_questions: result?.data?.questioner_data?.cdt_questions?.questions || [],
+            icd_questions: result?.data?.questioner_data?.icd_questions?.questions || []
           }}
           recordId={result?.data?.record_id || ''}
           onSubmitSuccess={handleQuestionerSuccess}
@@ -641,8 +617,8 @@ const Home = () => {
                 </div>
 
                 {/* Code Sections */}
-                {result?.data?.subtopics_data && Object.keys(result.data.subtopics_data).length > 0 ? (
-                  Object.keys(result.data.subtopics_data).map((topic, index) => (
+                {result?.data?.topics_results?.subtopic_data && Object.keys(result.data.topics_results.subtopic_data).length > 0 ? (
+                  Object.keys(result.data.topics_results.subtopic_data).map((topic, index) => (
                     <div key={`topic-container-${index}-${topic}`}>{renderCodeSection(topic)}</div>
                   ))
                 ) : (

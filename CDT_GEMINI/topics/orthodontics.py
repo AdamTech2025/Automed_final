@@ -1,43 +1,60 @@
 import os
 import sys
+import asyncio
 from langchain.prompts import PromptTemplate
-from llm_services import create_chain, invoke_chain, get_llm_service
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+from sub_topic_registry import SubtopicRegistry
 
 # Add the root directory to the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 sys.path.append(root_dir)
 
-# Now import modules
+# Import modules
 from topics.prompt import PROMPT
-from subtopics.Orthodontics import (
-    activate_limited_orthodontic_treatment,
-    activate_comprehensive_orthodontic_treatment,
-    activate_minor_treatment_harmful_habits,
-    activate_other_orthodontic_services
-)
 
-# Load environment variables
+# Import subtopics with fallback mechanism
+try:
+    from subtopics.Orthodontics.limited_orthodontic_treatment import limited_orthodontic_treatment
+    from subtopics.Orthodontics.comprehensive_orthodontic_treatment import comprehensive_orthodontic_treatment
+    from subtopics.Orthodontics.minor_treatment_harmful_habits import minor_treatment_harmful_habits
+    from subtopics.Orthodontics.other_orthodontic_services import other_orthodontic_services
+except ImportError:
+    print("Warning: Could not import subtopics for Orthodontics. Using fallback functions.")
+    # Define fallback functions if needed
+    def activate_limited_orthodontic_treatment(scenario): return None
+    def activate_comprehensive_orthodontic_treatment(scenario): return None
+    def activate_minor_treatment_harmful_habits(scenario): return None
+    def activate_other_orthodontic_services(scenario): return None
 
-
-
-def analyze_orthodontic(scenario):
-    """
-    Analyze an orthodontic scenario and return relevant code ranges.
+class OrthodonticServices:
+    """Class to analyze and activate orthodontic services based on dental scenarios."""
     
-    Args:
-        scenario (str): The dental scenario text to analyze
-        
-    Returns:
-        str: The identified orthodontic code range(s)
-    """
-    try:
-        # Create the prompt template
-        prompt_template = PromptTemplate(
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+        self.registry = SubtopicRegistry()
+        self._register_subtopics()
+    
+    def _register_subtopics(self):
+        """Register all subtopics for parallel activation."""
+        self.registry.register("D8010-D8040", limited_orthodontic_treatment.activate_limited_orthodontic_treatment, 
+                            "Limited Orthodontic Treatment (D8010-D8040)")
+        self.registry.register("D8070-D8090", comprehensive_orthodontic_treatment.activate_comprehensive_orthodontic_treatment, 
+                            "Comprehensive Orthodontic Treatment (D8070-D8090)")
+        self.registry.register("D8210-D8220", minor_treatment_harmful_habits.activate_minor_treatment_harmful_habits, 
+                            "Minor Treatment to Control Harmful Habits (D8210-D8220)")
+        self.registry.register("D8660-D8999", other_orthodontic_services.activate_other_orthodontic_services, 
+                            "Other Orthodontic Services (D8660-D8999)")
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing orthodontic services."""
+        return PromptTemplate(
             template=f"""
 You are a highly experienced dental coding expert with over 15 years of expertise in ADA dental codes. 
 Your task is to analyze the given scenario and determine the most applicable orthodontic code range(s) based on the following classifications:
-
 
 ## **Limited Orthodontic Treatment (D8010-D8040)**
 **Use when:** Providing partial correction or addressing a specific orthodontic problem.
@@ -69,105 +86,61 @@ Your task is to analyze the given scenario and determine the most applicable ort
 
 RESPOND WITH ALL APPLICABLE CODE RANGES from the options above, even if they are only slightly relevant.
 List them in order of relevance, with the most relevant first.
-
 """,
             input_variables=["scenario"]
         )
-        
-        # Create the chain using our LLM service
-        chain = create_chain(prompt_template)
-        
-        # Use the provided scenario directly
-        print(f"Analyzing orthodontic scenario: {scenario[:100]}...")
-        
-        # Use invoke through our LLM service
-        result = invoke_chain(chain, {"scenario": scenario})
-        
-        # Extract the text from the result
-        code_range = result.get("text", "").strip()
-        
-        print(f"Orthodontic analyze_orthodontic result: {code_range}")
-        return code_range
-    except Exception as e:
-        print(f"Error in analyze_orthodontic: {str(e)}")
-        return ""
-
-def activate_orthodontic(scenario):
-    """
-    Activate orthodontic analysis and return the results with specific subtopic activations.
     
-    Args:
-        scenario (str): The dental scenario text to analyze
-        
-    Returns:
-        dict: A dictionary containing the code range, subtopic and specific codes
-    """
-    try:
-        # Get the code range from the analysis
-        orthodontic_result = analyze_orthodontic(scenario)
-        if not orthodontic_result:
-            print("No orthodontic result returned")
+    def analyze_orthodontic(self, scenario: str) -> str:
+        """Analyze the scenario to determine applicable code ranges."""
+        try:
+            print(f"Analyzing orthodontic scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code_range = result.strip()
+            print(f"Orthodontic analyze_orthodontic result: {code_range}")
+            return code_range
+        except Exception as e:
+            print(f"Error in analyze_orthodontic: {str(e)}")
+            return ""
+    
+    async def activate_orthodontic(self, scenario: str) -> dict:
+        """Activate relevant subtopics in parallel and return detailed results."""
+        try:
+            # Get the code range from the analysis
+            orthodontic_result = self.analyze_orthodontic(scenario)
+            if not orthodontic_result:
+                print("No orthodontic result returned")
+                return {}
+            
+            print(f"Orthodontic Result in activate_orthodontic: {orthodontic_result}")
+            
+            # Activate subtopics in parallel using the registry
+            result = await self.registry.activate_all(scenario, orthodontic_result)
+            
+            # Return a dictionary with the required fields
+            return {
+                "code_range": orthodontic_result,
+                "activated_subtopics": result["activated_subtopics"],
+                "codes": result["topic_result"]
+            }
+        except Exception as e:
+            print(f"Error in orthodontic analysis: {str(e)}")
             return {}
-        
-        print(f"Orthodontic Result in activate_orthodontic: {orthodontic_result}")
-        
-        # Process specific orthodontic subtopics based on the result
-        specific_codes = []
-        activated_subtopics = []
-        
-        # Check for each subtopic and activate if applicable
-        if "D8010-D8040" in orthodontic_result:
-            print("Activating subtopic: Limited Orthodontic Treatment (D8010-D8040)")
-            limited_treatment_code = activate_limited_orthodontic_treatment(scenario)
-            if limited_treatment_code:
-                specific_codes.append(limited_treatment_code)
-                activated_subtopics.append("Limited Orthodontic Treatment (D8010-D8040)")
-                
-        if "D8070-D8090" in orthodontic_result:
-            print("Activating subtopic: Comprehensive Orthodontic Treatment (D8070-D8090)")
-            comprehensive_treatment_code = activate_comprehensive_orthodontic_treatment(scenario)
-            if comprehensive_treatment_code:
-                specific_codes.append(comprehensive_treatment_code)
-                activated_subtopics.append("Comprehensive Orthodontic Treatment (D8070-D8090)")
-                
-        if "D8210-D8220" in orthodontic_result:
-            print("Activating subtopic: Minor Treatment to Control Harmful Habits (D8210-D8220)")
-            harmful_habits_code = activate_minor_treatment_harmful_habits(scenario)
-            if harmful_habits_code:
-                specific_codes.append(harmful_habits_code)
-                activated_subtopics.append("Minor Treatment to Control Harmful Habits (D8210-D8220)")
-                
-        if "D8660-D8999" in orthodontic_result:
-            print("Activating subtopic: Other Orthodontic Services (D8660-D8999)")
-            other_services_code = activate_other_orthodontic_services(scenario)
-            if other_services_code:
-                specific_codes.append(other_services_code)
-                activated_subtopics.append("Other Orthodontic Services (D8660-D8999)")
-        
-        # Choose the primary subtopic (either the first activated or a default)
-        primary_subtopic = activated_subtopics[0] if activated_subtopics else "Comprehensive Orthodontic Treatment (D8070-D8090)"
-        
-        # Return the results in standardized format
-        return {
-            "code_range": orthodontic_result,
-            "subtopic": primary_subtopic,
-            "activated_subtopics": activated_subtopics,
-            "codes": specific_codes
-        }
-    except Exception as e:
-        print(f"Error in orthodontic analysis: {str(e)}")
-        return {}
+    
+    async def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = await self.activate_orthodontic(scenario)
+        print(f"\n=== ORTHODONTIC ANALYSIS RESULT ===")
+        print(f"CODE RANGE: {result.get('code_range', 'None')}")
+        print(f"ACTIVATED SUBTOPICS: {', '.join(result.get('activated_subtopics', []))}")
+        print(f"SPECIFIC CODES: {', '.join(result.get('codes', []))}")
 
+orthodontic_service = OrthodonticServices()
 # Example usage
 if __name__ == "__main__":
-    # Print the current Gemini model and temperature being used
-    llm_service = get_llm_service()
-    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
+    async def main():
+        orthodontic_service = OrthodonticServices()
+        scenario = input("Enter an orthodontic scenario: ")
+        await orthodontic_service.run_analysis(scenario)
     
-    scenario = input("Enter an orthodontic scenario: ")
-    result = activate_orthodontic(scenario)
-    print(f"\n=== ORTHODONTIC ANALYSIS RESULT ===")
-    print(f"CODE RANGE: {result.get('code_range', 'None')}")
-    print(f"PRIMARY SUBTOPIC: {result.get('subtopic', 'None')}")
-    print(f"ACTIVATED SUBTOPICS: {', '.join(result.get('activated_subtopics', []))}")
-    print(f"SPECIFIC CODES: {', '.join(result.get('codes', []))}")
+    asyncio.run(main())

@@ -1,46 +1,55 @@
 import os
 import sys
+import asyncio
 from langchain.prompts import PromptTemplate
-from llm_services import create_chain, invoke_chain, get_llm_service
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+from sub_topic_registry import SubtopicRegistry
 
 # Add the root directory to the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 sys.path.append(root_dir)
 
-# Now import modules
+# Import modules
 from topics.prompt import PROMPT
-from subtopics.diagnostics import (
-    activate_clinical_oral_evaluations,
-    activate_pre_diagnostic_services,
-    activate_diagnostic_imaging,
-    activate_oral_pathology_laboratory,
-    activate_tests_and_laboratory_examinations,
+from subtopics.diagnostics.clinicaloralevaluation import clinical_oral_evaluations_service
+from subtopics.diagnostics.diagnosticimaging import diagnostic_imaging_service
+from subtopics.diagnostics.oralpathologylaboratory import oral_pathology_laboratory_service
+from subtopics.diagnostics.prediagnosticservices import prediagnostic_service
+from subtopics.diagnostics.testsandexaminations import tests_service
+
+class DiagnosticServices:
+    """Class to analyze and activate diagnostic services based on dental scenarios."""
     
-)
-
-# Load environment variables
-
-# Get model name from environment variable, default to gpt-4o if not set
-
-# Ensure API key is set
-def analyze_diagnostic(scenario):
-    """
-    Analyze a diagnostic scenario and return relevant code ranges.
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+        self.registry = SubtopicRegistry()
+        self._register_subtopics()
     
-    Args:
-        scenario (str): The dental scenario text to analyze
-        
-    Returns:
-        str: The identified diagnostic code range(s)
-    """
-    try:
-        # Create the prompt template
-        prompt_template = PromptTemplate(
+    def _register_subtopics(self):
+        """Register all subtopics for parallel activation."""
+        self.registry.register("D0120-D0180", clinical_oral_evaluations_service.activate_clinical_oral_evaluations, 
+                            "Clinical Oral Evaluations (D0120-D0180)")
+        self.registry.register("D0190-D0191", prediagnostic_service.activate_prediagnostic_services, 
+                            "Pre-diagnostic Services (D0190-D0191)")
+        self.registry.register("D0210-D0391", diagnostic_imaging_service.activate_diagnostic_imaging, 
+                            "Diagnostic Imaging (D0210-D0391)")
+        self.registry.register("D0472-D0502", oral_pathology_laboratory_service.activate_oral_pathology_laboratory, 
+                            "Oral Pathology Laboratory (D0472-D0502)")
+        self.registry.register("D0411-D0999", tests_service.activate_tests_and_examinations, 
+                            "Tests and Laboratory Examinations (D0411-D0999)")
+        self.registry.register("D4186", lambda x: "D4186" if "outcome assessment" in x.lower() else None, 
+                            "Assessment of Patient Outcome Metrics (D4186)")
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing diagnostic services."""
+        return PromptTemplate(
             template=f"""
 You are a highly experienced dental coding expert with over 15 years of expertise in ADA dental codes. 
 Your task is to analyze the given scenario and determine the most applicable diagnostic code range(s) based on the following classifications:
-
 
 ## **Clinical Oral Evaluations (D0120-D0180)**
 **Use when:** Providing patient assessment services including routine or comprehensive evaluations.
@@ -87,121 +96,57 @@ List them in order of relevance, with the most relevant first.
 """,
             input_variables=["scenario"]
         )
-        
-        # Create the chain using our LLM service
-        chain = create_chain(prompt_template)
-        
-        # Use the provided scenario directly
-        print(f"Analyzing diagnostic scenario: {scenario[:100]}...")
-        
-        # Use invoke through our LLM service
-        result = invoke_chain(chain, {"scenario": scenario})
-        
-        # Extract the text from the result
-        code_range = result.get("text", "").strip()
-        
-        print(f"Diagnostic analyze_diagnostic result: {code_range}")
-        return code_range
-    except Exception as e:
-        print(f"Error in analyze_diagnostic: {str(e)}")
-        return ""
-
-def activate_diagnostic(scenario):
-    """
-    Activate diagnostic analysis and return the results with specific subtopic activations.
     
-    Args:
-        scenario (str): The dental scenario text to analyze
-        
-    Returns:
-        dict: A dictionary containing the code range, subtopic and specific codes
-    """
-    try:
-        # Get the code range from the analysis
-        diagnostic_result = analyze_diagnostic(scenario)
-        if not diagnostic_result:
-            print("No diagnostic result returned")
-            return {}
-        
-        print(f"Diagnostic Result in activate_diagnostic: {diagnostic_result}")
-        
-        # Process specific diagnostic subtopics based on the result
-        specific_codes = []
-        activated_subtopics = []
-        
-        # Check for each subtopic and activate if applicable
-        if "D0120-D0180" in diagnostic_result:
-            print("Activating subtopic: Clinical Oral Evaluations (D0120-D0180)")
-            evaluation_code = activate_clinical_oral_evaluations(scenario)
-            if evaluation_code:
-                specific_codes.append(evaluation_code)
-                activated_subtopics.append("Clinical Oral Evaluations (D0120-D0180)")
-                
-        if "D0190-D0191" in diagnostic_result:
-            print("Activating subtopic: Pre-diagnostic Services (D0190-D0191)")
-            pre_diagnostic_code = activate_pre_diagnostic_services(scenario)
-            if pre_diagnostic_code:
-                specific_codes.append(pre_diagnostic_code)
-                activated_subtopics.append("Pre-diagnostic Services (D0190-D0191)")
-                
-        if "D0210-D0391" in diagnostic_result:
-            print("Activating subtopic: Diagnostic Imaging (D0210-D0391)")
-            imaging_code = activate_diagnostic_imaging(scenario)
-            if imaging_code:
-                specific_codes.append(imaging_code)
-                activated_subtopics.append("Diagnostic Imaging (D0210-D0391)")
-                
-        if "D0472-D0502" in diagnostic_result:
-            print("Activating subtopic: Oral Pathology Laboratory (D0472-D0502)")
-            pathology_code = activate_oral_pathology_laboratory(scenario)
-            if pathology_code:
-                specific_codes.append(pathology_code)
-                activated_subtopics.append("Oral Pathology Laboratory (D0472-D0502)")
-                
-        if "D0411-D0999" in diagnostic_result:
-            print("Activating subtopic: Tests and Laboratory Examinations (D0411-D0999)")
-            tests_code = activate_tests_and_laboratory_examinations(scenario)
-            if tests_code:
-                specific_codes.append(tests_code)
-                activated_subtopics.append("Tests and Laboratory Examinations (D0411-D0999)")
-                
-        
-        
-        # Choose the primary subtopic (either the first activated or a default)
-        primary_subtopic = activated_subtopics[0] if activated_subtopics else "Clinical Oral Evaluations (D0120-D0180)"
-        
-        # Format detailed results if specific codes were found
-        if specific_codes:
+    def analyze_diagnostic(self, scenario: str) -> str:
+        """Analyze the scenario to determine applicable code ranges."""
+        try:
+            print(f"Analyzing diagnostic scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code_range = result.strip()
+            print(f"Diagnostic analyze_diagnostic result: {code_range}")
+            return code_range
+        except Exception as e:
+            print(f"Error in analyze_diagnostic: {str(e)}")
+            return ""
+    
+    async def activate_diagnostic(self, scenario: str) -> dict:
+        """Activate relevant subtopics in parallel and return detailed results."""
+        try:
+            # Get the code range from the analysis
+            diagnostic_result = self.analyze_diagnostic(scenario)
+            if not diagnostic_result:
+                print("No diagnostic result returned")
+                return {}
+            
+            print(f"Diagnostic Result in activate_diagnostic: {diagnostic_result}")
+            
+            # Activate subtopics in parallel using the registry
+            result = await self.registry.activate_all(scenario, diagnostic_result)
+            
             # Return a dictionary with the required fields
             return {
                 "code_range": diagnostic_result,
-                "subtopic": primary_subtopic,
-                "activated_subtopics": activated_subtopics,  # Add this for clarity about which subtopics were activated
-                "codes": specific_codes
+                "activated_subtopics": result["activated_subtopics"],
+                "codes": result["topic_result"]
             }
-            
-        # Return a dictionary even if no specific codes were found
-        return {
-            "code_range": diagnostic_result,
-            "subtopic": primary_subtopic,
-            "activated_subtopics": activated_subtopics,
-            "codes": []
-        }
-    except Exception as e:
-        print(f"Error in diagnostic analysis: {str(e)}")
-        return {}
+        except Exception as e:
+            print(f"Error in diagnostic analysis: {str(e)}")
+            return {}
+    
+    async def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = await self.activate_diagnostic(scenario)
+        print(f"\n=== DIAGNOSTIC ANALYSIS RESULT ===")
+        print(f"CODE RANGE: {result.get('code_range', 'None')}")
+        print(f"ACTIVATED SUBTOPICS: {', '.join(result.get('activated_subtopics', []))}")
+        print(f"SPECIFIC CODES: {', '.join(result.get('codes', []))}")
 
+diagnostic_service = DiagnosticServices()
 # Example usage
 if __name__ == "__main__":
-    # Print the current Gemini model and temperature being used
-    llm_service = get_llm_service()
-    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
+    async def main():
+        scenario = input("Enter a diagnostic dental scenario: ")
+        await diagnostic_service.run_analysis(scenario)
     
-    scenario = input("Enter a diagnostic dental scenario: ")
-    result = activate_diagnostic(scenario)
-    print(f"\n=== DIAGNOSTIC ANALYSIS RESULT ===")
-    print(f"CODE RANGE: {result.get('code_range', 'None')}")
-    print(f"PRIMARY SUBTOPIC: {result.get('subtopic', 'None')}")
-    print(f"ACTIVATED SUBTOPICS: {', '.join(result.get('activated_subtopics', []))}")
-    print(f"SPECIFIC CODES: {', '.join(result.get('codes', []))}")
-
+    asyncio.run(main())

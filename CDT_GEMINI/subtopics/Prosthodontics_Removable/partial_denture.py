@@ -1,28 +1,28 @@
-"""
-Module for extracting partial denture codes.
-"""
-
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_partial_denture_extractor(temperature=0.0):
-    """
-    Create a LangChain-based partial denture code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class PartialDentureServices:
+    """Class to analyze and extract partial denture codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template=f"""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing partial denture services."""
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert 
 
 ## Prosthodontics, Removable - Partial Denture Routine Delivery Care
@@ -156,41 +156,46 @@ You are a highly experienced dental coding expert
 - **Future Adjustments:** Most partial dentures will require relining, rebasing, or repairs over time.
 - **Patient Education:** Ensure patients understand maintenance, follow-up needs, and expected adaptation challenges.
 
-Scenario:
-"{{question}}"
+SCENARIO: {{scenario}}
 
 {PROMPT}
 """,
-        input_variables=["question"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template)
-
-def extract_partial_denture_code(scenario, temperature=0.0):
-    """
-    Extract partial denture code(s) for a given scenario.
-    """
-    try:
-        chain = create_partial_denture_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Partial denture code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_partial_denture_code: {str(e)}")
-        return ""
-
-def activate_partial_denture(scenario):
-    """
-    Activate partial denture analysis and return results.
-    """
-    try:
-        return extract_partial_denture_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_partial_denture: {str(e)}")
-        return ""
+    def extract_partial_denture_code(self, scenario: str) -> str:
+        """Extract partial denture code(s) for a given scenario."""
+        try:
+            print(f"Analyzing partial denture scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Partial denture extract_partial_denture_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in partial denture code extraction: {str(e)}")
+            return ""
+    
+    def activate_partial_denture(self, scenario: str) -> str:
+        """Activate the partial denture analysis process and return results."""
+        try:
+            result = self.extract_partial_denture_code(scenario)
+            if not result:
+                print("No partial denture code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating partial denture analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_partial_denture(scenario)
+        print(f"\n=== PARTIAL DENTURE ANALYSIS RESULT ===")
+        print(f"PARTIAL DENTURE CODE: {result if result else 'None'}")
 
 # Example usage
 if __name__ == "__main__":
-    scenario = "Patient needs a maxillary partial denture with a cast metal framework to replace missing teeth #3, 4, 5, and 12."
-    result = activate_partial_denture(scenario)
-    print(result) 
+    partial_denture_service = PartialDentureServices()
+    scenario = input("Enter a partial denture dental scenario: ")
+    partial_denture_service.run_analysis(scenario) 

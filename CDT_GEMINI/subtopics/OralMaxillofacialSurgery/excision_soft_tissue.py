@@ -4,24 +4,24 @@ Module for extracting excision of soft tissue lesions codes.
 
 import os
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+from llm_services import LLMService, get_service, set_model, set_temperature
 
 # Load environment variables
 load_dotenv()
 
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_excision_soft_tissue_extractor(temperature=0.0):
-    """
-    Create a LangChain-based excision of soft tissue lesions code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class ExcisionSoftTissueServices:
+    """Class to analyze and extract excision of soft tissue lesions codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing excision of soft tissue lesions scenarios."""
+        from subtopics.prompt.prompt import PROMPT
+        return PromptTemplate(
         template=f"""
 You are a highly experienced dental coding expert specializing in oral and maxillofacial pathology,
 
@@ -91,34 +91,48 @@ You are a highly experienced dental coding expert specializing in oral and maxil
 - **Follow-up Planning** - Include plans for wound management, healing assessment, and pathology result review.
 
 Scenario:
-"{{question}}"
+"{{scenario}}"
 
 {PROMPT}
 """,
-        input_variables=["question"]
+            input_variables=["scenario"]
     )
-    
-    return LLMChain(llm=llm, prompt=prompt_template)
 
-def extract_excision_soft_tissue_code(scenario, temperature=0.0):
-    """
-    Extract excision of soft tissue lesions code(s) for a given scenario.
-    """
-    try:
-        chain = create_excision_soft_tissue_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Excision of soft tissue lesions code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_excision_soft_tissue_code: {str(e)}")
-        return ""
+    def extract_excision_soft_tissue_code(self, scenario: str) -> str:
+        """Extract excision of soft tissue lesions code for a given scenario."""
+        try:
+            print(f"Analyzing excision of soft tissue lesions scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Excision of soft tissue lesions extract code result: {code}")
+            
+            # Return empty string if no code found
+            if code == "None" or not code or "not applicable" in code.lower():
+                return ""
+                
+            return code
+        except Exception as e:
+            print(f"Error in extract_excision_soft_tissue_code: {str(e)}")
+            return ""
 
-def activate_excision_soft_tissue(scenario):
-    """
-    Activate excision of soft tissue lesions analysis and return results.
-    """
-    try:
-        return extract_excision_soft_tissue_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_excision_soft_tissue: {str(e)}")
-        return "" 
+    def activate_excision_soft_tissue(self, scenario: str) -> str:
+        """Activate the excision of soft tissue lesions analysis process and return results."""
+        try:
+            return self.extract_excision_soft_tissue_code(scenario)
+        except Exception as e:
+            print(f"Error in activate_excision_soft_tissue: {str(e)}")
+            return ""
+
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_excision_soft_tissue(scenario)
+        print(f"\n=== EXCISION OF SOFT TISSUE LESIONS ANALYSIS RESULT ===")
+        print(f"EXCISION OF SOFT TISSUE LESIONS CODE: {result if result else 'None'}")
+
+
+excision_soft_tissue_service = ExcisionSoftTissueServices()
+# Example usage
+if __name__ == "__main__":
+    scenario = input("Enter an excision of soft tissue lesions scenario: ")
+    excision_soft_tissue_service.run_analysis(scenario) 

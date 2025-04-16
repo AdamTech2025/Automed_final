@@ -1,19 +1,29 @@
 import os
 import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+
+# Add the parent directory to the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(current_dir))
 sys.path.append(parent_dir)
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
 
-
-
-def create_apexification_extractor():
-    """
-    Create a LangChain-based Apexification/Recalcification code extractor.
-    """
-    prompt_template = f"""
+class ApexificationServices:
+    """Class to analyze and extract apexification/recalcification codes based on dental scenarios."""
+    
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing apexification/recalcification."""
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert
 
 Before Picking a Code, Ask:
@@ -46,7 +56,6 @@ Before Picking a Code, Ask:
 - Follow-up visits for additional medicament replacement may require **D3352**, and the final visit for closure is coded with **D3353**.  
 - Document material used and rationale clearly for insurance—especially in trauma or developmental cases.  
 
-
 ### Key Takeaways:
 - **Tooth Location Drives Coding:** D3346 (anterior), D3347 (premolar), and D3348 (molar) are specific to tooth type—precision is critical.  
 - **Evidence of Failure:** Retreatment codes require proof of prior root canal issues (e.g., imaging, symptoms).  
@@ -54,45 +63,47 @@ Before Picking a Code, Ask:
 - **Restoration Separate:** Final restorations aren't included—code them independently.  
 - **Insurance Prep:** Expect to provide narratives and X-rays to support retreatment claims.
 
-
-Scenario:
-"{{scenario}}"
+Scenario: {{scenario}}
 
 {PROMPT}
-"""
+""",
+            input_variables=["scenario"]
+        )
     
-    prompt = PromptTemplate(template=prompt_template, input_variables=["scenario"])
-    return create_chain(prompt)
+    def extract_apexification_code(self, scenario: str) -> str:
+        """Extract apexification/recalcification code(s) for a given scenario."""
+        try:
+            print(f"Analyzing apexification scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Apexification extract_apexification_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in apexification code extraction: {str(e)}")
+            return ""
+    
+    def activate_apexification(self, scenario: str) -> str:
+        """Activate the apexification analysis process and return results."""
+        try:
+            result = self.extract_apexification_code(scenario)
+            if not result:
+                print("No apexification code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating apexification analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_apexification(scenario)
+        print(f"\n=== APEXIFICATION ANALYSIS RESULT ===")
+        print(f"APEXIFICATION CODE: {result if result else 'None'}")
 
-def extract_apexification_code(scenario):
-    """
-    Extract Apexification/Recalcification code for a given scenario.
-    """
-    try:
-        extractor = create_apexification_extractor()
-        result = invoke_chain(extractor, {"scenario": scenario})
-        return result.get("text", "").strip()
-    except Exception as e:
-        print(f"Error in apexification code extraction: {str(e)}")
-        return None
-
-def activate_apexification(scenario):
-    """
-    Activate Apexification/Recalcification analysis and return results.
-    """
-    try:
-        result = extract_apexification_code(scenario)
-        return result
-    except Exception as e:
-        print(f"Error activating apexification analysis: {str(e)}")
-        return None
-
+apexification_service = ApexificationServices()
 # Example usage
 if __name__ == "__main__":
-    # Print the current Gemini model and temperature being used
-    llm_service = get_llm_service()
-    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
-    
-    scenario = "A 9-year-old patient presents with a traumatic injury to tooth #8 (maxillary right central incisor). Radiographs show an immature root with an open apex. The dentist performs the initial visit for apexification by removing the necrotic pulp, debriding the canal, and placing calcium hydroxide to stimulate calcific barrier formation."
-    result = activate_apexification(scenario)
-    print(result) 
+    apexification_service = ApexificationServices()
+    scenario = input("Enter an apexification dental scenario: ")
+    apexification_service.run_analysis(scenario)

@@ -1,20 +1,30 @@
 import os
 import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+
+# Add the parent directory to the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(current_dir))
 sys.path.append(parent_dir)
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
 
-
-def create_diagnostic_imaging_extractor():   
-    """
-    Create a LangChain-based Diagnostic Imaging extractor.
-    """
-    template = f"""
-
-        # Radiographic and Imaging Code Usage Guidelines
+class DiagnosticImagingServices:
+    """Class to analyze and extract diagnostic imaging codes based on dental scenarios."""
+    
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing diagnostic imaging."""
+        return PromptTemplate(
+            template=f"""
+# Radiographic and Imaging Code Usage Guidelines
 
 ## 1. Determine the Imaging Purpose
 - General dental exam? → D0210 (full mouth series), D0272 -(bitewings)
@@ -63,92 +73,81 @@ def create_diagnostic_imaging_extractor():
 - Interpretation results if applicable
 - Whether a report was generated (especially for D0391, D0321, D0369)
 
-
-
 Code: D0210  
 Use when: A comprehensive intraoral radiographic series is needed to evaluate all teeth and surrounding bone, including edentulous areas. Commonly used during new patient exams, treatment planning for extensive restorations, periodontal evaluations, or when significant oral pathology is suspected.  
-What to check: Ensure inclusion of both periapical and bitewing/interproximal images. Typically includes 14-22 images. Do not bill separately for individual images included in the series. to evaluate all teeth and surrounding bone, including edentulous areas.  
-What to check: Ensure inclusion of periapical and interproximal images for a full diagnostic overview.
+What to check: Ensure inclusion of both periapical and bitewing/interproximal images. Typically includes 14-22 images. Do not bill separately for individual images included in the series.
 
 Code: D0220  
 Use when: Capturing the first periapical radiographic image to evaluate the apex or root of a specific tooth. Common for assessing pain, trauma, or pathology in a localized area.  
-What to check: Only report this once per date of service. Any additional periapical images must be reported under D0230. during a diagnostic session.  
-What to check: Must be followed by D0230 if additional periapicals are taken.
+What to check: Only report this once per date of service. Any additional periapical images must be reported under D0230.
 
 Code: D0230  
 Use when: Capturing each additional periapical image beyond the first during a single visit. Often required for multi-rooted teeth or when evaluating adjacent teeth.  
-What to check: Must be used in conjunction with D0220. Report one unit per image. after the first.  
-What to check: Use one unit per image beyond the initial D0220.
+What to check: Must be used in conjunction with D0220. Report one unit per image.
 
 Code: D0240  
 Use when: Taking an occlusal radiographic image to visualize a broad cross-section of the arch. Useful in pediatric dentistry, detecting supernumerary teeth, impacted canines, or pathology in the palate/floor of the mouth.  
-What to check: Specify maxillary or mandibular occlusal view. Rare in routine adult practice. to evaluate larger areas of the arch, especially in pediatric or trauma cases.  
-What to check: Confirm indication for occlusal view.
+What to check: Specify maxillary or mandibular occlusal view. Rare in routine adult practice.
 
 Code: D0250  
 Use when: Capturing extra-oral 2D projection images using a stationary source/detector setup. Includes views such as lateral skull, PA skull, submentovertex, and Waters projection. Often used in ortho, oral surgery, and TMJ evaluations.  
-What to check: Confirm image type and diagnostic purpose. Not to be confused with panoramic imaging. like lateral skull, PA skull, or similar.  
-What to check: Verify fixed source and detector; not panoramic.
+What to check: Confirm image type and diagnostic purpose. Not to be confused with panoramic imaging.
 
 Code: D0251  
 Use when: Capturing a non-derived extra-oral image focused exclusively on the posterior teeth in both dental arches. May be used when intraoral imaging is not feasible.  
-What to check: Ensure the image is original, not reconstructed from another radiographic source. Must clearly capture posterior dentition in both arches. in both arches.  
-What to check: This image must be original and not reconstructed.
+What to check: Ensure the image is original, not reconstructed from another radiographic source. Must clearly capture posterior dentition in both arches.
 
 Code: D0270  
 Use when: A single bitewing image is taken to detect interproximal caries or monitor alveolar bone levels. Common in pediatric or limited adult cases.  
-What to check: Specify whether the image is on the right or left side. Do not use if multiple bitewings are taken. to assess interproximal caries or bone level.  
-What to check: Indicate laterality if applicable.
+What to check: Specify whether the image is on the right or left side. Do not use if multiple bitewings are taken.
 
-Canvas Code: D0272  
-**Use when**: Two bitewing images are taken, typically one on the left and one on the right side.  
-**What to check**: This is the standard radiographic procedure during adult recall exams with no clinical caries and no high-risk factors. Confirm both sides are captured and visible.
+Code: D0272  
+Use when: Two bitewing images are taken, typically one on the left and one on the right side.  
+What to check: This is the standard radiographic procedure during adult recall exams with no clinical caries and no high-risk factors. Confirm both sides are captured and visible.
 
-Canvas Code: D0273  
-**Use when**: Three bitewing images are needed, usually due to anatomical considerations such as a larger arch or spacing between posterior teeth.  
-**What to check**: Ensure all interproximal surfaces of the posterior teeth are clearly captured. Consider documenting anatomical necessity.
+Code: D0273  
+Use when: Three bitewing images are needed, usually due to anatomical considerations such as a larger arch or spacing between posterior teeth.  
+What to check: Ensure all interproximal surfaces of the posterior teeth are clearly captured. Consider documenting anatomical necessity.
 
-Canvas Code: D0274  
-**Use when**: Four bitewing images are taken to provide a more detailed and complete view of the interproximal areas.  
-**What to check**: Confirm that all quadrants are covered—upper and lower left, upper and lower right. Often used in comprehensive exams.
+Code: D0274  
+Use when: Four bitewing images are taken to provide a more detailed and complete view of the interproximal areas.  
+What to check: Confirm that all quadrants are covered—upper and lower left, upper and lower right. Often used in comprehensive exams.
 
-Canvas Code: D0277  
-**Use when**: Vertical bitewing series, typically 7-8 images, are taken to evaluate periodontal bone levels.  
-**What to check**: Must document periodontal diagnosis or concern. Clarify that this is not part of a full-mouth radiographic series. Include clinical notes supporting periodontal need.
+Code: D0277  
+Use when: Vertical bitewing series, typically 7-8 images, are taken to evaluate periodontal bone levels.  
+What to check: Must document periodontal diagnosis or concern. Clarify that this is not part of a full-mouth radiographic series. Include clinical notes supporting periodontal need.
 
-Canvas Code: D0310  
-**Use when**: Sialography is performed to visualize salivary gland ductal anatomy and evaluate salivary flow or obstructions.  
-**What to check**: Ensure the use of contrast media is documented along with procedural details. Record any anomalies found in ductal systems.
+Code: D0310  
+Use when: Sialography is performed to visualize salivary gland ductal anatomy and evaluate salivary flow or obstructions.  
+What to check: Ensure the use of contrast media is documented along with procedural details. Record any anomalies found in ductal systems.
 
-Canvas Code: D0320  
-**Use when**: A TMJ arthrogram is performed, which includes the injection of contrast material followed by imaging.  
-**What to check**: Documentation should include consent for contrast injection, the procedure details, and interpretation of images.
+Code: D0320  
+Use when: A TMJ arthrogram is performed, which includes the injection of contrast material followed by imaging.  
+What to check: Documentation should include consent for contrast injection, the procedure details, and interpretation of images.
 
-Canvas Code: D0321  
-**Use when**: Radiographic imaging of the TMJ is done without the use of contrast material.  
-**What to check**: Requires a narrative indicating the reason for TMJ imaging. Justify the need based on symptoms such as pain, dysfunction, or audible joint sounds.
+Code: D0321  
+Use when: Radiographic imaging of the TMJ is done without the use of contrast material.  
+What to check: Requires a narrative indicating the reason for TMJ imaging. Justify the need based on symptoms such as pain, dysfunction, or audible joint sounds.
 
-Canvas Code: D0322  
-**Use when**: A tomographic radiographic survey is done, which produces slice images, often for precise evaluation.  
-**What to check**: Commonly used in implant planning or advanced TMJ analysis. Indicate the area of interest and rationale for tomography.
+Code: D0322  
+Use when: A tomographic radiographic survey is done, which produces slice images, often for precise evaluation.  
+What to check: Commonly used in implant planning or advanced TMJ analysis. Indicate the area of interest and rationale for tomography.
 
-Canvas Code: D0330  
-**Use when**: A panoramic radiograph is taken to assess a broad view of the jaws, teeth, nasal sinuses, and surrounding structures.  
-**What to check**: Should include both maxilla and mandible. Confirm visibility of third molars, condyles, and sinuses. Ensure use is justified for diagnosis, treatment planning, or evaluation of pathology.
+Code: D0330  
+Use when: A panoramic radiograph is taken to assess a broad view of the jaws, teeth, nasal sinuses, and surrounding structures.  
+What to check: Should include both maxilla and mandible. Confirm visibility of third molars, condyles, and sinuses. Ensure use is justified for diagnosis, treatment planning, or evaluation of pathology.
 
-Canvas Code: D0340  
-**Use when**: A 2D cephalometric radiograph is taken, typically for orthodontic or orthognathic surgical planning.  
-**What to check**: Must include accurate patient positioning using a cephalostat. Confirm the capture of anatomical landmarks for analysis. Interpretative notes should detail skeletal relationships and support treatment objectives.
+Code: D0340  
+Use when: A 2D cephalometric radiograph is taken, typically for orthodontic or orthognathic surgical planning.  
+What to check: Must include accurate patient positioning using a cephalostat. Confirm the capture of anatomical landmarks for analysis. Interpretative notes should detail skeletal relationships and support treatment objectives.
 
 Code: D0350  
 Use when: Taking diagnostic 2D facial or intraoral photos for documentation or case planning. Common uses include pre- and post-treatment records, orthodontic progress tracking, esthetic evaluations, and monitoring of lesions or soft tissue abnormalities.  
-What to check: Document purpose clearly and ensure images are stored as part of the patient's record. for documentation or case planning.  
-What to check: Document purpose (e.g., ortho, esthetics, lesions).
+What to check: Document purpose clearly and ensure images are stored as part of the patient's record.
 
 Code: D0364  
 Use when: Capturing and interpreting CBCT with limited field of view (<1 jaw). Commonly used for evaluating impacted teeth, localized lesions, or single implant planning.  
-What to check: Specify the anatomical region imaged (e.g., anterior mandible, posterior maxilla). Must include documented interpretation as part of the clinical record. (<1 jaw).  
-What to check: Specify area imaged; must include interpretation.
+What to check: Specify the anatomical region imaged (e.g., anterior mandible, posterior maxilla). Must include documented interpretation as part of the clinical record.
 
 Code: D0365  
 Use when: Capturing and interpreting CBCT of one full dental arch - mandible.  
@@ -180,8 +179,7 @@ What to check: Image-based endoscopy of salivary ducts.
 
 Code: D0372  
 Use when: Performing intraoral tomosynthesis comprehensive series. This technique creates layered 3D-like images of the mouth by capturing multiple slices, offering more detailed visualization of the structures compared to standard 2D radiographs.  
-What to check: Tomographic equivalent of D0210. Ideal for cases requiring higher diagnostic clarity, such as evaluating root fractures or complex anatomical features.  
-What to check: Tomographic equivalent of D0210.
+What to check: Tomographic equivalent of D0210. Ideal for cases requiring higher diagnostic clarity, such as evaluating root fractures or complex anatomical features.
 
 Code: D0373  
 Use when: Capturing tomographic bitewing image.  
@@ -233,8 +231,7 @@ What to check: Specific tooth and periapical anatomy.
 
 Code: D0701  
 Use when: Capturing panoramic image only (e.g., by hygienist or in off-site/mobile settings). This code is appropriate when the image is acquired but not interpreted by the same provider.  
-What to check: Particularly relevant in teledentistry scenarios. The interpretation should be billed separately using D0391 if performed by a different provider. (e.g., by hygienist).  
-What to check: Interpretation billed separately.
+What to check: Particularly relevant in teledentistry scenarios. The interpretation should be billed separately using D0391 if performed by a different provider.
 
 Code: D0702  
 Use when: Capturing cephalometric image only.  
@@ -270,81 +267,77 @@ What to check: Interpretation billed separately.
 
 Code: D0391  
 Use when: Interpretation and report of diagnostic images by practitioner not associated with image capture. Examples include teledentistry consultations, specialty referrals, or scenarios where imaging technicians capture the images for later review by a dentist.  
-What to check: Must document the interpretation and generate a written report that becomes part of the patient's record. Only use when the interpreter did not also capture the image. Only use with the D070X series or D038X series when a separate provider is interpreting.  
-What to check: Requires written interpretation report.
+What to check: Must document the interpretation and generate a written report that becomes part of the patient's record. Only use when the interpreter did not also capture the image.
 
 Code: D0393  
 Use when: Treatment simulation using 3D image volume. This may include implant placement simulation, orthodontic treatment simulation, or surgical simulation.  
-What to check: Typically requires specialized software. Should include documentation of simulation parameters and objectives. Must go beyond basic CBCT interpretation. Excludes actual guide fabrication.  
-What to check: Must use specialized software for simulation.
+What to check: Typically requires specialized software. Should include documentation of simulation parameters and objectives. Must go beyond basic CBCT interpretation. Excludes actual guide fabrication.
 
 Code: D0394  
 Use when: Digital subtraction of radiographic images. Used to track subtle changes in bone density or lesion progression over time.  
-What to check: Requires original baseline images and follow-up images. Documentation should indicate changes observed through digital subtraction. Typically used in periodontal or implant monitoring.  
-What to check: For monitoring changes over time.
+What to check: Requires original baseline images and follow-up images. Documentation should indicate changes observed through digital subtraction. Typically used in periodontal or implant monitoring.
 
 Code: D0395  
 Use when: Fusion of two or more 3D image volumes of same or different modalities. Examples include merging CBCT with digital models or facial scans.  
-What to check: Document the purpose and clinical benefit of image fusion. Requires specialized software. Should enhance diagnosis or treatment planning beyond individual image interpretation.  
-What to check: Combining different imaging modalities.
+What to check: Document the purpose and clinical benefit of image fusion. Requires specialized software. Should enhance diagnosis or treatment planning beyond individual image interpretation.
 
 Code: D0801  
 Use when: 3D dental surface scan - direct. Used for digital impressions captured directly in the patient's mouth.  
-What to check: Distinguish from traditional impressions. Document the clinical purpose for the scan.  
-What to check: For digital impressions using intraoral scanner.
+What to check: Distinguish from traditional impressions. Document the clinical purpose for the scan.
 
 Code: D0802  
 Use when: 3D dental surface scan - indirect. Used when scanning dental models or impressions rather than directly scanning the oral cavity.  
-What to check: Document the source of the physical model or impression. Indicate purpose for digitization.  
-What to check: Scanning of physical models.
+What to check: Document the source of the physical model or impression. Indicate purpose for digitization.
 
 Code: D0803  
 Use when: 3D facial surface scan - direct. Used for capturing digital models of facial structures directly from the patient.  
-What to check: Document the purpose (e.g., esthetic planning, surgical planning). Specify regions scanned.  
-What to check: Direct facial scanning for digital planning.
+What to check: Document the purpose (e.g., esthetic planning, surgical planning). Specify regions scanned.
 
 Code: D0804  
 Use when: 3D facial surface scan - indirect. Used for digitizing existing facial moulage or similar physical representations.  
-What to check: Document the source of the physical model. Indicate the diagnostic or treatment planning purpose.  
-What to check: Digitizing existing 3D facial models.
+What to check: Document the source of the physical model. Indicate the diagnostic or treatment planning purpose.
 
 Scenario: {{scenario}}
 
 {PROMPT}
-"""
+""",
+            input_variables=["scenario"]
+        )
     
-    prompt = PromptTemplate(template=template, input_variables=["scenario"])
-    return create_chain(prompt)
+    def extract_diagnostic_imaging_code(self, scenario: str) -> str:
+        """Extract diagnostic imaging code(s) for a given scenario."""
+        try:
+            print(f"Analyzing diagnostic imaging scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Diagnostic imaging extract_diagnostic_imaging_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in diagnostic imaging code extraction: {str(e)}")
+            return ""
+    
+    def activate_diagnostic_imaging(self, scenario: str) -> str:
+        """Activate the diagnostic imaging analysis process and return results."""
+        try:
+            result = self.extract_diagnostic_imaging_code(scenario)
+            if not result:
+                print("No diagnostic imaging code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating diagnostic imaging analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_diagnostic_imaging(scenario)
+        print(f"\n=== DIAGNOSTIC IMAGING ANALYSIS RESULT ===")
+        print(f"DIAGNOSTIC IMAGING CODE: {result if result else 'None'}")
 
-def extract_diagnostic_imaging_code(scenario):
-    """
-    Extract Diagnostic Imaging code(s) for a given scenario.
-    """
-    try:
-        extractor = create_diagnostic_imaging_extractor()
-        result = invoke_chain(extractor, {"scenario": scenario})
-        return result.get("text", "").strip()
-    except Exception as e:
-        print(f"Error in diagnostic imaging code extraction: {str(e)}")
-        return None
-
-def activate_diagnostic_imaging(scenario):
-    """
-    Activate Diagnostic Imaging analysis and return results.
-    """
-    try:
-        result = extract_diagnostic_imaging_code(scenario)
-        return result
-    except Exception as e:
-        print(f"Error activating diagnostic imaging analysis: {str(e)}")
-        return None
-
+diagnostic_imaging_service = DiagnosticImagingServices()
 # Example usage
 if __name__ == "__main__":
-    # Print the current Gemini model and temperature being used
-    llm_service = get_llm_service()
-    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
-    
-    scenario = "A new patient comes in with pain in the upper right quadrant. The dentist takes a periapical X-ray of tooth #3 and then two additional periapical X-rays of teeth #2 and #4 to evaluate the surrounding area."
-    result = activate_diagnostic_imaging(scenario)
-    print(result)
+    imaging_service = DiagnosticImagingServices()
+    scenario = input("Enter a diagnostic imaging dental scenario: ")
+    imaging_service.run_analysis(scenario)

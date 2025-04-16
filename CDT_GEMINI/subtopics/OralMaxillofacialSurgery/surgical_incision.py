@@ -4,40 +4,40 @@ Module for extracting surgical incision codes.
 
 import os
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+from llm_services import LLMService, get_service, set_model, set_temperature
 
 # Load environment variables
 load_dotenv()
 
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_surgical_incision_extractor(temperature=0.0):
-    """
-    Create a LangChain-based surgical incision code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class SurgicalIncisionServices:
+    """Class to analyze and extract surgical incision codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template=f"""
-You are a highly experienced dental coding expert specializing in oral and maxillofacial surgical procedures,
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing surgical incision scenarios."""
+        from subtopics.prompt.prompt import PROMPT
+        return PromptTemplate(
+            template=f"""
+You are a highly experienced dental coding expert specializing in oral and maxillofacial surgery,
 
-## **Surgical Incision and Drainage Procedures**
+## **Surgical Incision and Drainage**
 
 ### **Before picking a code, ask:**
-- Is the procedure an incision and drainage, marsupialization, or removal of foreign body/non-vital bone?
-- Is the incision site intraoral or extraoral?
-- Is the procedure simple or complicated (involving multiple fascial spaces)?
-- What is the nature of the abscess or infection (origin, extent, affected tissues)?
-- Does the procedure involve removal of a foreign body? If so, from what tissue (mucosa, skin, bone, etc.)?
-- Is a partial ostectomy or sequestrectomy being performed to remove non-vital bone?
-- Does the procedure involve accessing the maxillary sinus for removal of a foreign body or tooth fragment?
-- Is the procedure being performed to create a long-term open pocket (marsupialization)?
-- Are radiographic studies involved in localizing foreign bodies or non-vital bone?
-- What post-operative management is planned following the incision procedure?
+- Is this incision for drainage of an abscess or a surgical procedure?
+- What is the exact location of the incision (intraoral vs. extraoral/facial)?
+- Is this a soft tissue or hard tissue (bone) incision?
+- If extraoral, is it classified as simple or complex?
+- Does the incision involve any anatomical complexity, drainage tube placement, or special technique?
+- Is this for drainage of an established abscess or for exploratory purposes?
+- Is foreign body removal part of the procedure?
+- Is the procedure being performed in-office or in a facility setting?
+- Will sedation or general anesthesia be required?
+- Does the patient have any complicating medical conditions relevant to the procedure?
 
 ---
 
@@ -101,34 +101,48 @@ You are a highly experienced dental coding expert specializing in oral and maxil
 - **Sinus Precautions** - For maxillary sinusotomy procedures, documentation should include specific post-operative instructions regarding sinus precautions.
 
 Scenario:
-"{{question}}"
+"{{scenario}}"
 
 {PROMPT}
 """,
-        input_variables=["question"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    def extract_surgical_incision_code(self, scenario: str) -> str:
+        """Extract surgical incision code for a given scenario."""
+        try:
+            print(f"Analyzing surgical incision scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Surgical incision extract code result: {code}")
+            
+            # Return empty string if no code found
+            if code == "None" or not code or "not applicable" in code.lower():
+                return ""
+                
+            return code
+        except Exception as e:
+            print(f"Error in extract_surgical_incision_code: {str(e)}")
+            return ""
+    
+    def activate_surgical_incision(self, scenario: str) -> str:
+        """Activate the surgical incision analysis process and return results."""
+        try:
+            return self.extract_surgical_incision_code(scenario)
+        except Exception as e:
+            print(f"Error in activate_surgical_incision: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_surgical_incision(scenario)
+        print(f"\n=== SURGICAL INCISION ANALYSIS RESULT ===")
+        print(f"SURGICAL INCISION CODE: {result if result else 'None'}")
 
-def extract_surgical_incision_code(scenario, temperature=0.0):
-    """
-    Extract surgical incision code(s) for a given scenario.
-    """
-    try:
-        chain = create_surgical_incision_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Surgical incision code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_surgical_incision_code: {str(e)}")
-        return ""
 
-def activate_surgical_incision(scenario):
-    """
-    Activate surgical incision analysis and return results.
-    """
-    try:
-        return extract_surgical_incision_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_surgical_incision: {str(e)}")
-        return "" 
+surgical_incision_service = SurgicalIncisionServices()
+# Example usage
+if __name__ == "__main__":
+    scenario = input("Enter a surgical incision scenario: ")
+    surgical_incision_service.run_analysis(scenario) 

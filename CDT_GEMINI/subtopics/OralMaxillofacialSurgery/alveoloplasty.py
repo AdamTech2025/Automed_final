@@ -1,34 +1,29 @@
 """
-Module for extracting alveoloplasty codes.
+Module for extracting alveoloplasty-related procedure codes.
 """
 
 import os
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+from llm_services import LLMService, get_service, set_model, set_temperature
 
 # Load environment variables
 load_dotenv()
 
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def activate_alveoloplasty(scenario):
-    """
-    Analyze a dental scenario to determine alveoloplasty code.
+class AlveoloplastyServices:
+    """Class to analyze and extract alveoloplasty-related codes based on dental scenarios."""
     
-    Args:
-        scenario (str): The dental scenario to analyze.
-        
-    Returns:
-        str: The identified alveoloplasty code or empty string if none found.
-    """
-    try:
-        llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=0.0)        
-        template = f"""
-You are a dental coding expert specializing in oral surgery procedures,
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing alveoloplasty scenarios."""
+        from subtopics.prompt.prompt import PROMPT
+        return PromptTemplate(
+            template=f"""
+You are a dental coding expert specializing in oral and maxillofacial surgery.
 
 ## **Alveoloplasty Procedures**
 
@@ -66,31 +61,60 @@ You are a dental coding expert specializing in oral surgery procedures,
 ---
 
 ### **Key Takeaways:**
-- **Procedure vs. Extraction Distinction** - Alveoloplasty must be a distinct surgical procedure from routine extractions, with separate documentation justifying the additional surgical manipulation beyond what would normally occur during extractions.
-- **Timing Matters** - The "in conjunction with extractions" codes (D7310, D7311) are used when extractions are performed at the same visit, while "not in conjunction" codes (D7320, D7321) apply to surgical modification of already-healed ridges.
-- **Tooth Count is Per Quadrant** - The distinction between codes is based on the number of teeth or tooth spaces in the specific quadrant being treated, not the total number in the mouth.
-- **Prosthetic Purpose** - Most alveoloplasties are performed to facilitate prosthesis placement, and this purpose should be clearly documented in the patient record.
-- **Medical Necessity** - Documentation must establish why the existing or anticipated ridge form would be inadequate without surgical modification.
-- **One Code Per Quadrant** - When performing alveoloplasty in multiple quadrants, each quadrant should be coded separately with the appropriate code.
-- **Documentation Specificity** - Detail the extent of bone removal, the recontouring technique, and the specific anatomical landmarks addressed.
-- **Radiographic Evidence** - Pre and post-operative radiographs are valuable for justifying the necessity of the procedure, especially for insurance submissions.
+- **Extraction Relationship** - The primary distinction is whether the alveoloplasty is performed in conjunction with extractions (D7310, D7311) or as a separate procedure (D7320, D7321).
+- **Quadrant Specificity** - Codes are applied per quadrant, and each quadrant should be reported separately.
+- **Tooth Count Matters** - The number of teeth or tooth spaces involved determines which code to use (1-3 teeth vs. 4+ teeth).
+- **Surgical Nature Required** - Documentation must clearly indicate surgical recontouring beyond what would normally occur during routine extractions.
+- **Purpose Documentation** - The purpose of the alveoloplasty (typically to prepare for a prosthesis) should be clearly documented.
+- **Technical Details** - Documentation should include the extent of the ridge that was recontoured and the surgical techniques employed.
+- **Different Day Distinction** - Alveoloplasty performed on a different day than extractions would be coded using the "not in conjunction" codes even if extractions were previously performed in the same area.
+- **Benefit Limitations** - Many plans consider alveoloplasty in conjunction with extractions to be part of the extraction procedure unless there is clear documentation of significant additional surgical recontouring.
+- **Anatomical Specificity** - Documentation should clearly identify the quadrant(s) where the alveoloplasty was performed.
+- **Pre/Post Documentation** - Pre-operative and post-operative documentation, including radiographic evidence when available, strengthens the justification for these codes.
 
 Scenario:
 "{{scenario}}"
 
 {PROMPT}
-"""
-        
-        prompt = PromptTemplate(template=template, input_variables=["scenario"])
-        chain = LLMChain(llm=llm, prompt=prompt)
-        
-        result = invoke_chain(chain, {"scenario": scenario}).strip()
-        
-        # Return empty string if no code found
-        if result == "None" or not result or "not applicable" in result.lower():
-            return ""
+""",
+            input_variables=["scenario"]
+        )
+    
+    def extract_alveoloplasty_code(self, scenario: str) -> str:
+        """Extract alveoloplasty code for a given scenario."""
+        try:
+            print(f"Analyzing alveoloplasty scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Alveoloplasty extract code result: {code}")
             
-        return result
-    except Exception as e:
-        print(f"Error in activate_alveoloplasty: {str(e)}")
-        return "" 
+            # Return empty string if no code found
+            if code == "None" or not code or "not applicable" in code.lower():
+                return ""
+                
+            return code
+        except Exception as e:
+            print(f"Error in extract_alveoloplasty_code: {str(e)}")
+            return ""
+    
+    def activate_alveoloplasty(self, scenario: str) -> str:
+        """Activate the alveoloplasty analysis process and return results."""
+        try:
+            return self.extract_alveoloplasty_code(scenario)
+        except Exception as e:
+            print(f"Error in activate_alveoloplasty: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_alveoloplasty(scenario)
+        print(f"\n=== ALVEOLOPLASTY ANALYSIS RESULT ===")
+        print(f"ALVEOLOPLASTY CODE: {result if result else 'None'}")
+
+
+alveoloplasty_service = AlveoloplastyServices()
+# Example usage
+if __name__ == "__main__":
+    scenario = input("Enter an alveoloplasty scenario: ")
+    alveoloplasty_service.run_analysis(scenario) 

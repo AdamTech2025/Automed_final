@@ -3,29 +3,31 @@ Module for extracting other orthodontic services codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_other_orthodontic_services_extractor(temperature=0.0):
-    """
-    Create a LangChain-based other orthodontic services code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class OtherOrthodonticServices:
+    """Class to analyze and extract other orthodontic services codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing other orthodontic services."""
+        return PromptTemplate(
         template=f"""
 You are a highly experienced dental coding expert
-
-Other Orthodontic Services – Detailed Coding Guidelines
 
 Before picking a code, ask:
 Is this a pre-treatment evaluation or a periodic visit during treatment?
@@ -33,10 +35,8 @@ Is the service related to monitoring, retention, appliance repair, or re-bonding
 Does the patient require adjustments, repairs, or removal of orthodontic devices?
 Is this a case where a standard code does not apply, requiring a report-based procedure?
 
-
-
 Code: D8660
-Use when: Monitoring a patient’s growth and dental development before starting orthodontic treatment.
+Use when: Monitoring a patient's growth and dental development before starting orthodontic treatment.
  Check: Ensure periodic evaluations are documented separately from diagnostic procedures.
  Note: This code applies to observation appointments to determine the right time for treatment.
 Code: D8670
@@ -94,47 +94,53 @@ Use when: A procedure is not adequately described by any existing orthodontic co
 
 Key Takeaways:
 Differentiate between pre-treatment evaluations, periodic visits, retention, and repairs.
-
-
 Ensure documentation clearly supports the need for the service provided.
-
-
-Use D8999 for unique orthodontic procedures that don’t fit standard codes.
-
-
+Use D8999 for unique orthodontic procedures that don't fit standard codes.
 Be specific about whether the service is for maxillary or mandibular appliances.
 
 
 
-Scenario:
-"{{question}}"
+SCENARIO: {{scenario}}
 
 {PROMPT}
 """,
-        input_variables=["question"]
+            input_variables=["scenario"]
     )
+
+    def extract_other_orthodontic_services_code(self, scenario: str) -> str:
+        """Extract other orthodontic services code for a given scenario."""
+        try:
+            print(f"Analyzing other orthodontic services scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Other orthodontic services extract_other_orthodontic_services_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in other orthodontic services code extraction: {str(e)}")
+            return ""
+
+    def activate_other_orthodontic_services(self, scenario: str) -> str:
+        """Activate the other orthodontic services analysis process and return results."""
+        try:
+            result = self.extract_other_orthodontic_services_code(scenario)
+            if not result:
+                print("No other orthodontic services code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating other orthodontic services analysis: {str(e)}")
+            return "" 
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_other_orthodontic_services(scenario)
+        print(f"\n=== OTHER ORTHODONTIC SERVICES ANALYSIS RESULT ===")
+        print(f"OTHER ORTHODONTIC SERVICES CODE: {result if result else 'None'}")
 
-def extract_other_orthodontic_services_code(scenario, temperature=0.0):
-    """
-    Extract other orthodontic services code(s) for a given scenario.
-    """
-    try:
-        chain = create_other_orthodontic_services_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Other orthodontic services code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_other_orthodontic_services_code: {str(e)}")
-        return ""
 
-def activate_other_orthodontic_services(scenario):
-    """
-    Activate other orthodontic services analysis and return results.
-    """
-    try:
-        return extract_other_orthodontic_services_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_other_orthodontic_services: {str(e)}")
-        return "" 
+other_orthodontic_services = OtherOrthodonticServices()
+# Example usage
+if __name__ == "__main__":
+    scenario = input("Enter an other orthodontic services scenario: ")
+    other_orthodontic_services.run_analysis(scenario) 

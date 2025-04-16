@@ -1,29 +1,38 @@
 import os
 import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+
+# Add the parent directory to the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(current_dir))
 sys.path.append(parent_dir)
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
 
+class OralPathologyLaboratoryServices:
+    """Class to analyze and extract oral pathology laboratory codes based on dental scenarios."""
+    
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing oral pathology laboratory tests."""
+        return PromptTemplate(
+            template=f"""
+You are a highly experienced medical coding expert
 
-def create_oral_pathology_laboratory_extractor():
-    """
-    Create a LangChain-based Oral Pathology Laboratory test extractor.
-    """
-    template = f"""
-You are a highly experienced medical coding expert. 
-
-Canvas ## Oral Pathology Laboratory - Detailed Guidelines
+## Oral Pathology Laboratory - Detailed Guidelines
 
 ### **General Guidelines for Choosing Codes:**
 1. **Determine the Test Purpose:** Identify if the test is for microbial, genetic, or cytologic evaluation.
 2. **Check Testing Methodology:** Ensure proper sample collection and processing.
 3. **Document Findings:** Accurately record test results for compliance and treatment planning.
 4. **Ensure Regulatory Compliance:** Follow laboratory and public health guidelines.
-
-
 
 ### **D0472 - Accession of Tissue, Gross Examination, Preparation and Transmission of Written Report**
 **When to Use:**
@@ -179,8 +188,6 @@ Canvas ## Oral Pathology Laboratory - Detailed Guidelines
 **Notes:**
 - Used for diagnosing systemic autoimmune conditions.
 
-
-
 ---
 
 ### **D0485 - Consultation, Including Preparation of Slides from Biopsy Material Supplied by Referring Source**
@@ -215,46 +222,49 @@ Canvas ## Oral Pathology Laboratory - Detailed Guidelines
 - Ensure no other defined code describes the procedure.
 
 **Notes:**
-- Must include a full procedural description.  
+- Must include a full procedural description.
 
-### *Scenario:*
-{{scenario}}
+Scenario: {{scenario}}
 
 {PROMPT}
-"""
+""",
+            input_variables=["scenario"]
+        )
     
-    prompt = PromptTemplate(template=template, input_variables=["scenario"])
-    return create_chain(prompt)
+    def extract_oral_pathology_laboratory_code(self, scenario: str) -> str:
+        """Extract oral pathology laboratory code(s) for a given scenario."""
+        try:
+            print(f"Analyzing oral pathology laboratory scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Oral pathology laboratory extract_oral_pathology_laboratory_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in oral pathology laboratory code extraction: {str(e)}")
+            return ""
+    
+    def activate_oral_pathology_laboratory(self, scenario: str) -> str:
+        """Activate the oral pathology laboratory analysis process and return results."""
+        try:
+            result = self.extract_oral_pathology_laboratory_code(scenario)
+            if not result:
+                print("No oral pathology laboratory code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating oral pathology laboratory analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_oral_pathology_laboratory(scenario)
+        print(f"\n=== ORAL PATHOLOGY LABORATORY ANALYSIS RESULT ===")
+        print(f"ORAL PATHOLOGY LABORATORY CODE: {result if result else 'None'}")
 
-def extract_oral_pathology_laboratory_code(scenario):
-    """
-    Extract Oral Pathology Laboratory test code(s) for a given scenario.
-    """
-    try:
-        extractor = create_oral_pathology_laboratory_extractor()
-        result = invoke_chain(extractor, {"scenario": scenario})
-        return result.get("text", "").strip()
-    except Exception as e:
-        print(f"Error in oral pathology laboratory code extraction: {str(e)}")
-        return None
-
-def activate_oral_pathology_laboratory(scenario):
-    """
-    Activate Oral Pathology Laboratory analysis and return results.
-    """
-    try:
-        result = extract_oral_pathology_laboratory_code(scenario)
-        return result
-    except Exception as e:
-        print(f"Error activating oral pathology laboratory analysis: {str(e)}")
-        return None
-
+oral_pathology_laboratory_service = OralPathologyLaboratoryServices()
 # Example usage
 if __name__ == "__main__":
-    # Print the current Gemini model and temperature being used
-    llm_service = get_llm_service()
-    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
-    
-    scenario = "A dentist takes a biopsy of an unusual lesion on the buccal mucosa and sends it to the lab for both gross and microscopic examination."
-    result = activate_oral_pathology_laboratory(scenario)
-    print(result)
+    pathology_service = OralPathologyLaboratoryServices()
+    scenario = input("Enter an oral pathology laboratory dental scenario: ")
+    pathology_service.run_analysis(scenario)

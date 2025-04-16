@@ -1,21 +1,30 @@
 import os
 import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+
+# Add the parent directory to the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(current_dir))
 sys.path.append(parent_dir)
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
 
-
-
-def create_pulpal_regeneration_extractor():
-    """
-    Create a LangChain-based Pulpal Regeneration code extractor.
-    """
-    prompt_template = f"""
-You are a highly experienced dental coding expert 
-
+class PulpalRegenerationServices:
+    """Class to analyze and extract pulpal regeneration codes based on dental scenarios."""
+    
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing pulpal regeneration."""
+        return PromptTemplate(
+            template=f"""
+You are a highly experienced dental coding expert
 
 ### Before Picking a Code, Ask:
 - What was the primary reason the patient came in? Did they present with a specific issue (e.g., trauma, immature tooth with necrotic pulp) requiring pulpal regeneration, or was it identified during an exam?
@@ -87,46 +96,47 @@ You are a highly experienced dental coding expert
 - **Restoration Separate:** Final restorations are not included—code them independently.  
 - **Documentation Critical:** Insurance often requires detailed records (e.g., X-rays, medication used) due to the procedure's complexity.
 
-
-
-### **Scenario:**
-"{{scenario}}"
+Scenario: {{scenario}}
 
 {PROMPT}
-"""
+""",
+            input_variables=["scenario"]
+        )
     
-    prompt = PromptTemplate(template=prompt_template, input_variables=["scenario"])
-    return create_chain(prompt)
-
-def extract_pulpal_regeneration_code(scenario):
-    """
-    Extract Pulpal Regeneration code(s) for a given scenario.
-    """
-    try:
-        extractor = create_pulpal_regeneration_extractor()
-        result = invoke_chain(extractor, {"scenario": scenario})
-        return result.get("text", "").strip()
-    except Exception as e:
-        print(f"Error in pulpal regeneration code extraction: {str(e)}")
-        return None
-
-def activate_pulpal_regeneration(scenario):
-    """
-    Activate Pulpal Regeneration analysis and return results.
-    """
-    try:
-        result = extract_pulpal_regeneration_code(scenario)
-        return result
-    except Exception as e:
-        print(f"Error activating pulpal regeneration analysis: {str(e)}")
-        return None
+    def extract_pulpal_regeneration_code(self, scenario: str) -> str:
+        """Extract pulpal regeneration code(s) for a given scenario."""
+        try:
+            print(f"Analyzing pulpal regeneration scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Pulpal regeneration extract_pulpal_regeneration_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in pulpal regeneration code extraction: {str(e)}")
+            return ""
+    
+    def activate_pulpal_regeneration(self, scenario: str) -> str:
+        """Activate the pulpal regeneration analysis process and return results."""
+        try:
+            result = self.extract_pulpal_regeneration_code(scenario)
+            if not result:
+                print("No pulpal regeneration code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating pulpal regeneration analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_pulpal_regeneration(scenario)
+        print(f"\n=== PULPAL REGENERATION ANALYSIS RESULT ===")
+        print(f"PULPAL REGENERATION CODE: {result if result else 'None'}")
 
 # Example usage
+pulpal_regeneration_service = PulpalRegenerationServices()
 if __name__ == "__main__":
-    # Print the current Gemini model and temperature being used
-    llm_service = get_llm_service()
-    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
-    
-    scenario = "A 12-year-old patient comes in with a necrotic pulp in an immature permanent tooth. The dentist performs the first step of pulpal regeneration, including opening the tooth, preparing the canal, and placing medication."
-    result = activate_pulpal_regeneration(scenario)
-    print(result) 
+    regeneration_service = PulpalRegenerationServices()
+    scenario = input("Enter a pulpal regeneration dental scenario: ")
+    regeneration_service.run_analysis(scenario)

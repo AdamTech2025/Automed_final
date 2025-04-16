@@ -4,25 +4,25 @@ Module for extracting other repair procedures codes.
 
 import os
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+from llm_services import LLMService, get_service, set_model, set_temperature
 
 # Load environment variables
 load_dotenv()
 
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_other_repair_procedures_extractor(temperature=0.0):
-    """
-    Create a LangChain-based other repair procedures code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class OtherRepairProceduresServices:
+    """Class to analyze and extract other repair procedures codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template=f"""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing other repair procedures scenarios."""
+        from subtopics.prompt.prompt import PROMPT
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert specializing in oral and maxillofacial surgical procedures.
 
 ## **Other Oral Surgery Repair Procedures**
@@ -148,34 +148,48 @@ You are a highly experienced dental coding expert specializing in oral and maxil
 - **Radical vs. Local Procedures** - For radical resection (D7490), documentation must clearly establish the extent of resection beyond the alveolar process, distinguishing it from more localized procedures.
 
 Scenario:
-"{{question}}"
+"{{scenario}}"
 
 {PROMPT}
 """,
-        input_variables=["question"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    def extract_other_repair_procedures_code(self, scenario: str) -> str:
+        """Extract other repair procedures code for a given scenario."""
+        try:
+            print(f"Analyzing other repair procedures scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Other repair procedures extract code result: {code}")
+            
+            # Return empty string if no code found
+            if code == "None" or not code or "not applicable" in code.lower():
+                return ""
+                
+            return code
+        except Exception as e:
+            print(f"Error in extract_other_repair_procedures_code: {str(e)}")
+            return ""
+    
+    def activate_other_repair_procedures(self, scenario: str) -> str:
+        """Activate the other repair procedures analysis process and return results."""
+        try:
+            return self.extract_other_repair_procedures_code(scenario)
+        except Exception as e:
+            print(f"Error in activate_other_repair_procedures: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_other_repair_procedures(scenario)
+        print(f"\n=== OTHER REPAIR PROCEDURES ANALYSIS RESULT ===")
+        print(f"OTHER REPAIR PROCEDURES CODE: {result if result else 'None'}")
 
-def extract_other_repair_procedures_code(scenario, temperature=0.0):
-    """
-    Extract other repair procedures code(s) for a given scenario.
-    """
-    try:
-        chain = create_other_repair_procedures_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Other repair procedures code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_other_repair_procedures_code: {str(e)}")
-        return ""
 
-def activate_other_repair_procedures(scenario):
-    """
-    Activate other repair procedures analysis and return results.
-    """
-    try:
-        return extract_other_repair_procedures_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_other_repair_procedures: {str(e)}")
-        return "" 
+other_repair_procedures_service = OtherRepairProceduresServices()
+# Example usage
+if __name__ == "__main__":
+    scenario = input("Enter an other repair procedures scenario: ")
+    other_repair_procedures_service.run_analysis(scenario) 

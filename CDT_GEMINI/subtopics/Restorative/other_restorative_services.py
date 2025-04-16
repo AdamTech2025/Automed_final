@@ -3,26 +3,30 @@ Module for extracting other restorative services codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_other_restorative_services_extractor(temperature=0.0):
-    """
-    Create a LangChain-based other restorative services code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class OtherRestorativeServices:
+    """Class to analyze and extract other restorative services codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template=f"""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing other restorative services."""
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert
 
 ### Before picking a code, ask:
@@ -39,12 +43,12 @@ You are a highly experienced dental coding expert
 
 **What to check:**
 - Confirm the lesion is non-cavitated and limited to enamel (e.g., white spot lesions).
-- Assess the tooth’s smooth surface (buccal or lingual) and absence of structural damage.
-- Verify patient’s caries risk and oral hygiene habits.
+- Assess the tooth's smooth surface (buccal or lingual) and absence of structural damage.
+- Verify patient's caries risk and oral hygiene habits.
 
 **Notes:**
 - Not for cavitated lesions requiring drilling/filling (e.g., D2391).
-- Requires documentation of lesion location and rationale (e.g., “#8 buccal incipient lesion”).
+- Requires documentation of lesion location and rationale (e.g., "#8 buccal incipient lesion").
 - Often considered preventive; insurance coverage may vary.
 
 ### D2910 - Re-cement or Re-bond Inlay, Onlay, Veneer, or Partial Coverage Restoration
@@ -58,7 +62,7 @@ You are a highly experienced dental coding expert
 
 **Notes:**
 - Does not apply to crowns (use D2920) or repairs (use D2981/D2982).
-- Documentation should note the restoration type and reason for dislodgement (e.g., “#19 onlay debonded due to adhesive failure”).
+- Documentation should note the restoration type and reason for dislodgement (e.g., "#19 onlay debonded due to adhesive failure").
 - May require surface preparation or new cement.
 
 ### D2915 - Re-cement or Re-bond Indirectly Fabricated or Prefabricated Post and Core
@@ -80,13 +84,13 @@ You are a highly experienced dental coding expert
 - When re-cementing or re-bonding a dislodged crown (primary or permanent).
 
 **What to check:**
-- Verify the crown’s integrity (no cracks or wear) and the tooth’s condition (no new decay).
+- Verify the crown's integrity (no cracks or wear) and the tooth's condition (no new decay).
 - Ensure proper fit and occlusion after re-cementation.
 - Check for patient symptoms (e.g., sensitivity) that might indicate a bigger issue.
 
 **Notes:**
 - Not for post and core issues (use D2915) or repairs (use D2980).
-- Documentation should specify tooth number and crown type (e.g., “#27 PFM crown re-cemented”).
+- Documentation should specify tooth number and crown type (e.g., "#27 PFM crown re-cemented").
 - Temporary cement may be used if prognosis is uncertain.
 
 ### D2921 - Reattachment of Tooth Fragment, Incisal Edge, or Cusp
@@ -108,7 +112,7 @@ You are a highly experienced dental coding expert
 - When placing a prefabricated porcelain or ceramic crown on a primary tooth for restorative or esthetic purposes.
 
 **What to check:**
-- Verify the primary tooth’s condition (e.g., extensive caries, fracture) warrants a crown.
+- Verify the primary tooth's condition (e.g., extensive caries, fracture) warrants a crown.
 - Ensure proper size and fit of the prefabricated crown.
 - Check occlusion and parental consent for esthetic focus.
 
@@ -136,7 +140,7 @@ You are a highly experienced dental coding expert
 - When placing a prefabricated stainless steel crown on a primary tooth, typically for extensive caries or structural loss.
 
 **What to check:**
-- Verify the primary tooth’s condition justifies a crown (e.g., multi-surface decay).
+- Verify the primary tooth's condition justifies a crown (e.g., multi-surface decay).
 - Ensure proper size and fit; check occlusion post-placement.
 - Assess pulp health (may need pulpotomy first).
 
@@ -150,7 +154,7 @@ You are a highly experienced dental coding expert
 - When placing a prefabricated stainless steel crown on a permanent tooth, often as a temporary or cost-effective solution.
 
 **What to check:**
-- Confirm the permanent tooth’s condition (e.g., decay, fracture) and patient’s financial/esthetic preferences.
+- Confirm the permanent tooth's condition (e.g., decay, fracture) and patient's financial/esthetic preferences.
 - Check fit and occlusion; ensure no pulp involvement.
 - Assess long-term plan (e.g., eventual custom crown).
 
@@ -164,9 +168,9 @@ You are a highly experienced dental coding expert
 - When placing a prefabricated resin crown on a primary or permanent tooth for restorative or esthetic needs.
 
 **What to check:**
-- Verify the tooth’s condition and suitability for a resin crown (e.g., anterior esthetics).
+- Verify the tooth's condition and suitability for a resin crown (e.g., anterior esthetics).
 - Ensure proper fit, shade, and occlusion.
-- Check patient’s caries risk and oral hygiene.
+- Check patient's caries risk and oral hygiene.
 
 **Notes:**
 - Less durable than stainless steel or porcelain; often temporary.
@@ -192,7 +196,7 @@ You are a highly experienced dental coding expert
 - When placing a stainless steel primary crown with an exterior esthetic coating for improved appearance.
 
 **What to check:**
-- Verify the primary tooth’s condition (e.g., caries, fracture) and esthetic need.
+- Verify the primary tooth's condition (e.g., caries, fracture) and esthetic need.
 - Ensure the coated crown fits and matches adjacent teeth.
 - Check occlusion and coating integrity.
 
@@ -207,12 +211,12 @@ You are a highly experienced dental coding expert
 
 **What to check:**
 - Assess the tooth for sensitivity, exposure, or risk (e.g., after trauma or caries removal).
-- Confirm it’s not for endodontic access closure or as a base/liner.
+- Confirm it's not for endodontic access closure or as a base/liner.
 - Check patient symptoms and urgency.
 
 **Notes:**
 - Temporary measure; not a definitive restoration.
-- Documentation should specify tooth and purpose (e.g., “#9 sedative filling for sensitivity”).
+- Documentation should specify tooth and purpose (e.g., "#9 sedative filling for sensitivity").
 - Often used in emergency visits.
 
 ### D2941 - Interim Therapeutic Restoration — Primary Dentition
@@ -234,7 +238,7 @@ You are a highly experienced dental coding expert
 - When placing restorative material to create an ideal form for a future indirect restoration, eliminating undercuts.
 
 **What to check:**
-- Assess the tooth’s preparation for an indirect restoration (e.g., crown, onlay).
+- Assess the tooth's preparation for an indirect restoration (e.g., crown, onlay).
 - Confirm material placement enhances retention/shape.
 - Check compatibility with planned indirect restoration.
 
@@ -276,7 +280,7 @@ You are a highly experienced dental coding expert
 - When a custom-fabricated post and core is placed as a single unit before a crown.
 
 **What to check:**
-- Verify the tooth’s root canal status and coronal loss.
+- Verify the tooth's root canal status and coronal loss.
 - Assess lab-fabricated post/core fit and crown prep.
 - Check radiographic alignment and occlusion.
 
@@ -332,7 +336,7 @@ You are a highly experienced dental coding expert
 - When removing an existing post (prefabricated or custom) from a tooth.
 
 **What to check:**
-- Assess the post’s condition (e.g., fractured, loose) and removal feasibility.
+- Assess the post's condition (e.g., fractured, loose) and removal feasibility.
 - Confirm tooth integrity post-removal (no root fracture).
 - Check need for subsequent treatment (e.g., new post).
 
@@ -346,7 +350,7 @@ You are a highly experienced dental coding expert
 - When placing a direct resin-bonded labial/facial veneer in-office.
 
 **What to check:**
-- Verify the tooth’s esthetic need (e.g., discoloration, shape).
+- Verify the tooth's esthetic need (e.g., discoloration, shape).
 - Assess enamel availability for bonding and shade match.
 - Check occlusion and patient satisfaction.
 
@@ -360,7 +364,7 @@ You are a highly experienced dental coding expert
 - When placing an indirect, lab-fabricated resin-bonded labial/facial veneer.
 
 **What to check:**
-- Confirm the tooth’s condition supports indirect veneer (e.g., minimal prep).
+- Confirm the tooth's condition supports indirect veneer (e.g., minimal prep).
 - Assess lab fit, shade, and occlusion.
 - Check patient expectations for durability/esthetics.
 
@@ -374,7 +378,7 @@ You are a highly experienced dental coding expert
 - When placing an indirect, lab-fabricated porcelain/ceramic veneer, often extending interproximally or over the incisal edge.
 
 **What to check:**
-- Verify the tooth’s prep and esthetic goals (e.g., alignment, color).
+- Verify the tooth's prep and esthetic goals (e.g., alignment, color).
 - Assess veneer fit, shade, and occlusion from lab.
 - Check bonding integrity and patient approval.
 
@@ -388,7 +392,7 @@ You are a highly experienced dental coding expert
 - When extra steps are needed to adapt a crown to fit under an existing partial denture framework.
 
 **What to check:**
-- Confirm the partial denture’s clasp/rest design and crown compatibility.
+- Confirm the partial denture's clasp/rest design and crown compatibility.
 - Assess crown contouring needs and occlusion.
 - Check partial denture fit post-procedure.
 
@@ -397,20 +401,18 @@ You are a highly experienced dental coding expert
 - Documentation should note tooth, partial, and modifications.
 - Ensures prosthetic harmony.
 
-
-
 ### D2980 - Crown Repair Necessitated by Restorative Material Failure
 **When to use:**
 - When repairing a crown due to failure of the restorative material (e.g., porcelain fracture, metal exposure) rather than tooth structure or cement failure.
 
 **What to check:**
-- Confirm the crown’s material failure (e.g., chipped porcelain, cracked zirconia) via visual or radiographic exam.
+- Confirm the crown's material failure (e.g., chipped porcelain, cracked zirconia) via visual or radiographic exam.
 - Assess the underlying tooth for decay or fracture that might require a new crown instead.
 - Check occlusion and patient symptoms (e.g., sensitivity) post-repair.
 
 **Notes:**
 - Not for re-cementation (use D2920) or tooth-related issues; focuses on material breakdown.
-- Documentation must specify tooth number, failure type (e.g., “#19 PFM porcelain chipped”), and repair method (e.g., composite bonding).
+- Documentation must specify tooth number, failure type (e.g., "#19 PFM porcelain chipped"), and repair method (e.g., composite bonding).
 - May be temporary; monitor for recurrence.
 
 ### D2981 - Inlay Repair Necessitated by Restorative Material Failure
@@ -418,13 +420,13 @@ You are a highly experienced dental coding expert
 - When repairing an inlay due to failure of the restorative material (e.g., cracked ceramic, worn composite) rather than tooth or adhesive failure.
 
 **What to check:**
-- Verify the inlay’s material failure (e.g., fracture, degradation) and distinguish it from tooth damage.
-- Assess the inlay’s fit and surrounding tooth structure for integrity.
+- Verify the inlay's material failure (e.g., fracture, degradation) and distinguish it from tooth damage.
+- Assess the inlay's fit and surrounding tooth structure for integrity.
 - Check occlusion and esthetics after repair.
 
 **Notes:**
 - Not for re-cementation (use D2910); specific to material issues.
-- Documentation should note tooth number, failure details (e.g., “#14 ceramic inlay cracked”), and repair technique.
+- Documentation should note tooth number, failure details (e.g., "#14 ceramic inlay cracked"), and repair technique.
 - Insurance may question necessity; narrative is key.
 
 ### D2982 - Onlay Repair Necessitated by Restorative Material Failure
@@ -432,13 +434,13 @@ You are a highly experienced dental coding expert
 - When repairing an onlay due to failure of the restorative material (e.g., porcelain chip, resin wear) rather than tooth or bonding failure.
 
 **What to check:**
-- Confirm the onlay’s material failure (e.g., cusp fracture, surface wear) via clinical exam.
+- Confirm the onlay's material failure (e.g., cusp fracture, surface wear) via clinical exam.
 - Evaluate the tooth for secondary issues (e.g., caries) that might necessitate replacement.
 - Check occlusion and functionality post-repair.
 
 **Notes:**
 - Distinct from re-cementation (D2910); targets material defects.
-- Documentation must include tooth number, failure specifics (e.g., “#3 gold onlay cusp fractured”), and repair approach.
+- Documentation must include tooth number, failure specifics (e.g., "#3 gold onlay cusp fractured"), and repair approach.
 - May extend onlay lifespan; assess longevity.
 
 ### D2999 - Unspecified Restorative Procedure, By Report
@@ -452,52 +454,56 @@ You are a highly experienced dental coding expert
 
 **Notes:**
 - Examples: laser-assisted restoration, custom repairs beyond standard codes.
-- Requires a thorough report with tooth number, procedure details, and justification (e.g., “#8 novel resin technique for atypical defect”).
+- Requires a thorough report with tooth number, procedure details, and justification (e.g., "#8 novel resin technique for atypical defect").
 - Pre-authorization recommended due to variable reimbursement.
-
 
 ### D2975= Key Takeaways:
 - Direct vs. Indirect: Direct procedures (e.g., D2940, D2960) are immediate, while indirect (e.g., D2952, D2962) involve lab work for precision.
 - Primary vs. Permanent: Codes like D2929/D2930 distinguish dentition; choose accurately.
-- Purpose Drives Coding: Match the code to the procedure’s intent (e.g., protective D2940 vs. core D2950).
+- Purpose Drives Coding: Match the code to the procedure's intent (e.g., protective D2940 vs. core D2950).
 - Documentation is Critical: Repairs, customizations, and unspecified codes (D2980-D2999) need detailed narratives.
-- Adjunct Codes: D2951, D2953, D2957 enhance primary procedures—don’t use alone.
+- Adjunct Codes: D2951, D2953, D2957 enhance primary procedures—don't use alone.
 
-Scenario:
-"{{question}}"
+SCENARIO: {{scenario}}
 
 {PROMPT}
 """,
-        input_variables=["question"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template)
-
-def extract_other_restorative_services_code(scenario, temperature=0.0):
-    """
-    Extract other restorative services code(s) for a given scenario.
-    """
-    try:
-        chain = create_other_restorative_services_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Other restorative services code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_other_restorative_services_code: {str(e)}")
-        return ""
-
-def activate_other_restorative_services(scenario):
-    """
-    Activate other restorative services analysis and return results.
-    """
-    try:
-        return extract_other_restorative_services_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_other_restorative_services: {str(e)}")
-        return ""
+    def extract_other_restorative_services_code(self, scenario: str) -> str:
+        """Extract other restorative services code(s) for a given scenario."""
+        try:
+            print(f"Analyzing other restorative services scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Other restorative services extract_other_restorative_services_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in other restorative services code extraction: {str(e)}")
+            return ""
+    
+    def activate_other_restorative_services(self, scenario: str) -> str:
+        """Activate the other restorative services analysis process and return results."""
+        try:
+            result = self.extract_other_restorative_services_code(scenario)
+            if not result:
+                print("No other restorative services code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating other restorative services analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_other_restorative_services(scenario)
+        print(f"\n=== OTHER RESTORATIVE SERVICES ANALYSIS RESULT ===")
+        print(f"OTHER RESTORATIVE SERVICES CODE: {result if result else 'None'}")
 
 # Example usage
 if __name__ == "__main__":
-    scenario = "5-year-old patient needs a stainless steel crown on primary molar tooth letter 'K'."
-    result = activate_other_restorative_services(scenario)
-    print(result) 
+    other_restorative_services = OtherRestorativeServices()
+    scenario = input("Enter an other restorative services dental scenario: ")
+    other_restorative_services.run_analysis(scenario) 

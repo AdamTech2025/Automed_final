@@ -1,302 +1,471 @@
-"""
-Module for extracting other implant services codes.
-"""
-
 import os
 import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+
+# Add the parent directory to the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(current_dir))
 sys.path.append(parent_dir)
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
 
-
-
-def create_other_implant_services_extractor():
-    """
-    Creates a LangChain-based extractor for other implant services codes.
-    """
-    template = f"""
-    You are a dental coding expert specializing in implant services.
+class OtherImplantServices:
+    """Class to analyze and extract other implant services codes based on dental scenarios."""
     
-  ## **Other Implant Services** 
- 
-### **Before picking a code, ask:** 
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing other implant services."""
+        return PromptTemplate(
+            template=f"""
+You are a dental coding expert specializing in implant services.
+
+### Before Picking a Code, Ask:
 - What type of service is being performed? (maintenance, repair, replacement, etc.)
 - Is the procedure related to an existing implant, abutment, or implant-supported prosthesis?
 - Is the procedure addressing a complication or part of routine maintenance?
 - Is this a replacement of a component or repair of an existing component?
 - Is the procedure for a removable or fixed prosthesis?
 - Does the procedure involve specific components like retaining screws or semi-precision attachments?
- 
----
- 
-### **Implant Maintenance**
- 
-#### **Code: D6080** – *Implant maintenance procedures when prostheses are removed and reinserted, including cleansing of prostheses and abutments* 
-**Use when:** Performing professional maintenance of an implant-supported fixed prosthesis that requires removal, cleaning, and reinsertion.
-**Check:** Verify that the prosthesis was actually removed for cleaning and then reinserted rather than simply cleaned in place.
-**Note:** This comprehensive maintenance procedure involves the careful removal of a fixed implant-supported prosthesis (not a procedure for removable overdentures), thorough cleansing of both the prosthesis and the supporting abutments, inspection of all components for wear or damage, evaluation of peri-implant tissues, and precise reinsertion with verification of proper seating and, if applicable, retightening of screws to recommended torque values.
-**Frequency Considerations:** The appropriate interval for this procedure varies based on patient-specific factors including oral hygiene, restoration design, accessibility for home care, peri-implant tissue health, and risk factors for peri-implantitis, but typically may be performed every 3-6 months for high-risk patients and annually for lower-risk patients.
-**Documentation Requirements:** Records should specify the type of prosthesis maintained, cleaning methods employed, condition of components, any issues identified requiring further attention, and home care instructions provided to the patient.
- 
-#### **Code: D6081** – *Scaling and debridement in the presence of inflammation or mucositis of a single implant* 
-**Use when:** Performing non-surgical periodontal maintenance specifically focused on an implant showing signs of peri-implant mucositis.
-**Check:** Document the presence of inflammation or mucositis around the implant being treated.
-**Note:** This focused procedure addresses early peri-implant inflammation (mucositis) through careful instrumentation to remove biofilm and calculus from a single implant using specialized instruments designed not to damage implant surfaces (such as plastic, carbon fiber, or titanium instruments), irrigation with antimicrobial solutions, and site-specific home care instructions.
-**Clinical Distinction:** This code is specific to a single implant showing signs of inflammation without bone loss and cannot be reported in conjunction with D1110, D4910, or D4346 in the same visit.
-**Treatment Goal:** The objective is to arrest inflammation before it progresses to peri-implantitis with bone loss, focusing on biofilm disruption, decontamination of the implant surface, and establishing an environment conducive to tissue healing.
- 
----
- 
-### **Provisional Components**
- 
-#### **Code: D6085** – *Provisional implant crown* 
-**Use when:** Placing a temporary crown on an implant during the healing phase before the final prosthesis.
-**Check:** Document the purpose of the provisional crown and its expected duration of service.
-**Note:** This temporary restoration serves multiple critical functions beyond simple space maintenance, including development of optimal emergence profile and gingival architecture, assessment of esthetic outcomes before final restoration commitment, protection of the implant from unwanted loading vectors, and evaluation of occlusal function.
-**Treatment Planning:** The provisional may be used to gradually shape soft tissues through controlled pressure, evaluate phonetics, confirm patient satisfaction with esthetics, and guide the laboratory in creating the definitive prosthesis.
-**Material Selection:** Documentation should specify the material used (typically acrylic, composite, or polymer), whether the provisional is screw-retained or cement-retained, and any modifications made during the provisionalization period.
- 
----
- 
-### **Repairs and Modifications**
- 
-#### **Code: D6090** – *Repair implant supported prosthesis, by report* 
-**Use when:** Performing repairs to an implant-supported prosthesis that cannot be removed by the patient.
-**Check:** Provide a narrative report detailing the nature of the damage and the specific repairs performed.
-**Note:** This procedure encompasses a wide range of potential repairs to fixed implant-supported prostheses, including but not limited to repair of fractured porcelain or acrylic, replacement of artificial teeth on the prosthesis, repair of framework components, and addressing issues with retentive elements or coatings.
-**Procedural Complexity:** The specific techniques and materials used vary significantly based on the nature of the damage, the prosthesis design, and the materials involved, which must be clearly documented in the accompanying narrative report.
-**Documentation Requirements:** A detailed narrative should specify the type of prosthesis, the nature and extent of damage, repair materials and techniques utilized, and any limitations or durability concerns regarding the repairs performed.
- 
-#### **Code: D6091** – *Replacement of replaceable part of semi-precision or precision attachment of implant/abutment supported prosthesis, per attachment* 
-**Use when:** Replacing a worn component of an attachment system used with an implant-supported prosthesis.
-**Check:** Identify the specific attachment being replaced and confirm it is a replaceable part of a semi-precision or precision attachment.
-**Note:** This procedure focuses on the replacement of worn or damaged components within a precision or semi-precision attachment system—such as nylon inserts, rubber O-rings, clips, or other retentive elements—that connect a removable prosthesis to implant abutments, restoring optimal retention and function of the prosthetic device.
-**Component Specificity:** The code is reported per attachment component replaced, with clear documentation of the specific type, brand, and position of each attachment serviced.
-**Maintenance Protocol:** These replaceable components typically require periodic replacement due to normal wear and loss of retention, with frequency depending on factors such as attachment design, patient habits, and biomechanical forces.
- 
-#### **Code: D6092** – *Re-cement or re-bond implant/abutment supported crown* 
-**Use when:** Re-cementing a crown that has become loose from an implant abutment.
-**Check:** Document that the original crown is intact and suitable for re-cementation rather than replacement.
-**Note:** This procedure involves the careful removal of residual cement from both the crown and abutment, assessment of crown integrity, thorough cleaning and preparation of surfaces, application of appropriate cement, precise reseating of the crown, removal of excess cement (especially in subgingival areas), and verification of proper fit, contacts, and occlusion.
-**Clinical Considerations:** The choice of cement for re-cementation is critical, with factors including margin depth, retrievability requirements, and retention needs dictating whether a temporary or permanent luting agent is most appropriate.
-**Root Cause Analysis:** Documentation should address potential causes of the initial cement failure (such as inadequate retention form, improper cement selection, or occlusal factors) and any modifications made to prevent recurrence.
- 
-#### **Code: D6093** – *Re-cement or re-bond implant/abutment supported fixed partial denture* 
-**Use when:** Re-cementing a fixed partial denture (bridge) that has become loose from implant abutments.
-**Check:** Verify that the prosthesis is intact and suitable for re-cementation rather than replacement.
-**Note:** Similar to D6092 but involving a multi-unit fixed prosthesis, this procedure requires careful assessment of fit at multiple abutments, thorough cleaning of all components, appropriate cement selection, precise seating with special attention to complete adaptation at all abutment interfaces, and verification of proper contacts and occlusion along the entire prosthesis.
-**Technical Challenges:** Re-cementing a multi-unit prosthesis presents additional challenges in ensuring complete seating, managing excess cement at multiple interfaces, and addressing potential distortion that may have occurred when the prosthesis became dislodged.
-**Preventive Measures:** Documentation should address factors that may have contributed to cement failure and any modifications to cement type, prosthesis design, or occlusal adjustments made to prevent recurrence.
- 
-#### **Code: D6095** – *Repair implant abutment, by report* 
-**Use when:** Repairing a damaged implant abutment rather than replacing it.
-**Check:** Provide a detailed narrative describing the damage and specific repair procedures performed.
-**Note:** This procedure involves addressing damage to an implant abutment through various repair methods rather than complete replacement, which might include re-contouring damaged areas, thread repair, repairing fractures or fissures, addressing connection issues, or modifying the emergence profile for better tissue adaptation.
-**Technical Assessment:** Documentation should include evaluation of whether repair is appropriate versus replacement, considering the location and extent of damage, the structural integrity of the abutment, and the long-term prognosis for the repaired component.
-**Repair Methods:** The narrative should specify exactly what was repaired, the techniques and materials used, and any limitations that may affect the longevity or function of the repaired abutment.
- 
-#### **Code: D6096** – *Remove broken implant retaining screw* 
-**Use when:** Removing a fractured screw from within an implant body.
-**Check:** Document the location of the broken screw and the technique used for removal.
-**Note:** This technically demanding procedure addresses a serious complication when a screw fractures within the implant body, using specialized instrumentation and techniques for retrieval without damaging the internal implant connection—such as screw retrieval kits, ultrasonic instruments, modified burs, or reverse torque devices—followed by inspection of the implant threads and internal connection for damage before placement of a new screw.
-**Complication Risk:** Attempts at removal carry risk of further damage to the implant's internal connection, which could render the implant unusable for conventional restoration, potentially necessitating the use of alternative components or implant removal.
-**Clinical Decision-Making:** Documentation should address the cause of screw fracture when identifiable (such as occlusal overload, improper torque, fatigue, or manufacturing defect) and preventive measures to reduce risk of recurrence.
- 
----
- 
-### **Abutment and Implant Supported Prosthetic Components**
- 
-#### **Code: D6097** – *Abutment supported crown – porcelain fused to titanium and titanium alloys* 
-**Use when:** Placing a porcelain-fused-to-titanium crown on an implant abutment.
-**Check:** Verify that the restoration is specifically a crown supported by an abutment and involves porcelain fused to titanium.
-**Note:** This crown combines the esthetic benefits of porcelain with the excellent biocompatibility and strength of titanium, providing an optimal solution for patients with metal sensitivities while delivering excellent esthetics and durability.
-**Material Properties:** The titanium substructure offers superior strength-to-weight ratio compared to other metal options, with excellent tissue compatibility, while supporting a porcelain veneer that provides natural appearance.
-**Clinical Applications:** Particularly valuable in cases where biocompatibility is a primary concern, this restoration is suitable for both anterior and posterior locations with good esthetic outcomes.
- 
-#### **Code: D6098** – *Implant supported retainer – porcelain fused to predominantly base alloys* 
-**Use when:** Placing a porcelain-fused-to-base-metal retainer directly on an implant as part of a fixed partial denture.
-**Check:** Confirm that this is a retainer for a fixed partial denture (not a single crown) attached directly to an implant without an intermediate abutment.
-**Note:** This retainer utilizes predominantly base metal alloys (containing <25% noble metal) as its substructure, providing economical strength while supporting a porcelain veneer for improved esthetics.
-**Material Selection:** Base alloys offer cost advantages while maintaining adequate strength for posterior applications where occlusal forces are significant, though they may have less optimal biocompatibility compared to noble metal options.
-**Documentation Specifics:** Records should clearly distinguish this code from single crown codes, noting that it specifically applies to a component of a fixed partial denture directly supported by an implant.
- 
-#### **Code: D6099** – *Implant supported retainer for FPD – porcelain fused to noble alloys* 
-**Use when:** Placing a porcelain-fused-to-noble-metal retainer directly on an implant as part of a fixed partial denture.
-**Check:** Verify that this is a retainer for a fixed partial denture attached directly to an implant and uses noble metal alloys.
-**Note:** This retainer incorporates noble metal alloys (containing ≥25% noble metal) in its substructure, balancing moderate cost with good biocompatibility, corrosion resistance, and adequate strength to support a porcelain veneer in a multi-unit fixed prosthesis.
-**Clinical Considerations:** Noble alloys offer better biocompatibility than base metals but at higher cost, suitable for patients with moderate metal sensitivity concerns or when optimal tissue response is desired without the premium cost of high noble metals.
-**Technical Specifics:** Documentation should specify that this is a component of a multi-unit fixed prosthesis directly attached to an implant rather than utilizing an intermediate abutment.
- 
----
- 
-### **Implant Removal and Peri-Implant Treatments**
- 
-#### **Code: D6100** – *Implant removal, by report* 
-**Use when:** Surgically removing a previously placed implant that requires a surgical approach with flap elevation.
-**Check:** Document the reason for implant removal (failure, infection, malposition, etc.) and provide a detailed narrative of the procedure.
-**Note:** This surgical procedure involves creating a flap to access the implant site, removing bone as necessary to expose the implant, using specialized instruments to break osseointegration, extracting the implant, debriding the site, managing the remaining defect, and suturing the flap closed.
-**Clinical Indications:** Removal may be necessary due to implant failure (mobility, infection, persistent pain), peri-implantitis that hasn't responded to treatment, implant fracture, or malposition that cannot be managed prosthetically.
-**Documentation Requirements:** The narrative report should detail the original implant placement date if known, reason for removal, surgical approach, instrumentation used, site management after removal, and plans for potential future implant placement or alternative prosthesis.
- 
-#### **Code: D6101** – *Debridement of a peri-implant defect or defects surrounding a single implant* 
-**Use when:** Performing surgical debridement of infected tissue around an implant, including flap access and surface cleaning.
-**Check:** Document the presence of a peri-implant defect requiring surgical intervention.
-**Note:** This procedure addresses peri-implantitis by creating a surgical flap to access the defect, removing granulation and infected tissue, detoxifying the implant surface using mechanical and/or chemical means, and repositioning and suturing the flap to facilitate healing.
-**Procedural Details:** Includes flap entry and closure as well as surface cleaning of exposed implant surfaces, but does not include osseous recontouring or regenerative procedures.
-**Clinical Context:** Appropriate for peri-implantitis cases showing pocket depths ≥5mm, bleeding/suppuration on probing, and radiographic evidence of bone loss, where non-surgical approaches have failed.
- 
-#### **Code: D6102** – *Debridement and osseous contouring of a peri-implant defect or defects surrounding a single implant* 
-**Use when:** Performing surgical debridement with additional bone recontouring around an affected implant.
-**Check:** Verify that the procedure includes both soft tissue debridement and osseous recontouring.
-**Note:** This comprehensive procedure builds upon D6101 by adding osseous recontouring to establish a more physiologic bone architecture around the implant, potentially removing sharp edges, creating positive architecture, or eliminating bony defects to create a more cleansable environment.
-**Surgical Objectives:** The goal is to eliminate the infectious process, create favorable architecture for soft tissue adaptation to the implant, and establish conditions conducive to long-term health.
-**Anatomical Considerations:** Documentation should detail the initial bone defect morphology, the extent of recontouring performed, and the final bone architecture achieved.
- 
-#### **Code: D6103** – *Bone graft for repair of peri-implant defect* 
-**Use when:** Placing bone graft material to repair a defect around an implant, not including flap entry and closure.
-**Check:** Document the type of bone graft material used and specify that this code does not include flap access.
-**Note:** This procedure focuses on placement of bone replacement grafts to regenerate lost bone support around an implant affected by peri-implantitis or other defects, typically used in conjunction with D6101 or D6102 (which include the flap access).
-**Material Selection:** Documentation should specify the type, brand, and quantity of graft material used, whether autogenous, allograft, xenograft, or synthetic, and any additives or biologics incorporated.
-**Procedural Context:** This code is typically reported together with other codes that provide the surgical access, as it specifically excludes flap entry and closure.
- 
-#### **Code: D6104** – *Bone graft at time of implant placement* 
-**Use when:** Placing bone graft material simultaneously with implant placement to address defects or augment ridge dimensions.
-**Check:** Document the reason for simultaneous bone grafting and its relationship to the implant placement.
-**Note:** This procedure involves the placement of bone replacement materials during the same surgical appointment as implant placement, addressing situations such as jumping gaps between implant and socket walls, covering exposed implant threads, or enhancing ridge dimensions.
-**Clinical Applications:** Common uses include immediate implant placement with socket grafting, simultaneous sinus augmentation, guided bone regeneration for dehiscence or fenestration defects, and horizontal ridge augmentation concurrent with implant placement.
-**Material Documentation:** Records should specify the type and amount of graft material used, the defect being addressed, and the relationship between the graft and the implant placement.
- 
----
- 
-### **Implant/Abutment Supported Removable Dentures**
- 
-#### **Code: D6110** – *Implant/abutment supported removable denture for edentulous arch – maxillary* 
-**Use when:** Creating a removable prosthesis for a completely edentulous upper arch that is supported by implants or abutments.
-**Check:** Verify that the upper arch is fully edentulous and document the number and position of supporting implants or abutments.
-**Note:** This prosthesis (often called an overdenture) provides significantly improved stability, retention and function compared to conventional dentures while allowing removal for hygiene and maintenance.
-**Attachment Systems:** Documentation should specify the type of attachment system used (such as locator attachments, ball attachments, or bar-clip systems) and the number of implants supporting the denture.
-**Patient Benefits:** This restoration provides enhanced chewing efficiency, improved phonetics, and greater patient confidence compared to conventional removable prostheses.
- 
-#### **Code: D6111** – *Implant/abutment supported removable denture for edentulous arch – mandibular* 
-**Use when:** Creating a removable prosthesis for a completely edentulous lower arch that is supported by implants or abutments.
-**Check:** Confirm the lower arch is completely without teeth and document the supporting implants or abutments.
-**Note:** Lower implant-supported overdentures offer particularly significant quality-of-life improvements due to the inherent instability of conventional mandibular dentures, with even two implants providing substantial enhancement in retention and stability.
-**Clinical Standard:** The mandibular two-implant overdenture is often considered a standard of care for the edentulous mandible, providing dramatic improvement with minimal implant support.
-**Maintenance Considerations:** Documentation should address attachment selection, maintenance requirements, and patient education regarding home care and periodic professional maintenance.
- 
-#### **Code: D6112** – *Implant/abutment supported removable denture for partially edentulous arch – maxillary* 
-**Use when:** Creating a removable prosthesis for a partially edentulous upper arch that is supported by both implants/abutments and natural teeth.
-**Check:** Document which natural teeth remain and the position of supporting implants or abutments.
-**Note:** This hybrid prosthesis combines the stability of implant support with the proprioception of natural teeth, allowing for strategic implant placement to overcome limitations of conventional partial dentures.
-**Design Considerations:** The prosthesis requires careful planning for force distribution between implants and natural teeth, with specialized attachment systems to accommodate different support types.
-**Biomechanical Factors:** Documentation should address how the design accommodates the differential support provided by rigid implants versus the periodontal ligament-supported natural teeth.
- 
-#### **Code: D6113** – *Implant/abutment supported removable denture for partially edentulous arch – mandibular* 
-**Use when:** Creating a removable prosthesis for a partially edentulous lower arch that is supported by both implants/abutments and natural teeth.
-**Check:** Specify which natural teeth remain and how the implants are integrated into the support system.
-**Note:** This prosthesis significantly improves stability compared to conventional removable partial dentures, particularly in distal extension cases where posterior implant support eliminates the common problems of movement and food entrapment.
-**Strategic Implant Placement:** Documentation should detail the strategic positioning of implants, often placed in posterior edentulous areas to eliminate movement and provide cross-arch stabilization.
-**Attachment Selection:** For partially edentulous cases, attachment selection must consider integration with any clasps or other retention elements engaging the natural teeth.
- 
----
- 
-### **Surgical Index and Component Management**
- 
-#### **Code: D6190** – *Radiographic/surgical implant index, by report* 
-**Use when:** Creating a specialized appliance designed to relate osteotomy or fixture position to existing anatomic structures.
-**Check:** Document the purpose of the index and provide a detailed narrative report.
-**Note:** This specialized appliance serves as a precise guide for implant placement, ensuring optimal positioning relative to critical anatomic structures and prosthetic considerations.
-**Clinical Applications:** Used during radiographic assessment for treatment planning and/or during surgery for precise implant placement, particularly valuable for complex cases involving multiple implants or proximity to vital structures.
-**Documentation Specifics:** The narrative should detail how the index was created, what materials were used, and how it will be utilized during treatment planning or surgical phases.
- 
-#### **Code: D6197** – *Replacement of restorative material used to close an access opening of a screw-retained implant supported prosthesis, per implant* 
-**Use when:** Replacing the filling material that covers a screw access channel in a screw-retained implant restoration.
-**Check:** Document that this specifically involves replacing the access opening material, not recementing or replacing the entire prosthesis.
-**Note:** This procedure restores the integrity and esthetics of a screw-retained implant prosthesis by replacing deteriorated or missing restorative material used to seal the screw access channel.
-**Technical Considerations:** Proper execution involves color matching for anterior restorations, ensuring adequate bulk of restorative material, establishing appropriate occlusal contours, and preserving access to the underlying screw.
-**Reporting Specifics:** This code is reported per implant, requiring separate reporting for each access opening replaced within a multi-unit prosthesis.
- 
-#### **Code: D6198** – *Remove interim implant component* 
-**Use when:** Removing a temporary implant component that was placed for a specific clinical purpose.
-**Check:** Document the type of interim component being removed and the reason for its removal.
-**Note:** This procedure involves removing a temporary component (such as a healing abutment or provisional crown) that was placed for tissue management, space maintenance, or esthetic purposes during treatment.
-**Procedural Context:** Unlike second stage surgery, this applies to the removal of interim components placed for a planned duration as part of the treatment sequence.
-**Documentation Requirements:** Records should specify what component is being removed, how long it has been in place, and what will replace it.
- 
----
- 
-### **Unspecified Procedures**
- 
-#### **Code: D6199** – *Unspecified implant procedure, by report* 
-**Use when:** Performing an implant-related procedure that doesn't fit into any existing code description.
-**Check:** Provide a comprehensive narrative describing the procedure, including indications, technique, and materials.
-**Note:** This code serves as a mechanism for reporting legitimate implant-related procedures not accurately described by any other specific code, requiring a detailed narrative report explaining the nature, extent, and necessity of the service.
-**Documentation Essentials:** The narrative must clearly establish medical necessity, detail techniques and materials used, and explain why existing codes are inadequate.
-**Approval Considerations:** This code typically requires manual review by payers and may need additional supporting documentation.
- 
----
- 
-### **Key Takeaways:** 
-- The implant services category includes a wide range of procedures from maintenance to component replacement to management of complications.
-- Proper code selection requires careful consideration of what specific component is being addressed and what exact service is being performed.
-- Many codes in this category require "by report" documentation with detailed narratives explaining the specific circumstances and procedures.
-- Repair codes (D6090, D6095) and replacement codes (D6091, D6197) address different components of the implant system and require clear documentation.
-- Several codes represent specialized procedures addressing specific complications, such as broken screw removal (D6096).
-- Maintenance procedures distinguish between comprehensive prosthesis removal/cleaning (D6080) and focused management of inflammation (D6081).
-- Removable prosthesis codes (D6110-D6113) are differentiated based on whether the arch is fully or partially edentulous and whether it's maxillary or mandibular.
-- For any procedure not covered by specific codes, the unspecified procedure code (D6199) can be used with appropriate narrative documentation.
-    
-    SCENARIO: {{scenario}}
-    
-    {PROMPT}
-    """
-    
-    prompt = PromptTemplate(template=template, input_variables=["scenario"])
-    return create_chain(prompt)
 
-def extract_other_implant_services_code(scenario):
-    """
-    Extracts other implant services code(s) for a given scenario.
-    """
-    try:
-        extractor = create_other_implant_services_extractor()
-        result = invoke_chain(extractor, {"scenario": scenario})
-        return result.get("text", "").strip()
-    except Exception as e:
-        print(f"Error in other implant services code extraction: {str(e)}")
-        return None
+---
 
-def activate_other_implant_services(scenario):
-    """
-    Analyze a dental scenario to determine other implant services code.
+### Other Implant Services
+
+#### Code: D6080
+**Heading:** Implant maintenance procedures when prostheses are removed and reinserted, including cleansing of prostheses and abutments  
+**When to Use:**  
+- Professional maintenance is performed on a fixed implant-supported prosthesis requiring removal, cleaning, and reinsertion.  
+- Use for comprehensive cleaning of both prosthesis and abutments, not in-place cleaning.  
+**What to Check:**  
+- Confirm the prosthesis was removed and reinserted via clinical notes.  
+- Verify it’s a fixed prosthesis (e.g., bridge, not overdenture).  
+- Assess peri-implant tissue health and component wear.  
+- Check frequency (e.g., 3-6 months for high-risk patients, annually for others).  
+**Notes:**  
+- Involves cleaning, inspecting components, and retightening screws if needed.  
+- Not for removable prostheses or in-place cleaning.  
+- Document prosthesis type, cleaning methods, and patient home care instructions.  
+
+#### Code: D6081
+**Heading:** Scaling and debridement in the presence of inflammation or mucositis of a single implant  
+**When to Use:**  
+- Non-surgical periodontal maintenance is performed on a single implant with peri-implant mucositis.  
+- Use for biofilm/calculus removal with specialized instruments.  
+**What to Check:**  
+- Confirm inflammation/mucositis via clinical exam (e.g., bleeding on probing).  
+- Verify use of implant-safe instruments (e.g., plastic, titanium).  
+- Ensure no bone loss (else consider peri-implantitis codes).  
+- Cannot be reported with D1110, D4910, or D4346 same visit.  
+**Notes:**  
+- Aims to prevent progression to peri-implantitis.  
+- Includes irrigation and home care instructions.  
+- Document inflammation signs and treatment specifics.  
+
+#### Code: D6085
+**Heading:** Provisional implant crown  
+**When to Use:**  
+- A temporary crown is placed on an implant during healing before the final prosthesis.  
+- Use to shape soft tissue or assess esthetics/function.  
+**What to Check:**  
+- Confirm temporary purpose and duration via treatment plan.  
+- Verify material (e.g., acrylic, composite) and retention (screw/cement).  
+- Assess gingival shaping and occlusal function.  
+- Check patient esthetic satisfaction.  
+**Notes:**  
+- Shapes emergence profile and evaluates phonetics/esthetics.  
+- Not for permanent crowns or multi-unit provisionals.  
+- Document material, retention, and provisional goals.  
+
+#### Code: D6090
+**Heading:** Repair implant supported prosthesis, by report  
+**When to Use:**  
+- Repairs are made to a fixed implant-supported prosthesis (non-removable).  
+- Use for porcelain/acrylic fractures, tooth replacement, etc.  
+**What to Check:**  
+- Confirm prosthesis is fixed and non-patient-removable.  
+- Verify damage type (e.g., fracture, wear) via clinical exam.  
+- Ensure narrative details repair materials and techniques.  
+- Assess repair durability.  
+**Notes:**  
+- Requires detailed narrative for insurance.  
+- Not for removable prostheses or abutment repairs (see D6095).  
+- Document damage extent and repair limitations.  
+
+#### Code: D6091
+**Heading:** Replacement of replaceable part of semi-precision or precision attachment of implant/abutment supported prosthesis, per attachment  
+**When to Use:**  
+- A worn semi-precision/precision attachment component is replaced (e.g., O-rings, clips).  
+- Use per attachment for removable prostheses.  
+**What to Check:**  
+- Confirm attachment type (e.g., nylon insert, rubber O-ring).  
+- Verify it’s a replaceable part, not the abutment (see D6191).  
+- Assess wear cause (e.g., patient habits, design).  
+- Check prosthesis condition.  
+**Notes:**  
+- Restores retention for removable prostheses.  
+- Report per attachment replaced.  
+- Document brand, position, and replacement rationale.  
+
+#### Code: D6092
+**Heading:** Re-cement or re-bond implant/abutment supported crown  
+**When to Use:**  
+- A loose implant/abutment-supported crown is re-cemented.  
+- Use for intact crowns suitable for re-cementation.  
+**What to Check:**  
+- Confirm crown integrity via inspection.  
+- Verify abutment stability and cement failure cause.  
+- Assess cement choice (temporary/permanent) and margin depth.  
+- Check occlusion post-cementation.  
+**Notes:**  
+- Involves cleaning, recementing, and verifying fit.  
+- Not for prosthesis replacement or FPDs (see D6093).  
+- Document cement type and failure analysis.  
+
+#### Code: D6093
+**Heading:** Re-cement or re-bond implant/abutment supported fixed partial denture  
+**When to Use:**  
+- A loose implant/abutment-supported fixed partial denture (FPD) is re-cemented.  
+- Use for intact multi-unit prostheses.  
+**What to Check:**  
+- Confirm FPD integrity and abutment stability.  
+- Verify complete seating at all abutments.  
+- Assess cement selection and failure cause (e.g., occlusion).  
+- Check contacts and occlusion post-cementation.  
+**Notes:**  
+- More complex than D6092 due to multi-unit seating.  
+- Not for single crowns (see D6092) or replacement.  
+- Document cement type, seating process, and preventive measures.  
+
+#### Code: D6095
+**Heading:** Repair implant abutment, by report  
+**When to Use:**  
+- A damaged implant abutment is repaired, not replaced.  
+- Use for re-contouring, thread repair, etc.  
+**What to Check:**  
+- Confirm repair vs. replacement via damage assessment.  
+- Verify abutment integrity and repair feasibility.  
+- Ensure narrative details techniques (e.g., welding, polishing).  
+- Assess long-term prognosis.  
+**Notes:**  
+- Requires detailed narrative for insurance.  
+- Not for prosthesis repairs (see D6090) or screw removal (see D6096).  
+- Document repair methods and limitations.  
+
+#### Code: D6096
+**Heading:** Remove broken implant retaining screw  
+**When to Use:**  
+- A fractured screw is removed from an implant body.  
+- Use for specialized retrieval procedures.  
+**What to Check:**  
+- Confirm screw fracture via radiograph/clinical exam.  
+- Verify retrieval technique (e.g., ultrasonic, retrieval kit).  
+- Assess implant thread integrity post-removal.  
+- Check fracture cause (e.g., overload, defect).  
+**Notes:**  
+- High-risk procedure to avoid implant damage.  
+- Not for abutment repairs (see D6095).  
+- Document technique, implant status, and prevention plan.  
+
+#### Code: D6097
+**Heading:** Abutment supported crown – porcelain fused to titanium and titanium alloys  
+**When to Use:**  
+- A porcelain-fused-to-titanium crown is placed on an implant abutment.  
+- Use for single crowns, not retainers.  
+**What to Check:**  
+- Confirm titanium substructure via lab specs.  
+- Verify abutment support, not direct implant.  
+- Assess biocompatibility needs (e.g., metal allergies).  
+- Check esthetic/functional outcomes.  
+**Notes:**  
+- Ideal for metal-sensitive patients with good esthetics.  
+- Not for implant-supported crowns (see D6084) or FPDs.  
+- Document material and abutment details.  
+
+#### Code: D6098
+**Heading:** Implant supported retainer – porcelain fused to predominantly base alloys  
+**When to Use:**  
+- A porcelain-fused-to-base-metal retainer is placed directly on an implant for a fixed partial denture (FPD).  
+- Use for FPD components, not single crowns.  
+**What to Check:**  
+- Confirm base metal (<25% noble) via lab report.  
+- Verify direct implant support, no abutment.  
+- Assess FPD design and retainer role.  
+- Check posterior suitability (strength-focused).  
+**Notes:**  
+- Economical for posterior FPDs.  
+- Not for abutment-supported retainers (see D6070) or crowns.  
+- Document metal type and FPD specifics.  
+
+#### Code: D6099
+**Heading:** Implant supported retainer for FPD – porcelain fused to noble alloys  
+**When to Use:**  
+- A porcelain-fused-to-noble-metal retainer is placed directly on an implant for an FPD.  
+- Use for retainers with ≥25% noble metal.  
+**What to Check:**  
+- Confirm noble metal (≥25%) via lab specs.  
+- Verify direct implant support and FPD context.  
+- Assess biocompatibility and esthetic needs.  
+- Check retainer integration with pontics.  
+**Notes:**  
+- Balances cost and biocompatibility.  
+- Not for base metals (see D6098) or abutment-supported (see D6071).  
+- Document metal composition and FPD role.  
+
+#### Code: D6100
+**Heading:** Implant removal, by report  
+**When to Use:**  
+- An implant is surgically removed with flap elevation.  
+- Use for failed or malpositioned implants.  
+**What to Check:**  
+- Confirm removal reason (e.g., infection, fracture) via radiograph.  
+- Verify flap surgery and debridement.  
+- Ensure narrative details procedure and site management.  
+- Check future treatment plans.  
+**Notes:**  
+- Involves osseointegration breaking and defect management.  
+- Requires detailed narrative for insurance.  
+- Document surgical approach and post-removal plans.  
+
+#### Code: D6101
+**Heading:** Debridement of a peri-implant defect or defects surrounding a single implant  
+**When to Use:**  
+- Surgical debridement is performed for peri-implantitis on one implant.  
+- Use for flap access and surface cleaning, no bone work.  
+**What to Check:**  
+- Confirm peri-implantitis (≥5mm pockets, bone loss) via exam.  
+- Verify flap surgery and implant surface detoxification.  
+- Assess non-surgical failure prior.  
+- Check defect extent via radiograph.  
+**Notes:**  
+- Aims to halt peri-implantitis progression.  
+- Not for osseous work (see D6102) or grafts (see D6103).  
+- Document defect details and cleaning methods.  
+
+#### Code: D6102
+**Heading:** Debridement and osseous contouring of a peri-implant defect or defects surrounding a single implant  
+**When to Use:**  
+- Surgical debridement with bone recontouring is performed for peri-implantitis.  
+- Use for creating physiologic bone architecture.  
+**What to Check:**  
+- Confirm bone recontouring via surgical notes.  
+- Verify peri-implantitis and flap access.  
+- Assess initial vs. final bone morphology.  
+- Check non-surgical failure history.  
+**Notes:**  
+- Enhances tissue adaptation via bone shaping.  
+- Not for grafts (see D6103) or non-osseous work (see D6101).  
+- Document recontouring extent and defect status.  
+
+#### Code: D6103
+**Heading:** Bone graft for repair of peri-implant defect  
+**When to Use:**  
+- Bone graft material is placed to repair a peri-implant defect, excluding flap access.  
+- Use with D6101/D6102 for peri-implantitis.  
+**What to Check:**  
+- Confirm graft material (e.g., allograft, xenograft) via specs.  
+- Verify defect type and size via radiograph.  
+- Ensure flap access coded separately (e.g., D6101).  
+- Check regenerative goals.  
+**Notes:**  
+- Regenerates bone around affected implants.  
+- Not for simultaneous implant placement grafts (see D6104).  
+- Document graft type, quantity, and defect details.  
+
+#### Code: D6104
+**Heading:** Bone graft at time of implant placement  
+**When to Use:**  
+- Bone graft is placed during implant surgery to address defects or augment ridge.  
+- Use for socket gaps, thread coverage, etc.  
+**What to Check:**  
+- Confirm graft purpose (e.g., dehiscence, sinus lift) via surgery notes.  
+- Verify graft material and quantity.  
+- Assess defect/ridge anatomy.  
+- Check simultaneous implant placement.  
+**Notes:**  
+- Enhances implant stability via augmentation.  
+- Not for post-implant defects (see D6103).  
+- Document graft specifics and implant relation.  
+
+#### Code: D6110
+**Heading:** Implant/abutment supported removable denture for edentulous arch – maxillary  
+**When to Use:**  
+- A removable overdenture is placed for a fully edentulous maxilla, supported by implants/abutments.  
+- Use for enhanced retention over conventional dentures.  
+**What to Check:**  
+- Confirm full edentulism via exam.  
+- Verify implant/abutment count and positions.  
+- Assess attachment system (e.g., locators, bars).  
+- Check patient function (e.g., chewing, phonetics).  
+**Notes:**  
+- Improves stability and confidence.  
+- Not for partial edentulism (see D6112).  
+- Document attachments and maintenance needs.  
+
+#### Code: D6111
+**Heading:** Implant/abutment supported removable denture for edentulous arch – mandibular  
+**When to Use:**  
+- A removable overdenture is placed for a fully edentulous mandible, supported by implants/abutments.  
+- Use for significant stability improvement.  
+**What to Check:**  
+- Confirm mandibular edentulism.  
+- Verify implant/abutment support (e.g., two-implant standard).  
+- Assess attachment type and retention.  
+- Check patient education on care.  
+**Notes:**  
+- Often a standard for mandibular edentulism.  
+- Not for partial arches (see D6113).  
+- Document implant count and attachment details.  
+
+#### Code: D6112
+**Heading:** Implant/abutment supported removable denture for partially edentulous arch – maxillary  
+**When to Use:**  
+- A removable prosthesis is placed for a partially edentulous maxilla, supported by implants/abutments and teeth.  
+- Use for hybrid stability.  
+**What to Check:**  
+- Confirm remaining teeth and implant positions.  
+- Verify force distribution design.  
+- Assess attachment/clasp integration.  
+- Check biomechanical balance.  
+**Notes:**  
+- Combines implant and tooth support.  
+- Not for full edentulism (see D6110).  
+- Document teeth, implants, and design specifics.  
+
+#### Code: D6113
+**Heading:** Implant/abutment supported removable denture for partially edentulous arch – mandibular  
+**When to Use:**  
+- A removable prosthesis is placed for a partially edentulous mandible, supported by implants/abutments and teeth.  
+- Use for posterior stability.  
+**What to Check:**  
+- Confirm remaining teeth and implant roles.  
+- Verify design for distal extension support.  
+- Assess attachment integration with teeth.  
+- Check stability improvements.  
+**Notes:**  
+- Reduces movement vs. conventional partials.  
+- Not for full edentulism (see D6111).  
+- Document implant/tooth support and design.  
+
+#### Code: D6190
+**Heading:** Radiographic/surgical implant index, by report  
+**When to Use:**  
+- A specialized appliance is created to guide implant placement relative to anatomy.  
+- Use for planning or surgical precision.  
+**What to Check:**  
+- Confirm index purpose (radiographic/surgical) via plan.  
+- Verify materials and creation process.  
+- Ensure narrative details use case.  
+- Check complex case needs (e.g., multi-implant).  
+**Notes:**  
+- Ensures accurate implant positioning.  
+- Requires detailed narrative for insurance.  
+- Document index role and fabrication.  
+
+#### Code: D6197
+**Heading:** Replacement of restorative material used to close an access opening of a screw-retained implant supported prosthesis, per implant  
+**When to Use:**  
+- Restorative material in a screw access channel is replaced, per implant.  
+- Use for esthetic/functional restoration.  
+**What to Check:**  
+- Confirm screw-retained prosthesis via exam.  
+- Verify material replacement (e.g., composite).  
+- Assess color matching (anterior) and occlusion.  
+- Check per-implant reporting.  
+**Notes:**  
+- Restores integrity of access channel.  
+- Not for recementing (see D6092/D6093).  
+- Document material type and esthetic needs.  
+
+#### Code: D6198
+**Heading:** Remove interim implant component  
+**When to Use:**  
+- A temporary implant component (e.g., healing abutment) is removed.  
+- Use for planned transitional components.  
+**What to Check:**  
+- Confirm component type and duration via records.  
+- Verify removal purpose (e.g., final prosthesis).  
+- Assess tissue health post-removal.  
+- Check replacement plan.  
+**Notes:**  
+- Distinct from second-stage surgery.  
+- Not for permanent components.  
+- Document component details and next steps.  
+
+#### Code: D6199
+**Heading:** Unspecified implant procedure, by report  
+**When to Use:**  
+- An implant-related procedure lacks a specific code.  
+- Use with detailed narrative for unique cases.  
+**What to Check:**  
+- Confirm no other code applies via review.  
+- Verify narrative covers necessity, techniques.  
+- Assess medical need and payer requirements.  
+- Check supporting documentation.  
+**Notes:**  
+- Requires manual payer review.  
+- Not a default for miscoded procedures.  
+- Document procedure specifics comprehensively.  
+
+---
+
+### Key Takeaways:
+- **Diverse Services:** Covers maintenance (D6080–D6081), provisionals (D6085), repairs (D6090–D6093, D6095–D6096), restorations (D6097–D6099), surgical interventions (D6100–D6104), overdentures (D6110–D6113), and planning/miscellaneous (D6190, D6197–D6199).  
+- **Specificity Matters:** Codes target precise components (e.g., screws, abutments, prostheses) and actions (e.g., repair vs. replace).  
+- **Narrative Needs:** Many codes (D6090, D6095, D6100, D6190, D6199) require detailed reports for insurance.  
+- **Fixed vs. Removable:** Codes distinguish fixed (e.g., D6092–D6093) vs. removable prostheses (e.g., D6110–D6113).  
+- **Complication Focus:** Includes specialized codes for issues like screw fracture (D6096) or peri-implantitis (D6101–D6103).  
+- **Documentation Critical:** Specify components, materials, clinical findings, and rationale for clarity and reimbursement.
+
+Scenario: {{scenario}}
+
+{PROMPT}
+""",
+            input_variables=["scenario"]
+        )
     
-    Args:
-        scenario (str): The dental scenario to analyze.
-        
-    Returns:
-        str: The identified other implant services code or empty string if none found.
-    """
-    try:
-        result = extract_other_implant_services_code(scenario)
-        
-        # Return empty string if no code found
-        if result == "None" or not result or "not applicable" in result.lower():
+    def extract_other_implant_services_code(self, scenario: str) -> str:
+        """Extract other implant services code(s) for a given scenario."""
+        try:
+            print(f"Analyzing other implant services scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Other implant services extract_other_implant_services_code result: {code}")
+            if code.lower() in ["none", "", "not applicable"]:
+                return ""
+            return code
+        except Exception as e:
+            print(f"Error in other implant services code extraction: {str(e)}")
             return ""
-            
-        return result
-    except Exception as e:
-        print(f"Error in activate_other_implant_services: {str(e)}")
-        return ""
+    
+    def activate_other_implant_services(self, scenario: str) -> str:
+        """Activate the other implant services analysis process and return results."""
+        try:
+            result = self.extract_other_implant_services_code(scenario)
+            if not result:
+                print("No other implant services code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating other implant services analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_other_implant_services(scenario)
+        print(f"\n=== OTHER IMPLANT SERVICES ANALYSIS RESULT ===")
+        print(f"OTHER IMPLANT SERVICES CODE: {result if result else 'None'}")
 
+other_implant_services_service = OtherImplantServices()
 # Example usage
 if __name__ == "__main__":
-    # Print the current Gemini model and temperature being used
-    llm_service = get_llm_service()
-    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
-    
-    scenario = "A patient with a four-unit implant-supported bridge in the maxillary arch presents with loosened composite filling material in one of the screw access channels. The dentist needs to replace this material to ensure proper function and esthetics."
-    result = activate_other_implant_services(scenario)
-    print(result)
+    implant_service = OtherImplantServices()
+    scenario = input("Enter an other implant services dental scenario: ")
+    implant_service.run_analysis(scenario)

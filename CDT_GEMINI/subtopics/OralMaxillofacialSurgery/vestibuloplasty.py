@@ -4,25 +4,25 @@ Module for extracting vestibuloplasty codes.
 
 import os
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file    
+from llm_services import LLMService, get_service, set_model, set_temperature
 
 # Load environment variables
 load_dotenv()
 
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_vestibuloplasty_extractor(temperature=0.0):
-    """
-    Create a LangChain-based vestibuloplasty code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class VestibuloplastyServices:
+    """Class to analyze and extract vestibuloplasty codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template=f"""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing vestibuloplasty scenarios."""
+        from subtopics.prompt.prompt import PROMPT
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert specializing in oral and maxillofacial surgical procedures,
 
 ## **Vestibuloplasty Procedures**
@@ -66,34 +66,48 @@ You are a highly experienced dental coding expert specializing in oral and maxil
 - **Clinical Illustrations** - Diagrams or photographs documenting pre- and post-operative conditions significantly strengthen the procedural record, particularly for demonstrating the extent of vestibular extension achieved.
 
 Scenario:
-"{{question}}"
+"{{scenario}}"
 
 {PROMPT}
 """,
-        input_variables=["question"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    def extract_vestibuloplasty_code(self, scenario: str) -> str:
+        """Extract vestibuloplasty code for a given scenario."""
+        try:
+            print(f"Analyzing vestibuloplasty scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Vestibuloplasty extract code result: {code}")
+            
+            # Return empty string if no code found
+            if code == "None" or not code or "not applicable" in code.lower():
+                return ""
+                
+            return code
+        except Exception as e:
+            print(f"Error in extract_vestibuloplasty_code: {str(e)}")
+            return ""
+    
+    def activate_vestibuloplasty(self, scenario: str) -> str:
+        """Activate the vestibuloplasty analysis process and return results."""
+        try:
+            return self.extract_vestibuloplasty_code(scenario)
+        except Exception as e:
+            print(f"Error in activate_vestibuloplasty: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_vestibuloplasty(scenario)
+        print(f"\n=== VESTIBULOPLASTY ANALYSIS RESULT ===")
+        print(f"VESTIBULOPLASTY CODE: {result if result else 'None'}")
 
-def extract_vestibuloplasty_code(scenario, temperature=0.0):
-    """
-    Extract vestibuloplasty code(s) for a given scenario.
-    """
-    try:
-        chain = create_vestibuloplasty_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Vestibuloplasty code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_vestibuloplasty_code: {str(e)}")
-        return ""
 
-def activate_vestibuloplasty(scenario):
-    """
-    Activate vestibuloplasty analysis and return results.
-    """
-    try:
-        return extract_vestibuloplasty_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_vestibuloplasty: {str(e)}")
-        return "" 
+vestibuloplasty_service = VestibuloplastyServices()
+# Example usage
+if __name__ == "__main__":
+    scenario = input("Enter a vestibuloplasty scenario: ")
+    vestibuloplasty_service.run_analysis(scenario) 

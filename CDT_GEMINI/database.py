@@ -1,131 +1,43 @@
-import sqlite3
+from supabase import create_client, Client
+import os
+from dotenv import load_dotenv
 import uuid
 from datetime import datetime
-import os
-import time
 import json
 
+load_dotenv()
+
 class MedicalCodingDB:
-    _instance = None
-    _initialized = False
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(MedicalCodingDB, cls).__new__(cls)
-        return cls._instance
-    
     def __init__(self):
-        if not self._initialized:
-            self.db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "med_gpt.sqlite3")
-            self.conn = None
-            self.cursor = None
-            self.connect()
-            self._initialized = True
-    
+        self.url: str = os.getenv("SUPABASE_URL")
+        self.key: str = os.getenv("SUPABASE_KEY")
+        self.supabase: Client = create_client(self.url, self.key)
+
     def connect(self):
-        """Establish database connection."""
-        try:
-            self.conn = sqlite3.connect(self.db_path)
-            self.cursor = self.conn.cursor()
-            self.create_tables()
-            print("✅ Database connected successfully")
-        except Exception as e:
-            print(f"❌ Database connection error: {str(e)}")
-            self.conn = None
-            self.cursor = None
-            raise
-    
+        if not self.url or not self.key:
+            raise ValueError("Supabase URL and key must be set")
+        self.supabase = create_client(self.url, self.key)
+
     def ensure_connection(self):
-        """Check if the connection is valid and reconnect if needed."""
-        if self.conn is None or self.cursor is None:
-            print("Database connection is not established, reconnecting...")
+        if not self.supabase:
             self.connect()
-            return True
-            
-        # Test if the connection is still valid
-        try:
-            self.cursor.execute("SELECT 1")
-            return True
-        except sqlite3.Error:
-            print("Database connection lost, reconnecting...")
-            self.close_connection()
-            self.connect()
-            return True
-        except Exception as e:
-            print(f"❌ Error checking database connection: {str(e)}")
-            self.close_connection()
-            self.connect()
-            return True
-    
-    def create_tables(self):
-        """Create necessary database tables if they don't exist."""
-        try:
-            self.cursor.execute("""
-                CREATE TABLE IF NOT EXISTS dental_report (
-                    id TEXT PRIMARY KEY,
-                    user_question TEXT,
-                    processed_clean_data TEXT,
-                    cdt_result TEXT,
-                    icd_result TEXT,
-                    questioner_data TEXT,
-                    created_at DATETIME DEFAULT (datetime('now', 'localtime'))
-                )
-            """)
-            
-            # Add dental_code_analysis table
-            self.cursor.execute("""
-                CREATE TABLE IF NOT EXISTS dental_code_analysis (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    scenario TEXT NOT NULL,
-                    cdt_codes TEXT,
-                    response TEXT NOT NULL,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            # Check if questioner_data column exists, if not add it
-            try:
-                self.cursor.execute("SELECT questioner_data FROM dental_report LIMIT 1")
-            except sqlite3.OperationalError:
-                self.cursor.execute("ALTER TABLE dental_report ADD COLUMN questioner_data TEXT")
-                print("✅ Added questioner_data column to existing table")
-                
-            self.conn.commit()
-            print("✅ Database tables created/verified successfully")
-        except Exception as e:
-            print(f"❌ Table creation error: {str(e)}")
-            raise
 
     def create_analysis_record(self, data: dict):
-        """Insert a new record into the dental_analysis table."""
+        """Insert a new record into the dental_report table."""
         self.ensure_connection()
         try:
-            record_id = str(uuid.uuid4())
-            query = """
-            INSERT INTO dental_report (
-                id, user_question, processed_clean_data, 
-                cdt_result, icd_result, questioner_data
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            """
-            values = (
-                record_id,
-                data.get("user_question", ""),
-                data.get("processed_clean_data", ""),
-                data.get("cdt_result", "{}"),
-                data.get("icd_result", "{}"),
-                data.get("questioner_data", "{}")
-            )
-            self.cursor.execute(query, values)
-            self.conn.commit()
-            print(f"✅ Analysis record added successfully with ID: {record_id}")
-            return [{"id": record_id}]
-        except sqlite3.OperationalError as e:
-            print(f"❌ Error creating analysis record: {str(e)}")
-            # Try to reconnect and retry once
-            self.connect()
-            self.cursor.execute(query, values)
-            self.conn.commit()
-            return [{"id": record_id}]
+            record_data = {
+                "user_question": data.get("user_question", ""),
+                "processed_clean_data": data.get("processed_clean_data", ""),
+                "cdt_result": data.get("cdt_result", "{}"),
+                "icd_result": data.get("icd_result", "{}"),
+                "questioner_data": data.get("questioner_data", "{}"),
+                "inspector_results": data.get("inspector_results", "{}")        
+            }
+            
+            result = self.supabase.table("dental_report").insert(record_data).execute()
+            print(f"✅ Analysis record added successfully with ID: {result.data[0]['id']}")
+            return result.data
         except Exception as e:
             print(f"❌ Error creating analysis record: {str(e)}")
             return None
@@ -134,101 +46,93 @@ class MedicalCodingDB:
         """Update the processed scenario for a given record."""
         self.ensure_connection()
         try:
-            query = """
-            UPDATE dental_report 
-            SET processed_clean_data = ?
-            WHERE id = ?
-            """
-            self.cursor.execute(query, (processed_scenario, record_id))
-            self.conn.commit()
+            result = self.supabase.table("dental_report").update(
+                {"processed_clean_data": processed_scenario}
+            ).eq("id", record_id).execute()
+            
             print(f"✅ Processed scenario updated successfully for ID: {record_id}")
             return True
         except Exception as e:
             print(f"❌ Error updating processed scenario: {str(e)}")
-            # Try to reconnect and retry once
-            try:
-                self.connect()
-                self.cursor.execute(query, (processed_scenario, record_id))
-                self.conn.commit()
-                print(f"✅ Retry: Processed scenario updated successfully for ID: {record_id}")
-                return True
-            except Exception as retry_e:
-                print(f"❌ Retry failed: {str(retry_e)}")
-                return False
+            return False
 
     def update_analysis_results(self, record_id, cdt_result, icd_result):
         """Update the CDT and ICD results for a given record."""
         self.ensure_connection()
         try:
-            # Log the size of data being stored
             cdt_size = len(cdt_result) if cdt_result else 0
             icd_size = len(icd_result) if icd_result else 0
             print(f"Storing CDT result (size: {cdt_size} bytes) and ICD result (size: {icd_size} bytes)")
             
-            query = """
-            UPDATE dental_report 
-            SET cdt_result = ?, icd_result = ?
-            WHERE id = ?
-            """
-            self.cursor.execute(query, (cdt_result, icd_result, record_id))
-            self.conn.commit()
+            result = self.supabase.table("dental_report").update({
+                "cdt_result": cdt_result,
+                "icd_result": icd_result
+            }).eq("id", record_id).execute()
+            
             print(f"✅ Analysis results updated successfully for ID: {record_id}")
-            
-            # Verify the data was stored correctly
-            self.cursor.execute("SELECT length(cdt_result), length(icd_result) FROM dental_report WHERE id = ?", (record_id,))
-            stored_sizes = self.cursor.fetchone()
-            if stored_sizes:
-                print(f"✓ Verified: CDT data stored ({stored_sizes[0]} bytes), ICD data stored ({stored_sizes[1]} bytes)")
-            
             return True
         except Exception as e:
             print(f"❌ Error updating analysis results: {str(e)}")
-            # Try to reconnect and retry once
-            try:
-                self.connect()
-                self.cursor.execute(query, (cdt_result, icd_result, record_id))
-                self.conn.commit()
-                print(f"✅ Retry: Analysis results updated successfully for ID: {record_id}")
-                return True
-            except Exception as retry_e:
-                print(f"❌ Retry failed: {str(retry_e)}")
-                return False
+            return False
 
     def get_analysis_by_id(self, record_id):
         """Retrieve a single analysis record by its ID."""
         self.ensure_connection()
         try:
-            query = "SELECT processed_clean_data, cdt_result, icd_result FROM dental_report WHERE id = ?"
-            self.cursor.execute(query, (record_id,))
-            record = self.cursor.fetchone()
+            result = self.supabase.table("dental_report").select(
+                "processed_clean_data, cdt_result, icd_result"
+            ).eq("id", record_id).execute()
             
-            if record:
-                cdt_size = len(record[1]) if record[1] else 0
-                icd_size = len(record[2]) if record[2] else 0
+            if result.data:
+                record = result.data[0]
+                cdt_size = len(record['cdt_result']) if record['cdt_result'] else 0
+                icd_size = len(record['icd_result']) if record['icd_result'] else 0
                 print(f"Retrieved record ID: {record_id} - CDT data size: {cdt_size} bytes, ICD data size: {icd_size} bytes")
+                return record
             else:
                 print(f"No record found with ID: {record_id}")
-            
-            return record
+                return None
         except Exception as e:
             print(f"❌ Error retrieving analysis by ID: {str(e)}")
-            # Try to reconnect and retry once
-            try:
-                self.connect()
-                self.cursor.execute(query, (record_id,))
-                return self.cursor.fetchone()
-            except Exception:
+            return None
+
+    def get_complete_analysis(self, record_id):
+        """Retrieve a complete analysis record by its ID."""
+        self.ensure_connection()
+        try:
+            result = self.supabase.table("dental_report").select(
+                "processed_clean_data, cdt_result, icd_result, questioner_data, user_question, inspector_results"
+            ).eq("id", record_id).execute()
+            
+            if result.data:
+                record = result.data[0]
+                cdt_size = len(record['cdt_result']) if record['cdt_result'] else 0
+                icd_size = len(record['icd_result']) if record['icd_result'] else 0
+                questioner_size = len(record['questioner_data']) if record['questioner_data'] else 0
+                inspector_size = len(record['inspector_results']) if 'inspector_results' in record and record['inspector_results'] else 0
+                print(f"Retrieved complete record ID: {record_id}")
+                print(f"- CDT data size: {cdt_size} bytes")
+                print(f"- ICD data size: {icd_size} bytes")
+                print(f"- Questioner data size: {questioner_size} bytes")
+                print(f"- Inspector data size: {inspector_size} bytes")
+                return record
+            else:
+                print(f"No record found with ID: {record_id}")
                 return None
-    
+        except Exception as e:
+            print(f"❌ Error retrieving complete analysis by ID: {str(e)}")
+            return None
+
     def get_latest_processed_scenario(self):
         """Retrieve the latest processed scenario."""
         self.ensure_connection()
         try:
-            query = "SELECT processed_clean_data FROM dental_report WHERE processed_clean_data IS NOT NULL AND processed_clean_data != '' ORDER BY created_at DESC LIMIT 1"
-            self.cursor.execute(query)
-            record = self.cursor.fetchone()
-            if record and record[0]:
-                return record[0]
+            result = self.supabase.table("dental_report").select(
+                "processed_clean_data"
+            ).order("created_at", desc=True).limit(1).execute()
+            
+            if result.data and result.data[0]['processed_clean_data']:
+                return result.data[0]['processed_clean_data']
             return None
         except Exception as e:
             print(f"❌ Error getting latest processed scenario: {str(e)}")
@@ -237,78 +141,64 @@ class MedicalCodingDB:
     def get_all_analyses(self):
         """Retrieve all analysis records."""
         self.ensure_connection()
-        query = "SELECT * FROM dental_report ORDER BY created_at DESC"
-        self.cursor.execute(query)
-        records = self.cursor.fetchall()
-        return records
-
-    def close_connection(self):
-        """Close the database connection."""
-        if self.conn:
-            try:
-                self.conn.close()
-                self.conn = None
-                self.cursor = None
-                print("✅ Database connection closed successfully")
-            except Exception as e:
-                print(f"❌ Error closing database connection: {str(e)}")
-                # Reset connection objects even if close fails
-                self.conn = None
-                self.cursor = None
-
-    def __del__(self):
-        """Ensure connection is closed when object is destroyed."""
-        self.close_connection()
+        try:
+            result = self.supabase.table("dental_report").select("*").order("created_at", desc=True).execute()
+            return result.data
+        except Exception as e:
+            print(f"❌ Error getting all analyses: {str(e)}")
+            return []
 
     def update_questioner_data(self, record_id, questioner_data):
         """Update the questioner data for a given record."""
         self.ensure_connection()
         try:
-            query = """
-            UPDATE dental_report 
-            SET questioner_data = ?
-            WHERE id = ?
-            """
-            self.cursor.execute(query, (questioner_data, record_id))
-            self.conn.commit()
+            result = self.supabase.table("dental_report").update({
+                "questioner_data": questioner_data
+            }).eq("id", record_id).execute()
+            
             print(f"✅ Questioner data updated successfully for ID: {record_id}")
             return True
         except Exception as e:
             print(f"❌ Error updating questioner data: {str(e)}")
-            # Try to reconnect and retry once
-            try:
-                self.connect()
-                self.cursor.execute(query, (questioner_data, record_id))
-                self.conn.commit()
-                print(f"✅ Retry: Questioner data updated successfully for ID: {record_id}")
-                return True
-            except Exception as retry_e:
-                print(f"❌ Retry failed: {str(retry_e)}")
-                return False
+            return False
+
+    def update_inspector_results(self, record_id, inspector_results):
+        """Update the inspector results for a given record."""
+        self.ensure_connection()
+        try:
+            result = self.supabase.table("dental_report").update({
+                "inspector_results": inspector_results
+            }).eq("id", record_id).execute()
+            
+            print(f"✅ Inspector results updated successfully for ID: {record_id}")
+            return True
+        except Exception as e:
+            print(f"❌ Error updating inspector results: {str(e)}")
+            return False
 
     def export_analysis_results(self, record_id, export_dir=None):
-        """Export CDT and ICD results for a given record to JSON files for inspection."""
+        """Export CDT and ICD results for a given record to JSON files."""
         try:
-            # Default to current directory if not specified
             if not export_dir:
                 export_dir = os.path.dirname(os.path.abspath(__file__))
             
-            # Make sure the directory exists
             if not os.path.exists(export_dir):
                 os.makedirs(export_dir)
             
-            # Get the record data
-            query = "SELECT processed_clean_data, cdt_result, icd_result, user_question FROM dental_report WHERE id = ?"
-            self.cursor.execute(query, (record_id,))
-            record = self.cursor.fetchone()
+            result = self.supabase.table("dental_report").select(
+                "processed_clean_data, cdt_result, icd_result, user_question"
+            ).eq("id", record_id).execute()
             
-            if not record:
+            if not result.data:
                 print(f"❌ No record found with ID: {record_id}")
                 return False
             
-            processed_scenario, cdt_result_json, icd_result_json, user_question = record
+            record = result.data[0]
+            processed_scenario = record['processed_clean_data']
+            cdt_result_json = record['cdt_result']
+            icd_result_json = record['icd_result']
+            user_question = record['user_question']
             
-            # Parse the JSON data
             try:
                 cdt_data = json.loads(cdt_result_json) if cdt_result_json else {}
                 icd_data = json.loads(icd_result_json) if icd_result_json else {}
@@ -316,33 +206,26 @@ class MedicalCodingDB:
                 print(f"❌ Error parsing JSON data: {str(e)}")
                 return False
             
-            # Create the export files
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             cdt_filename = os.path.join(export_dir, f"cdt_result_{record_id}_{timestamp}.json")
             icd_filename = os.path.join(export_dir, f"icd_result_{record_id}_{timestamp}.json")
             summary_filename = os.path.join(export_dir, f"analysis_summary_{record_id}_{timestamp}.txt")
             
-            # Save the CDT data
             with open(cdt_filename, 'w') as f:
                 json.dump(cdt_data, f, indent=2)
             
-            # Save the ICD data
             with open(icd_filename, 'w') as f:
                 json.dump(icd_data, f, indent=2)
             
-            # Create a summary file
             with open(summary_filename, 'w') as f:
                 f.write(f"ANALYSIS SUMMARY FOR RECORD: {record_id}\n")
                 f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
                 f.write(f"USER QUESTION:\n{user_question}\n\n")
                 f.write(f"PROCESSED SCENARIO:\n{processed_scenario}\n\n")
                 
-                # Write CDT summary
-                f.write("CDT ANALYSIS SUMMARY:\n")
                 if 'cdt_classifier' in cdt_data and 'range_codes_string' in cdt_data['cdt_classifier']:
                     f.write(f"CDT Code Ranges: {cdt_data['cdt_classifier']['range_codes_string']}\n")
                 
-                # Write topic and subtopic summary
                 if 'subtopics_data' in cdt_data:
                     f.write("\nACTIVATED TOPICS AND SUBTOPICS:\n")
                     for code_range, subtopic_data in cdt_data['subtopics_data'].items():
@@ -350,7 +233,6 @@ class MedicalCodingDB:
                         for subtopic in subtopic_data.get('activated_subtopics', []):
                             f.write(f"  - {subtopic}\n")
                 
-                # Write inspector results
                 if 'inspector_results' in cdt_data and 'codes' in cdt_data['inspector_results']:
                     f.write("\nVALIDATED CDT CODES:\n")
                     for code in cdt_data['inspector_results']['codes']:
@@ -358,7 +240,6 @@ class MedicalCodingDB:
                     if 'explanation' in cdt_data['inspector_results']:
                         f.write(f"\nExplanation: {cdt_data['inspector_results']['explanation']}\n")
                 
-                # Write ICD summary
                 f.write("\nICD ANALYSIS SUMMARY:\n")
                 if 'categories' in icd_data:
                     for i, category in enumerate(icd_data.get('categories', [])):
@@ -368,7 +249,6 @@ class MedicalCodingDB:
                         if 'explanations' in icd_data and i < len(icd_data['explanations']):
                             f.write(f"  Explanation: {icd_data['explanations'][i]}\n")
                 
-                # Write ICD inspector results
                 if 'inspector_results' in icd_data and 'codes' in icd_data['inspector_results']:
                     f.write("\nVALIDATED ICD CODES:\n")
                     for code in icd_data['inspector_results']['codes']:
@@ -388,22 +268,17 @@ class MedicalCodingDB:
     def get_most_recent_analysis(self):
         """Get the most recent analysis record from the database."""
         try:
-            query = """
-            SELECT id, user_question, processed_clean_data, created_at 
-            FROM dental_report 
-            ORDER BY created_at DESC 
-            LIMIT 1
-            """
-            self.cursor.execute(query)
-            record = self.cursor.fetchone()
+            result = self.supabase.table("dental_report").select(
+                "id, user_question, processed_clean_data, created_at"
+            ).order("created_at", desc=True).limit(1).execute()
             
-            if record:
-                record_id, user_question, processed_scenario, created_at = record
+            if result.data:
+                record = result.data[0]
                 print(f"✅ Retrieved most recent analysis record:")
-                print(f"- ID: {record_id}")
-                print(f"- Created at: {created_at}")
-                print(f"- Question: {user_question[:50]}...")
-                return record_id
+                print(f"- ID: {record['id']}")
+                print(f"- Created at: {record['created_at']}")
+                print(f"- Question: {record['user_question'][:50]}...")
+                return record['id']
             else:
                 print("No analysis records found in the database")
                 return None
@@ -415,13 +290,15 @@ class MedicalCodingDB:
         """Add a new dental code analysis record."""
         self.ensure_connection()
         try:
-            query = """
-            INSERT INTO dental_code_analysis (scenario, cdt_codes, response)
-            VALUES (?, ?, ?)
-            """
-            self.cursor.execute(query, (scenario, cdt_codes, response))
-            self.conn.commit()
-            return self.cursor.lastrowid
+            record_data = {
+                "scenario": scenario,
+                "cdt_codes": cdt_codes,
+                "response": response
+            }
+            
+            result = self.supabase.table("dental_code_analysis").insert(record_data).execute()
+            print(f"✅ Code analysis record added successfully with ID: {result.data[0]['id']}")
+            return result.data[0]['id']
         except Exception as e:
             print(f"❌ Error adding code analysis: {str(e)}")
             raise
@@ -431,9 +308,8 @@ class MedicalCodingDB:
 # ===========================
 if __name__ == "__main__":
     db = MedicalCodingDB()
-    
-    # Test the connection and table creation
-    print("Database initialized successfully")
+    db.connect()
+    print("Database connected")
     
     # Show menu of options
     print("\nDental Analysis Database Tools")
@@ -446,33 +322,29 @@ if __name__ == "__main__":
     choice = input("\nEnter your choice (1-4): ")
     
     if choice == "1":
-        # Export most recent analysis
         most_recent_id = db.get_most_recent_analysis()
         if most_recent_id:
             db.export_analysis_results(most_recent_id)
     
     elif choice == "2":
-        # Export specific analysis
         record_id = input("Enter the analysis record ID to export: ")
         db.export_analysis_results(record_id)
     
     elif choice == "3":
-        # View all analysis records
         records = db.get_all_analyses()
         if records:
             print("\nAll Analysis Records:")
             print("=====================")
             for record in records:
-                record_id, user_question, processed_data, cdt_result, icd_result, questioner_data, created_at = record
-                cdt_size = len(cdt_result) if cdt_result else 0
-                icd_size = len(icd_result) if icd_result else 0
-                print(f"ID: {record_id}")
-                print(f"Created: {created_at}")
-                print(f"Question: {user_question[:50]}...")
+                cdt_size = len(record['cdt_result']) if record['cdt_result'] else 0
+                icd_size = len(record['icd_result']) if record['icd_result'] else 0
+                print(f"ID: {record['id']}")
+                print(f"Created: {record['created_at']}")
+                print(f"Question: {record['user_question'][:50]}...")
                 print(f"CDT Data Size: {cdt_size} bytes")
                 print(f"ICD Data Size: {icd_size} bytes")
                 print("-" * 40)
     
     print("Database tool completed")
-    db.close_connection()
+
 

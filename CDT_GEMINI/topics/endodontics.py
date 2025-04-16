@@ -1,51 +1,80 @@
 import os
 import sys
+import asyncio
 from langchain.prompts import PromptTemplate
-from llm_services import create_chain, invoke_chain, get_llm_service
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+from sub_topic_registry import SubtopicRegistry
 
 # Add the root directory to the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 sys.path.append(root_dir)
 
-# Now import modules
+# Import modules
 from topics.prompt import PROMPT
 
-# Now try to import subtopics, with a fallback mechanism
+# Import subtopics with fallback mechanism
 try:
-    # Note: The directory is named 'Endodontics' (capitalized) - matching directory structure
-    from subtopics.Endodontics import (
-        activate_pulp_capping,
-        activate_pulpotomy,
-        activate_primary_teeth_therapy,
-        activate_endodontic_therapy,
-        activate_endodontic_retreatment,
-        activate_apexification,
-        activate_pulpal_regeneration,
-        activate_apicoectomy,
-        activate_other_endodontic
-    )
+    from subtopics.Endodontics.apexification import apexification_service
+    from subtopics.Endodontics.apicoectomy import apicoectomy_service
+    from subtopics.Endodontics.endodonticretreatment import endodontic_retreatment_service
+    from subtopics.Endodontics.endodontictherapy import endodontic_therapy_service
+    from subtopics.Endodontics.otherendodontic import other_endodontic_service
+    from subtopics.Endodontics.pulpcapping import pulpcapping_service
+    from subtopics.Endodontics.pulpotomy import pulpotomy_service
+    from subtopics.Endodontics.primaryteeth import primary_teeth_therapy_service
+    from subtopics.Endodontics.pulpalregeneration import pulpal_regeneration_service
 except ImportError:
     print("Warning: Could not import subtopics for Endodontics. Using fallback functions.")
-    
+    # Define fallback functions
+    def activate_pulp_capping(scenario): return None
+    def activate_pulpotomy(scenario): return None
+    def activate_primary_teeth_therapy(scenario): return None
+    def activate_endodontic_therapy(scenario): return None
+    def activate_endodontic_retreatment(scenario): return None
+    def activate_apexification(scenario): return None
+    def activate_pulpal_regeneration(scenario): return None
+    def activate_apicoectomy(scenario): return None
+    def activate_other_endodontic(scenario): return None
 
-def analyze_endodontic(scenario):
-    """
-    Analyze a dental endodontic scenario and return relevant code ranges.
+class EndodonticServices:
+    """Class to analyze and activate endodontic services based on dental scenarios."""
     
-    Args:
-        scenario (str): The dental scenario text to analyze
-        
-    Returns:
-        str: The identified endodontic code range(s)
-    """
-    try:
-        # Create the prompt template
-        prompt_template = PromptTemplate(
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+        self.registry = SubtopicRegistry()
+        self._register_subtopics()
+    
+    def _register_subtopics(self):
+        """Register all subtopics for parallel activation."""
+        self.registry.register("D3110-D3120", pulpcapping_service.activate_pulp_capping, 
+                            "Pulp Capping (D3110-D3120)")
+        self.registry.register("D3220-D3222", pulpotomy_service.activate_pulpotomy, 
+                            "Pulpotomy (D3220-D3222)")
+        self.registry.register("D3230-D3240", primary_teeth_therapy_service.activate_primary_teeth_therapy, 
+                            "Endodontic Therapy on Primary Teeth (D3230-D3240)")
+        self.registry.register("D3310-D3333", endodontic_therapy_service.activate_endodontic_therapy, 
+                            "Endodontic Therapy (D3310-D3333)")
+        self.registry.register("D3346-D3348", endodontic_retreatment_service.activate_endodontic_retreatment, 
+                            "Endodontic Retreatment (D3346-D3348)")
+        self.registry.register("D3351", apexification_service.activate_apexification, 
+                            "Apexification/Recalcification (D3351)")
+        self.registry.register("D3355-D3357", pulpal_regeneration_service.activate_pulpal_regeneration, 
+                            "Pulpal Regeneration (D3355-D3357)")
+        self.registry.register("D3410-D3470", apicoectomy_service.activate_apicoectomy, 
+                            "Apicoectomy/Periradicular Services (D3410-D3470)")
+        self.registry.register("D3910-D3999", other_endodontic_service.activate_other_endodontic, 
+                            "Other Endodontic Procedures (D3910-D3999)")
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing endodontic services."""
+        return PromptTemplate(
             template=f"""
 You are a highly experienced dental coding expert with over 15 years of expertise in ADA dental codes. 
 Your task is to analyze the given scenario and determine the most applicable endodontic code range(s) based on the following classifications:
-
 
 ## **Pulp Capping (D3110-D3120)**
 **Use when:** Protecting exposed or nearly exposed pulp to preserve vitality.
@@ -107,141 +136,61 @@ Your task is to analyze the given scenario and determine the most applicable end
 
 RESPOND WITH ALL APPLICABLE CODE RANGES from the options above, even if they are only slightly relevant.
 List them in order of relevance, with the most relevant first.
-
-""",    
+""",
             input_variables=["scenario"]
         )
-        
-        # Create the chain using our LLM service
-        chain = create_chain(prompt_template)
-        
-        # Use the provided scenario directly
-        print(f"Analyzing endodontic scenario: {scenario[:100]}...")
-        
-        # Use invoke through our LLM service
-        result = invoke_chain(chain, {"scenario": scenario})
-        
-        # Extract the text from the result
-        code_range = result.get("text", "").strip()
-        
-        print(f"Endodontics analyze_endodontic result: {code_range}")
-        return code_range
-    except Exception as e:
-        print(f"Error in analyze_endodontic: {str(e)}")
-        return ""
-
-def activate_endodontic(scenario):
-    """
-    Activate endodontic analysis and return the results with specific subtopic activations.
     
-    Args:
-        scenario (str): The dental scenario text to analyze
-        
-    Returns:
-        dict: A dictionary containing the code range, subtopic and specific codes
-    """
-    try:
-        # Get the code range from the analysis
-        endodontic_result = analyze_endodontic(scenario)
-        if not endodontic_result:
-            print("No endodontic result returned")
+    def analyze_endodontic(self, scenario: str) -> str:
+        """Analyze the scenario to determine applicable code ranges."""
+        try:
+            print(f"Analyzing endodontic scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code_range = result.strip()
+            print(f"Endodontics analyze_endodontic result: {code_range}")
+            return code_range
+        except Exception as e:
+            print(f"Error in analyze_endodontic: {str(e)}")
+            return ""
+    
+    async def activate_endodontic(self, scenario: str) -> dict:
+        """Activate relevant subtopics in parallel and return detailed results."""
+        try:
+            # Get the code range from the analysis
+            endodontic_result = self.analyze_endodontic(scenario)
+            if not endodontic_result:
+                print("No endodontic result returned")
+                return {}
+            
+            print(f"Endodontic Result in activate_endodontic: {endodontic_result}")
+            
+            # Activate subtopics in parallel using the registry
+            result = await self.registry.activate_all(scenario, endodontic_result)
+            
+            # Return a dictionary with the required fields
+            return {
+                "code_range": endodontic_result,
+                "activated_subtopics": result["activated_subtopics"],
+                "codes": result["topic_result"]
+            }
+        except Exception as e:
+            print(f"Error in endodontic analysis: {str(e)}")
             return {}
-        
-        print(f"Endodontic Result in activate_endodontic: {endodontic_result}")
-        
-        # Process specific endodontic subtopics based on the result
-        specific_codes = []
-        activated_subtopics = []
-        
-        # Check for each subtopic and activate if applicable
-        if "D3110-D3120" in endodontic_result:
-            print("Activating subtopic: Pulp Capping (D3110-D3120)")
-            pulp_capping_code = activate_pulp_capping(scenario)
-            if pulp_capping_code:
-                specific_codes.append(pulp_capping_code)
-                activated_subtopics.append("Pulp Capping (D3110-D3120)")
-                
-        if "D3220-D3222" in endodontic_result:
-            print("Activating subtopic: Pulpotomy (D3220-D3222)")
-            pulpotomy_code = activate_pulpotomy(scenario)
-            if pulpotomy_code:
-                specific_codes.append(pulpotomy_code)
-                activated_subtopics.append("Pulpotomy (D3220-D3222)")
-                
-        if "D3230-D3240" in endodontic_result:
-            print("Activating subtopic: Endodontic Therapy on Primary Teeth (D3230-D3240)")
-            primary_teeth_code = activate_primary_teeth_therapy(scenario)
-            if primary_teeth_code:
-                specific_codes.append(primary_teeth_code)
-                activated_subtopics.append("Endodontic Therapy on Primary Teeth (D3230-D3240)")
-                
-        if "D3310-D3333" in endodontic_result:
-            print("Activating subtopic: Endodontic Therapy (D3310-D3333)")
-            endodontic_therapy_code = activate_endodontic_therapy(scenario)
-            if endodontic_therapy_code:
-                specific_codes.append(endodontic_therapy_code)
-                activated_subtopics.append("Endodontic Therapy (D3310-D3333)")
-                
-        if "D3346-D3348" in endodontic_result:
-            print("Activating subtopic: Endodontic Retreatment (D3346-D3348)")
-            retreatment_code = activate_endodontic_retreatment(scenario)
-            if retreatment_code:
-                specific_codes.append(retreatment_code)
-                activated_subtopics.append("Endodontic Retreatment (D3346-D3348)")
-                
-        if "D3351" in endodontic_result:
-            print("Activating subtopic: Apexification/Recalcification (D3351)")
-            apexification_code = activate_apexification(scenario)
-            if apexification_code:
-                specific_codes.append(apexification_code)
-                activated_subtopics.append("Apexification/Recalcification (D3351)")
-                
-        if "D3355-D3357" in endodontic_result:
-            print("Activating subtopic: Pulpal Regeneration (D3355-D3357)")
-            regeneration_code = activate_pulpal_regeneration(scenario)
-            if regeneration_code:
-                specific_codes.append(regeneration_code)
-                activated_subtopics.append("Pulpal Regeneration (D3355-D3357)")
-                
-        if "D3410-D3470" in endodontic_result:
-            print("Activating subtopic: Apicoectomy/Periradicular Services (D3410-D3470)")
-            apicoectomy_code = activate_apicoectomy(scenario)
-            if apicoectomy_code:
-                specific_codes.append(apicoectomy_code)
-                activated_subtopics.append("Apicoectomy/Periradicular Services (D3410-D3470)")
-                
-        if "D3910-D3999" in endodontic_result:
-            print("Activating subtopic: Other Endodontic Procedures (D3910-D3999)")
-            other_code = activate_other_endodontic(scenario)
-            if other_code:
-                specific_codes.append(other_code)
-                activated_subtopics.append("Other Endodontic Procedures (D3910-D3999)")
-        
-        # Choose the primary subtopic (either the first activated or a default)
-        primary_subtopic = activated_subtopics[0] if activated_subtopics else "Endodontic Procedures"
-        
-        # Return the results in standardized format
-        return {
-            "code_range": endodontic_result,
-            "subtopic": primary_subtopic,
-            "activated_subtopics": activated_subtopics,
-            "codes": specific_codes
-        }
-    except Exception as e:
-        print(f"Error in endodontic analysis: {str(e)}")
-        return {}
+    
+    async def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = await self.activate_endodontic(scenario)
+        print(f"\n=== ENDODONTIC ANALYSIS RESULT ===")
+        print(f"CODE RANGE: {result.get('code_range', 'None')}")
+        print(f"ACTIVATED SUBTOPICS: {', '.join(result.get('activated_subtopics', []))}")
+        print(f"SPECIFIC CODES: {', '.join(result.get('codes', []))}")
 
+endodontic_service = EndodonticServices()
 # Example usage
 if __name__ == "__main__":
-    # Print the current Gemini model and temperature being used
-    llm_service = get_llm_service()
-    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
+    async def main():
+        endo_service = EndodonticServices()
+        scenario = input("Enter an endodontic dental scenario: ")
+        await endo_service.run_analysis(scenario)
     
-    scenario = input("Enter an endodontic dental scenario: ")
-    result = activate_endodontic(scenario)
-    print(f"\n=== ENDODONTIC ANALYSIS RESULT ===")
-    print(f"CODE RANGE: {result.get('code_range', 'None')}")
-    print(f"PRIMARY SUBTOPIC: {result.get('subtopic', 'None')}")
-    print(f"ACTIVATED SUBTOPICS: {', '.join(result.get('activated_subtopics', []))}")
-    print(f"SPECIFIC CODES: {', '.join(result.get('codes', []))}")
-
+    asyncio.run(main())

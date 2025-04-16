@@ -3,26 +3,30 @@ Module for extracting denture reline procedures codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_denture_reline_procedures_extractor(temperature=0.0):
-    """
-    Create a LangChain-based denture reline procedures code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class DentureRelineProceduresServices:
+    """Class to analyze and extract denture reline procedures codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template=f"""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing denture reline procedures services."""
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert
 
 ## Prosthodontics, Removable - Denture Reline Procedures
@@ -58,7 +62,7 @@ You are a highly experienced dental coding expert
 ---
 
 ### **D5741 - Reline Mandibular Partial Denture (Direct)**
-**Use when:** The patient’s mandibular partial denture requires a same-day reline.
+**Use when:** The patient's mandibular partial denture requires a same-day reline.
 **Check:** Ensure adaptation of the material to soft tissue without causing pressure spots.
 **Notes:** Provides a short-term solution for patients experiencing discomfort or looseness.
 
@@ -80,7 +84,7 @@ You are a highly experienced dental coding expert
 
 ### **D5760 - Reline Maxillary Partial Denture (Indirect)**
 **Use when:** A maxillary partial denture requires a laboratory-processed reline.
-**Check:** Ensure a detailed impression is taken to create a precise adaptation to the patient’s tissues.
+**Check:** Ensure a detailed impression is taken to create a precise adaptation to the patient's tissues.
 **Notes:** Indirect relines improve longevity and are preferable for significant tissue or bone changes.
 
 ---
@@ -100,41 +104,46 @@ You are a highly experienced dental coding expert
 - **Long-Term Adjustments:** Some relines may require further modifications as soft tissues continue to adapt.
 
 
-Scenario:
-"{{question}}"
+Scenario: {{scenario}}
 
 {PROMPT}
 """,
-        input_variables=["question"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template)
-
-def extract_denture_reline_procedures_code(scenario, temperature=0.0):
-    """
-    Extract denture reline procedures code(s) for a given scenario.
-    """
-    try:
-        chain = create_denture_reline_procedures_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Denture reline procedures code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_denture_reline_procedures_code: {str(e)}")
-        return ""
-
-def activate_denture_reline_procedures(scenario):
-    """
-    Activate denture reline procedures analysis and return results.
-    """
-    try:
-        return extract_denture_reline_procedures_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_denture_reline_procedures: {str(e)}")
-        return ""
+    def extract_denture_reline_procedures_code(self, scenario: str) -> str:
+        """Extract denture reline procedures code(s) for a given scenario."""
+        try:
+            print(f"Analyzing denture reline procedures scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Denture reline procedures extract_denture_reline_procedures_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in denture reline procedures code extraction: {str(e)}")
+            return ""
+    
+    def activate_denture_reline_procedures(self, scenario: str) -> str:
+        """Activate the denture reline procedures analysis process and return results."""
+        try:
+            result = self.extract_denture_reline_procedures_code(scenario)
+            if not result:
+                print("No denture reline procedures code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating denture reline procedures analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_denture_reline_procedures(scenario)
+        print(f"\n=== DENTURE RELINE PROCEDURES ANALYSIS RESULT ===")
+        print(f"DENTURE RELINE PROCEDURES CODE: {result if result else 'None'}")
 
 # Example usage
 if __name__ == "__main__":
-    scenario = "Patient needs a chairside direct reline of their lower complete denture due to poor fit."
-    result = activate_denture_reline_procedures(scenario)
-    print(result) 
+    denture_reline_procedures_service = DentureRelineProceduresServices()
+    scenario = input("Enter a denture reline procedures dental scenario: ")
+    denture_reline_procedures_service.run_analysis(scenario) 

@@ -1,130 +1,157 @@
-"""
-Module for extracting implant/abutment supported removable dentures codes.
-"""
-
 import os
 import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+
+# Add the parent directory to the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(current_dir))
 sys.path.append(parent_dir)
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
 
-
-
-def create_removable_dentures_extractor():
-    """
-    Creates a LangChain-based extractor for implant/abutment supported removable dentures codes.
-    """
-    template = f"""
-    You are a dental coding expert specializing in implant services.
+class ImplantAbutmentSupportedRemovableDenturesServices:
+    """Class to analyze and extract implant/abutment supported removable dentures codes based on dental scenarios."""
     
-  ## **Implant/Abutment Supported Removable Dentures** 
- 
-### **Before picking a code, ask:** 
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing implant/abutment supported removable dentures."""
+        return PromptTemplate(
+            template=f"""
+You are a dental coding expert specializing in implant services.
+
+### Before Picking a Code, Ask:
 - Is the arch fully edentulous (completely without teeth) or partially edentulous?
 - Is the prosthesis for the maxillary (upper) or mandibular (lower) arch?
 - Is the removable denture supported by implants, abutments, or both?
 - What type of attachments or retention systems are being utilized?
 - How many implants are supporting the removable prosthesis?
 - What are the patient's functional and esthetic requirements for the prosthesis?
- 
----
- 
-### **Removable Dentures for Edentulous Arches**
- 
-#### **Code: D6110** – *Implant/abutment supported removable denture for edentulous arch – maxillary* 
-**Use when:** Creating a removable prosthesis for a completely edentulous upper arch that is supported by implants or abutments and can be removed by the patient.
-**Check:** Verify that no natural teeth remain in the upper arch and document the number and position of supporting implants or abutments.
-**Note:** This prosthesis offers significant improvement in stability, retention and function compared to conventional dentures while still allowing removal for cleaning and maintenance, making it an excellent option for patients with compromised bone volume who cannot receive a fixed prosthesis but desire improved function and confidence over traditional removable appliances.
-**Documentation Requirements:** Records should specify the type of retention system used (such as locator attachments, ball attachments, or bar-clip systems), number of implants supporting the denture, materials used for the denture base and teeth, and any special considerations addressed in the design.
-**Clinical Indications:** Particularly beneficial for patients with significant ridge resorption, concerns about oral hygiene maintenance, limited financial resources for a fixed option, or preference for a removable appliance with enhanced stability.
- 
-#### **Code: D6111** – *Implant/abutment supported removable denture for edentulous arch – mandibular* 
-**Use when:** Creating a removable prosthesis for a completely edentulous lower arch that is supported by implants or abutments and can be removed by the patient.
-**Check:** Confirm that the lower arch is completely without teeth and document the supporting implants or abutments.
-**Note:** Lower implant-supported overdentures offer particularly significant quality-of-life improvements due to the inherent instability of conventional mandibular dentures, with even two implants providing substantial enhancement in retention, stability, and chewing efficiency while preserving alveolar bone and improving patient comfort, function, and psychological well-being.
-**Clinical Considerations:** The mandibular overdenture is often considered a standard of care for the edentulous mandible, as it provides dramatic improvement in stability with relatively few implants (typically 2-4) while remaining cost-effective and allowing for excellent hygiene access.
-**Attachment Selection:** Documentation should include rationale for attachment system selection, considering factors such as implant position, interarch space, retention needs, and patient dexterity for maintenance.
- 
----
- 
-### **Removable Dentures for Partially Edentulous Arches**
- 
-#### **Code: D6112** – *Implant/abutment supported removable denture for partially edentulous arch – maxillary* 
-**Use when:** Creating a removable prosthesis for a partially edentulous upper arch that is supported by both implants/abutments and natural teeth.
-**Check:** Document which natural teeth remain and the position of supporting implants or abutments.
-**Note:** This hybrid prosthesis combines the stability of implant support with the proprioception and additional stability of natural teeth, creating a versatile restoration that distributes forces appropriately between implants and natural teeth while allowing removal for hygiene access and maintenance of both the prosthesis and remaining dentition.
-**Design Considerations:** The prosthesis requires careful planning for force distribution between implants and natural teeth, with specialized attachment systems designed to account for the different resilience of each support type.
-**Biomechanical Factors:** Documentation should address how the design accommodates the differential support provided by the rigid implants versus the periodontal ligament-supported natural teeth to prevent overloading of either support system.
- 
-#### **Code: D6113** – *Implant/abutment supported removable denture for partially edentulous arch – mandibular* 
-**Use when:** Creating a removable prosthesis for a partially edentulous lower arch that is supported by both implants/abutments and natural teeth.
-**Check:** Specify which natural teeth remain and how the implants or abutments are integrated into the support system.
-**Note:** Lower partial dentures with implant support show significant improvement in stability and patient satisfaction compared to conventional removable partial dentures, particularly in distal extension cases where posterior implant support eliminates the common problems of movement and food entrapment under the denture base.
-**Strategic Implant Placement:** Documentation should detail the strategic positioning of implants, often placed in posterior edentulous areas to eliminate movement and provide cross-arch stabilization.
-**Attachment Selection:** For partially edentulous cases, attachment selection must consider the integration with any clasps or other retention elements engaging the natural teeth, creating a unified retention system that functions harmoniously.
- 
----
- 
-### **Key Takeaways:** 
-- These codes are specifically for removable dentures supported by implants or abutments, not conventional dentures.
-- The distinctions between codes are based on whether the arch is fully or partially edentulous and whether it's maxillary or mandibular.
-- Documentation should specify the type of attachments or retention systems used to connect the denture to the implants/abutments.
-- These prostheses offer significant advantages over conventional removable dentures in terms of stability, function, and bone preservation.
-- The design must consider the biomechanics of implant-supported removable prostheses, including attachment wear and maintenance requirements.
-- For partially edentulous arches, the integration between implant support and natural teeth support requires special consideration.
-- Patient education regarding home care and maintenance of both the prosthesis and the supporting elements is essential.
-    
-    SCENARIO: {{scenario}}
-    
-    {PROMPT}
-    """
-    
-    prompt = PromptTemplate(template=template, input_variables=["scenario"])
-    return create_chain(prompt)
 
-def extract_removable_dentures_code(scenario):
-    """
-    Extracts implant/abutment supported removable dentures code(s) for a given scenario.
-    """
-    try:
-        extractor = create_removable_dentures_extractor()
-        result = invoke_chain(extractor, {"scenario": scenario})
-        return result.get("text", "").strip()
-    except Exception as e:
-        print(f"Error in removable dentures code extraction: {str(e)}")
-        return None
+---
 
-def activate_implant_supported_removable_dentures(scenario):
-    """
-    Analyze a dental scenario to determine implant/abutment supported removable dentures code.
+### Implant/Abutment Supported Removable Dentures
+
+#### Code: D6110
+**Heading:** Implant/abutment supported removable denture for edentulous arch – maxillary  
+**When to Use:**  
+- A removable prosthesis is created for a completely edentulous maxillary arch, supported by implants or abutments.  
+- Use for patient-removable overdentures enhancing stability over conventional dentures.  
+**What to Check:**  
+- Confirm full maxillary edentulism via clinical exam or radiograph.  
+- Verify implant/abutment count and positions (e.g., 4-6 for maxilla).  
+- Assess attachment system (e.g., locators, ball, bar-clip).  
+- Check denture base material (e.g., acrylic) and design rationale.  
+**Notes:**  
+- Improves retention, function, and comfort for resorbed ridges.  
+- Not for partial edentulism (see D6112) or fixed prostheses.  
+- Document attachments, implant count, and patient needs (e.g., hygiene, cost).  
+
+#### Code: D6111
+**Heading:** Implant/abutment supported removable denture for edentulous arch – mandibular  
+**When to Use:**  
+- A removable prosthesis is created for a completely edentulous mandibular arch, supported by implants or abutments.  
+- Use for overdentures, often with minimal implants (e.g., 2-4).  
+**What to Check:**  
+- Confirm full mandibular edentulism via exam.  
+- Verify implant/abutment support (e.g., two-implant standard).  
+- Assess attachment type (e.g., locators for cost-effectiveness).  
+- Check patient dexterity for maintenance.  
+**Notes:**  
+- Standard of care for mandibular edentulism due to stability gains.  
+- Not for partial arches (see D6113) or fixed options.  
+- Document implant positions, retention system, and bone preservation benefits.  
+
+#### Code: D6112
+**Heading:** Implant/abutment supported removable denture for partially edentulous arch – maxillary  
+**When to Use:**  
+- A removable prosthesis is created for a partially edentulous maxillary arch, supported by implants/abutments and natural teeth.  
+- Use for hybrid stability combining implant and tooth support.  
+**What to Check:**  
+- Confirm remaining teeth and implant/abutment positions via exam.  
+- Verify force distribution design (implants vs. teeth).  
+- Assess attachment/clasp integration for retention.  
+- Check biomechanical balance to avoid overload.  
+**Notes:**  
+- Enhances stability over conventional partials with proprioception.  
+- Not for full edentulism (see D6110).  
+- Document teeth, implants, and design specifics (e.g., stress-breaking attachments).  
+
+#### Code: D6113
+**Heading:** Implant/abutment supported removable denture for partially edentulous arch – mandibular  
+**When to Use:**  
+- A removable prosthesis is created for a partially edentulous mandibular arch, supported by implants/abutments and natural teeth.  
+- Use for posterior support in distal extensions.  
+**What to Check:**  
+- Confirm remaining teeth and implant roles via radiograph.  
+- Verify design for posterior stability (e.g., implant placement).  
+- Assess integration of attachments with tooth clasps.  
+- Check reduction in movement/food entrapment.  
+**Notes:**  
+- Improves function vs. conventional partials, especially distally.  
+- Not for full edentulism (see D6111).  
+- Document implant/tooth support, attachment type, and stability gains.  
+
+---
+
+### Key Takeaways:
+- **Removable Focus:** Codes apply to patient-removable overdentures, not fixed prostheses or conventional dentures.  
+- **Arch Specificity:** Differentiate fully edentulous (D6110–D6111) vs. partially edentulous (D6112–D6113) and maxillary vs. mandibular.  
+- **Support Type:** Involves implants, abutments, or both, with attachments critical for retention (e.g., locators, bars).  
+- **Stability Gains:** Offers superior function, bone preservation, and comfort over traditional dentures.  
+- **Biomechanics Matter:** Partial cases require balancing implant rigidity and tooth mobility.  
+- **Documentation Essential:** Specify attachments, implant count, materials, and patient factors (e.g., hygiene, esthetics).  
+- **Patient Education:** Emphasize maintenance of prosthesis and supporting elements.
+
+Scenario: {{scenario}}
+
+{PROMPT}
+""",
+            input_variables=["scenario"]
+        )
     
-    Args:
-        scenario (str): The dental scenario to analyze.
-        
-    Returns:
-        str: The identified implant/abutment supported removable dentures code or empty string if none found.
-    """
-    try:
-        result = extract_removable_dentures_code(scenario)
-        
-        # Return empty string if no code found
-        if result == "None" or not result or "not applicable" in result.lower():
+    def extract_removable_dentures_code(self, scenario: str) -> str:
+        """Extract implant/abutment supported removable dentures code(s) for a given scenario."""
+        try:
+            print(f"Analyzing removable dentures scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Removable dentures extract_removable_dentures_code result: {code}")
+            if code.lower() in ["none", "", "not applicable"]:
+                return ""
+            return code
+        except Exception as e:
+            print(f"Error in removable dentures code extraction: {str(e)}")
             return ""
-            
-        return result
-    except Exception as e:
-        print(f"Error in activate_implant_supported_removable_dentures: {str(e)}")
-        return ""
+    
+    def activate_removable_dentures(self, scenario: str) -> str:
+        """Activate the removable dentures analysis process and return results."""
+        try:
+            result = self.extract_removable_dentures_code(scenario)
+            if not result:
+                print("No removable dentures code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating removable dentures analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_removable_dentures(scenario)
+        print(f"\n=== IMPLANT/ABUTMENT SUPPORTED REMOVABLE DENTURES ANALYSIS RESULT ===")
+        print(f"REMOVABLE DENTURES CODE: {result if result else 'None'}")
 
+removable_dentures_service = ImplantAbutmentSupportedRemovableDenturesServices()
 # Example usage
 if __name__ == "__main__":
-    # Print the current Gemini model and temperature being used
-    llm_service = get_llm_service()
-    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
-    
-    scenario = "A completely edentulous patient has four implants placed in their mandible. After successful integration, the dentist is now fabricating a removable overdenture that will attach to the implants using locator attachments."
-    result = activate_implant_supported_removable_dentures(scenario)
-    print(result) 
+    dentures_service = ImplantAbutmentSupportedRemovableDenturesServices()
+    scenario = input("Enter an implant/abutment supported removable dentures dental scenario: ")
+    dentures_service.run_analysis(scenario)

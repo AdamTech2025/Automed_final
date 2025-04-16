@@ -3,27 +3,30 @@ Module for extracting amalgam restorations codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
-
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_amalgam_restorations_extractor(temperature=0.0):
-    """
-    Create a LangChain-based amalgam restorations code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class AmalgamRestorationsServices:
+    """Class to analyze and extract amalgam restorations codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template=f"""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing amalgam restorations services."""
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert
 
 ### Before picking a code, ask:
@@ -85,7 +88,7 @@ You are a highly experienced dental coding expert
 #### Code: D2161 - Amalgam — Four or More Surfaces, Primary or Permanent
 - **When to use:**
   - Placement of an amalgam restoration on four or more surfaces of a primary or permanent tooth.
-  - For extensive caries or damage involving most or all of the tooth’s surfaces (e.g., MODB).
+  - For extensive caries or damage involving most or all of the tooth's surfaces (e.g., MODB).
 - **What to check:**
   - Confirm four or more surfaces are restored (e.g., mesial, occlusal, distal, buccal, lingual).
   - Verify tooth type and that decay or defect justifies such extensive restoration.
@@ -102,46 +105,50 @@ You are a highly experienced dental coding expert
 ### Key Takeaways:
 - *Surface Count is Key:* Codes escalate from D2140 to D2161 based on the number of surfaces restored—count accurately.
 - *Primary or Permanent:* Both tooth types use the same codes, but document tooth number and type for clarity.
-- *Polishing Included:* Polishing is part of each code—don’t bill separately or assume it justifies a higher code.
-- *Patient Education:* Explain amalgam durability and care, though this isn’t billable under these codes.
+- *Polishing Included:* Polishing is part of each code—don't bill separately or assume it justifies a higher code.
+- *Patient Education:* Explain amalgam durability and care, though this isn't billable under these codes.
 - *Documentation Precision:* Specify tooth number, surfaces restored, and clinical justification (e.g., caries extent) to support claims and audits.
 
-
-Scenario:
-"{{question}}"
+SCENARIO: {{scenario}}
 
 {PROMPT}
 """,
-        input_variables=["question"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template)
-
-def extract_amalgam_restorations_code(scenario, temperature=0.0):
-    """
-    Extract amalgam restorations code(s) for a given scenario.
-    """
-    try:
-        chain = create_amalgam_restorations_extractor(temperature)
-        result = invoke_chain(chain, {"scenario": scenario})
-        print(f"Amalgam restorations code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_amalgam_restorations_code: {str(e)}")
-        return ""
-
-def activate_amalgam_restorations(scenario):
-    """
-    Activate amalgam restorations analysis and return results.
-    """
-    try:
-        return extract_amalgam_restorations_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_amalgam_restorations: {str(e)}")
-        return ""
+    def extract_amalgam_restorations_code(self, scenario: str) -> str:
+        """Extract amalgam restorations code(s) for a given scenario."""
+        try:
+            print(f"Analyzing amalgam restorations scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Amalgam restorations extract_amalgam_restorations_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in amalgam restorations code extraction: {str(e)}")
+            return ""
+    
+    def activate_amalgam_restorations(self, scenario: str) -> str:
+        """Activate the amalgam restorations analysis process and return results."""
+        try:
+            result = self.extract_amalgam_restorations_code(scenario)
+            if not result:
+                print("No amalgam restorations code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating amalgam restorations analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_amalgam_restorations(scenario)
+        print(f"\n=== AMALGAM RESTORATIONS ANALYSIS RESULT ===")
+        print(f"AMALGAM RESTORATIONS CODE: {result if result else 'None'}")
 
 # Example usage
 if __name__ == "__main__":
-    scenario = "Patient has a cavity on the occlusal surface of tooth #30 and needs an amalgam filling."
-    result = activate_amalgam_restorations(scenario)
-    print(result) 
+    amalgam_restorations_service = AmalgamRestorationsServices()
+    scenario = input("Enter an amalgam restorations dental scenario: ")
+    amalgam_restorations_service.run_analysis(scenario) 

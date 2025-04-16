@@ -1,19 +1,29 @@
 import os
 import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+
+# Add the parent directory to the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(current_dir))
 sys.path.append(parent_dir)
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
 
-
-
-def create_endodontic_therapy_extractor():
-    """
-    Create a LangChain-based Endodontic Therapy code extractor.
-    """
-    prompt_template = f"""
+class EndodonticTherapyServices:
+    """Class to analyze and extract endodontic therapy codes based on dental scenarios."""
+    
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing endodontic therapy."""
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert
 
 Before Picking a Code, Ask:
@@ -133,44 +143,47 @@ Before Picking a Code, Ask:
 - **Documentation:** Complex cases (e.g., D3331, D3332, D3333) need narratives and evidence for insurance approval.  
 - **Non-Surgical Focus:** These codes emphasize non-surgical approaches; surgical options (e.g., apicoectomy) use different codes.
 
-### **Scenario:**
-"{{scenario}}"
+Scenario: {{scenario}}
 
 {PROMPT}
-"""
+""",
+            input_variables=["scenario"]
+        )
     
-    prompt = PromptTemplate(template=prompt_template, input_variables=["scenario"])
-    return create_chain(prompt)
+    def extract_endodontic_therapy_code(self, scenario: str) -> str:
+        """Extract endodontic therapy code(s) for a given scenario."""
+        try:
+            print(f"Analyzing endodontic therapy scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Endodontic therapy extract_endodontic_therapy_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in endodontic therapy code extraction: {str(e)}")
+            return ""
+    
+    def activate_endodontic_therapy(self, scenario: str) -> str:
+        """Activate the endodontic therapy analysis process and return results."""
+        try:
+            result = self.extract_endodontic_therapy_code(scenario)
+            if not result:
+                print("No endodontic therapy code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating endodontic therapy analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_endodontic_therapy(scenario)
+        print(f"\n=== ENDODONTIC THERAPY ANALYSIS RESULT ===")
+        print(f"ENDODONTIC THERAPY CODE: {result if result else 'None'}")
 
-def extract_endodontic_therapy_code(scenario):
-    """
-    Extract Endodontic Therapy code(s) for a given scenario.
-    """
-    try:
-        extractor = create_endodontic_therapy_extractor()
-        result = invoke_chain(extractor, {"scenario": scenario})
-        return result.get("text", "").strip()
-    except Exception as e:
-        print(f"Error in endodontic therapy code extraction: {str(e)}")
-        return None
-
-def activate_endodontic_therapy(scenario):
-    """
-    Activate Endodontic Therapy analysis and return results.
-    """
-    try:
-        result = extract_endodontic_therapy_code(scenario)
-        return result
-    except Exception as e:
-        print(f"Error activating endodontic therapy analysis: {str(e)}")
-        return None
-
+endodontic_therapy_service = EndodonticTherapyServices()
 # Example usage
 if __name__ == "__main__":
-    # Print the current Gemini model and temperature being used
-    llm_service = get_llm_service()
-    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
-    
-    scenario = "A patient presents with severe pain in tooth #8 (upper right central incisor). After examination and radiographs, the dentist diagnoses irreversible pulpitis and performs a complete root canal therapy on the tooth."
-    result = activate_endodontic_therapy(scenario)
-    print(result) 
+    therapy_service = EndodonticTherapyServices()
+    scenario = input("Enter an endodontic therapy dental scenario: ")
+    therapy_service.run_analysis(scenario)

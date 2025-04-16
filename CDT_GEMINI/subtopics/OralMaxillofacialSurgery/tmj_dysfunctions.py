@@ -4,25 +4,25 @@ Module for extracting TMJ dysfunctions codes.
 
 import os
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+from llm_services import LLMService, get_service, set_model, set_temperature
 
 # Load environment variables
 load_dotenv()
 
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_tmj_dysfunctions_extractor(temperature=0.0):
-    """
-    Create a LangChain-based TMJ dysfunctions code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class TMJDysfunctionsServices:
+    """Class to analyze and extract TMJ dysfunctions codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template=f"""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing TMJ dysfunctions scenarios."""
+        from subtopics.prompt.prompt import PROMPT
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert specializing in temporomandibular joint disorders,
 
 ## **TMJ Dysfunction Treatment Procedures**
@@ -166,34 +166,48 @@ You are a highly experienced dental coding expert specializing in temporomandibu
 - **By Report Requirements** - For "by report" codes (D7880, D7899), exceptionally detailed documentation is required to justify medical necessity and clarify the nature of the procedure.
 
 Scenario:
-"{{question}}"
+"{{scenario}}"
 
 {PROMPT}
 """,
-        input_variables=["question"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    def extract_tmj_dysfunctions_code(self, scenario: str) -> str:
+        """Extract TMJ dysfunctions code for a given scenario."""
+        try:
+            print(f"Analyzing TMJ dysfunctions scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"TMJ dysfunctions extract code result: {code}")
+            
+            # Return empty string if no code found
+            if code == "None" or not code or "not applicable" in code.lower():
+                return ""
+                
+            return code
+        except Exception as e:
+            print(f"Error in extract_tmj_dysfunctions_code: {str(e)}")
+            return ""
+    
+    def activate_tmj_dysfunctions(self, scenario: str) -> str:
+        """Activate the TMJ dysfunctions analysis process and return results."""
+        try:
+            return self.extract_tmj_dysfunctions_code(scenario)
+        except Exception as e:
+            print(f"Error in activate_tmj_dysfunctions: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_tmj_dysfunctions(scenario)
+        print(f"\n=== TMJ DYSFUNCTIONS ANALYSIS RESULT ===")
+        print(f"TMJ DYSFUNCTIONS CODE: {result if result else 'None'}")
 
-def extract_tmj_dysfunctions_code(scenario, temperature=0.0):
-    """
-    Extract TMJ dysfunctions code(s) for a given scenario.
-    """
-    try:
-        chain = create_tmj_dysfunctions_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"TMJ dysfunctions code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_tmj_dysfunctions_code: {str(e)}")
-        return ""
 
-def activate_tmj_dysfunctions(scenario):
-    """
-    Activate TMJ dysfunctions analysis and return results.
-    """
-    try:
-        return extract_tmj_dysfunctions_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_tmj_dysfunctions: {str(e)}")
-        return "" 
+tmj_dysfunctions_service = TMJDysfunctionsServices()
+# Example usage
+if __name__ == "__main__":
+    scenario = input("Enter a TMJ dysfunctions scenario: ")
+    tmj_dysfunctions_service.run_analysis(scenario) 

@@ -1,25 +1,34 @@
 import os
 import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+
+# Add the parent directory to the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(current_dir))
 sys.path.append(parent_dir)
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
 
-
-
-def create_clinical_oral_evaluations_extractor():
-    """
-    Create a LangChain-based Clinical Oral Evaluations extractor.
-    """
-    template = f"""
-You are a highly experienced dental coding expert, 
+class ClinicalOralEvaluationsServices:
+    """Class to analyze and extract clinical oral evaluation codes based on dental scenarios."""
+    
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing clinical oral evaluations."""
+        return PromptTemplate(
+            template=f"""
+You are a highly experienced dental coding expert
 
 # Dental Evaluation CDT Code Cheat Sheet
 
 ---
-
 
 ## 📘 CDT Code Reference
 
@@ -146,9 +155,7 @@ You are a highly experienced dental coding expert,
 
 ### **D0180 – Comprehensive Periodontal Evaluation (New or Established Patient)**
 **When to Use:**
-
-- patient must have to come to the docter beacause of signs of periodontal disease or have a history of periodontal disease(the reason for visit)
-eg:
+- Patient must come to the doctor because of signs of periodontal disease or have a history of periodontal disease (reason for visit), e.g.:
   - Bleeding gums
   - Diabetes
   - Smoking
@@ -160,50 +167,54 @@ eg:
   - Full periodontal charting
   - Occlusion and tooth restoration check
 
-
 **Notes:**
 - More extensive than D0150
 - Should not be used casually—only when periodontal concern is valid
 
 ---
 
- Scenario: {{scenario}}
+Scenario: {{scenario}}
+
+{PROMPT}
+""",
+            input_variables=["scenario"]
+        )
     
- {PROMPT}
-    """
+    def extract_clinical_oral_evaluations_code(self, scenario: str) -> str:
+        """Extract clinical oral evaluation code(s) for a given scenario."""
+        try:
+            print(f"Analyzing clinical oral evaluations scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Clinical oral evaluations extract_clinical_oral_evaluations_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in clinical oral evaluations code extraction: {str(e)}")
+            return ""
     
-    prompt = PromptTemplate(template=template, input_variables=["scenario"])
-    return create_chain(prompt)
+    def activate_clinical_oral_evaluations(self, scenario: str) -> str:
+        """Activate the clinical oral evaluations analysis process and return results."""
+        try:
+            result = self.extract_clinical_oral_evaluations_code(scenario)
+            if not result:
+                print("No clinical oral evaluations code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating clinical oral evaluations analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_clinical_oral_evaluations(scenario)
+        print(f"\n=== CLINICAL ORAL EVALUATIONS ANALYSIS RESULT ===")
+        print(f"CLINICAL ORAL EVALUATIONS CODE: {result if result else 'None'}")
 
-def extract_clinical_oral_evaluations_code(scenario):
-    """
-    Extract Clinical Oral Evaluations code(s) for a given scenario.
-    """
-    try:
-        extractor = create_clinical_oral_evaluations_extractor()
-        result = invoke_chain(extractor, {"scenario": scenario})
-        return result.get("text", "").strip()
-    except Exception as e:
-        print(f"Error in clinical oral evaluations code extraction: {str(e)}")
-        return None
 
-def activate_clinical_oral_evaluations(scenario):
-    """
-    Activate Clinical Oral Evaluations analysis and return results.
-    """
-    try:
-        result = extract_clinical_oral_evaluations_code(scenario)
-        return result
-    except Exception as e:
-        print(f"Error activating clinical oral evaluations analysis: {str(e)}")
-        return None
-
+clinical_oral_evaluations_service = ClinicalOralEvaluationsServices()
 # Example usage
 if __name__ == "__main__":
-    # Print the current Gemini model and temperature being used
-    llm_service = get_llm_service()
-    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
-    
-    scenario = "A new patient comes in for their first dental visit in 5 years. The dentist performs a comprehensive examination including medical history, dental history, oral cancer screening, and full periodontal charting."
-    result = activate_clinical_oral_evaluations(scenario)
-    print(result)
+    evaluations_service = ClinicalOralEvaluationsServices()
+    scenario = input("Enter a clinical oral evaluations dental scenario: ")
+    evaluations_service.run_analysis(scenario)

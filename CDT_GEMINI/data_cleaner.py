@@ -1,16 +1,14 @@
 import os
-from langchain.prompts import PromptTemplate
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+from dotenv import load_dotenv
+from llm_services import generate_response, get_service, set_model, set_temperature
+from typing import Dict, Any, Optional
+from llm_services import OPENROUTER_MODEL, DEFAULT_TEMP
+load_dotenv()
 
-
-# You can set a specific model for this file only
-# Uncomment and modify the line below to use a specific model
-# set_model_for_file("gemini-1.5-pro")
-
-def create_scenario_processor(temperature=0.0):
-    # Create the prompt template
-    prompt_template = PromptTemplate(
-        template="""
+class DentalScenarioProcessor:
+    """Class to handle dental scenario processing with configurable prompts and settings"""
+    
+    PROMPT_TEMPLATE = """
 You are a specialized dental data processor designed to transform raw dental scenarios into clearly structured, comprehensive datasets for medical coding purposes. Your task is to process the provided input scenario dynamically and accurately, adhering to the following strict guidelines:
 
 INPUT SCENARIO:
@@ -21,8 +19,6 @@ No Assumptions: Process only the information explicitly stated in the input.(bas
 Full Data Retention: Capture and preserve every detail from the input scenario in the output, ensuring nothing is omitted. your job is to only structre data
 
 also mention the command line if something is there like that , example "only do this and this"
-  
-
 
 OUTPUT FORMAT:
 
@@ -58,34 +54,63 @@ e.g., "Amoxicillin 500mg TID × 5 days, Ibuprofen 600mg q6h PRN pain",
 Next Steps:
 Follow-up appointments, further diagnostics, referrals.
 e.g., "Schedule for full root canal and crown in 1 week."
+"""
 
-        """,
-        input_variables=["scenario"]
-    )
-    
-    # Create the chain using our LLM service
-    return create_chain(prompt_template)
+    def __init__(self, model: str = OPENROUTER_MODEL, temperature: float = DEFAULT_TEMP):
+        """Initialize the processor with model and temperature settings"""
+        self.service = get_service()
+        self.configure(model, temperature)
 
-def process_scenario(scenario):
-    # Create the processor chain
-    processor = create_scenario_processor()
-    
-    # Invoke the chain through our LLM service
-    result = invoke_chain(processor, {"scenario": scenario})
-    
-    return {
-        "standardized_scenario": result["text"].strip()
-    }
+    def configure(self, model: Optional[str] = None, temperature: Optional[float] = None) -> None:
+        """Configure model and temperature settings"""
+        if model:
+            set_model(model)
+        if temperature is not None:
+            set_temperature(temperature)
 
-# For testing if run directly
+    def format_prompt(self, scenario: str) -> str:
+        """Format the prompt template with the given scenario"""
+        return self.PROMPT_TEMPLATE.format(scenario=scenario)
+
+    def process(self, scenario: str) -> Dict[str, str]:
+        """Process a dental scenario and return structured output"""
+        formatted_prompt = self.format_prompt(scenario)
+        result = generate_response(formatted_prompt)
+        return {"standardized_scenario": result}
+
+    @property
+    def current_settings(self) -> Dict[str, Any]:
+        """Get current model settings"""
+        return {
+            "model": self.service.model,
+            "temperature": self.service.temperature
+        }
+
+class ScenarioProcessorCLI:
+    """Command Line Interface for the DentalScenarioProcessor"""
+    
+    def __init__(self):
+        self.processor = DentalScenarioProcessor()
+
+    def print_settings(self):
+        """Print current model settings"""
+        settings = self.processor.current_settings
+        print(f"Using model: {settings['model']} with temperature: {settings['temperature']}")
+
+    def run(self):
+        """Run the CLI interface"""
+        self.print_settings()
+        scenario = input("Enter dental scenario to process: ")
+        result = self.processor.process(scenario)
+        print("\n=== STANDARDIZED SCENARIO ===")
+        print(result["standardized_scenario"])
+
+def main():
+    """Main entry point for the script"""
+    cli = ScenarioProcessorCLI()
+    cli.run()
+
 if __name__ == "__main__":
-    # Print the current Gemini model and temperature being used
-    llm_service = get_llm_service()
-    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
-    
-    test_scenario = input("Enter a dental scenario to process: ")
-    result = process_scenario(test_scenario)
-    
-    print("\n=== STANDARDIZED SCENARIO ===")
-    print(result["standardized_scenario"])
-    
+    main()
+
+

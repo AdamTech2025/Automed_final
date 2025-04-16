@@ -1,37 +1,61 @@
 import os
 import sys
+import asyncio
 from langchain.prompts import PromptTemplate
-from llm_services import create_chain, invoke_chain, get_llm_service
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+from sub_topic_registry import SubtopicRegistry
 
 # Add the root directory to the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 sys.path.append(root_dir)
 
-# Now import modules
+# Import modules
 from topics.prompt import PROMPT
-from subtopics.Preventive import (
-    activate_dental_prophylaxis,
-    activate_topical_fluoride,
-    activate_other_preventive_services,
-    activate_space_maintenance,
-    activate_space_maintainers,
-    activate_vaccinations
-)
 
-def analyze_preventive(scenario):
-    """
-    Analyze a preventive scenario and return relevant code ranges.
+# Import subtopics with fallback mechanism
+try:
+    from subtopics.Preventive.dental_prophylaxis import dental_prophylaxis_service
+    from subtopics.Preventive.topical_fluoride import topical_fluoride_service
+    from subtopics.Preventive.other_preventive_services import other_preventive_service
+    from subtopics.Preventive.space_maintenance import space_maintenance_service
+    from subtopics.Preventive.vaccinations import vaccinations_service
+except ImportError:
+    print("Warning: Could not import subtopics for Preventive. Using fallback functions.")
+    # Define fallback functions if needed
+    def activate_dental_prophylaxis(scenario): return None
+    def activate_topical_fluoride(scenario): return None
+    def activate_other_preventive_services(scenario): return None
+    def activate_space_maintenance(scenario): return None
+    def activate_vaccinations(scenario): return None
+
+class PreventiveServices:
+    """Class to analyze and activate preventive services based on dental scenarios."""
     
-    Args:
-        scenario (str): The dental scenario text to analyze
-        
-    Returns:
-        str: The identified preventive code range(s)
-    """
-    try:
-        # Create the prompt template
-        prompt_template = PromptTemplate(
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+        self.registry = SubtopicRegistry()
+        self._register_subtopics()
+    
+    def _register_subtopics(self):
+        """Register all subtopics for parallel activation."""
+        self.registry.register("D1110-D1120", dental_prophylaxis_service.activate_dental_prophylaxis, 
+                            "Dental Prophylaxis (D1110-D1120)")
+        self.registry.register("D1206-D1208", topical_fluoride_service.activate_topical_fluoride, 
+                            "Topical Fluoride Treatment (D1206-D1208)")
+        self.registry.register("D1310-D1355", other_preventive_service.activate_other_preventive_services, 
+                            "Other Preventive Services (D1310-D1355)")
+        self.registry.register("D1510-D1555", space_maintenance_service.activate_space_maintenance, 
+                            "Space Maintenance (D1510-D1555)")
+        self.registry.register("D1701-D1707", vaccinations_service.activate_vaccinations, 
+                            "Vaccinations (D1701-D1707)")
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing preventive services."""
+        return PromptTemplate(
             template=f"""
 You are a highly experienced dental coding expert with over 15 years of expertise in ADA dental codes. 
 Your task is to analyze the given scenario and determine the most applicable preventive code range(s) based on the following classifications:
@@ -75,125 +99,58 @@ List them in order of relevance, with the most relevant first.
 """,
             input_variables=["scenario"]
         )
-        
-        # Create the chain using our LLM service
-        chain = create_chain(prompt_template)
-        
-        # Use the provided scenario directly
-        print(f"Analyzing preventive scenario: {scenario[:100]}...")
-        
-        # Use invoke through our LLM service
-        result = invoke_chain(chain, {"scenario": scenario})
-        
-        # Extract the text from the result
-        code_range = result.get("text", "").strip()
-        
-        print(f"Preventive analyze_preventive result: {code_range}")
-        return code_range
-    except Exception as e:
-        print(f"Error in analyze_preventive: {str(e)}")
-        return ""
-
-def activate_preventive(scenario):
-    """
-    Activate preventive analysis and return the results with specific subtopic activations.
     
-    Args:
-        scenario (str): The dental scenario text to analyze
-        
-    Returns:
-        dict: A dictionary containing the code range, subtopic and specific codes
-    """
-    try:
-        # Get the code range from the analysis
-        preventive_result = analyze_preventive(scenario)
-        if not preventive_result:
-            print("No preventive result returned")
-            return {}
-        
-        print(f"Preventive Result in activate_preventive: {preventive_result}")
-        
-        # Process specific preventive subtopics based on the result
-        specific_codes = []
-        activated_subtopics = []
-        
-        # Check for each subtopic and activate if applicable
-        if "D1110-D1120" in preventive_result:
-            print("Activating subtopic: Dental Prophylaxis (D1110-D1120)")
-            prophylaxis_code = activate_dental_prophylaxis(scenario)
-            if prophylaxis_code:
-                specific_codes.append(prophylaxis_code)
-                activated_subtopics.append("Dental Prophylaxis (D1110-D1120)")
-                
-        if "D1206-D1208" in preventive_result:
-            print("Activating subtopic: Topical Fluoride Treatment (D1206-D1208)")
-            fluoride_code = activate_topical_fluoride(scenario)
-            if fluoride_code:
-                specific_codes.append(fluoride_code)
-                activated_subtopics.append("Topical Fluoride Treatment (D1206-D1208)")
-                
-        if "D1310-D1355" in preventive_result:
-            print("Activating subtopic: Other Preventive Services (D1310-D1355)")
-            other_code = activate_other_preventive_services(scenario)
-            if other_code:
-                specific_codes.append(other_code)
-                activated_subtopics.append("Other Preventive Services (D1310-D1355)")
-                
-        if "D1510-D1555" in preventive_result:
-            print("Activating subtopic: Space Maintenance (D1510-D1555)")
-            maintenance_code = activate_space_maintenance(scenario)
-            if maintenance_code:
-                specific_codes.append(maintenance_code)
-                activated_subtopics.append("Space Maintenance (D1510-D1555)")
-                
-        if "D1510-D1575" in preventive_result:
-            print("Activating subtopic: Space Maintainers (D1510-D1575)")
-            maintainers_code = activate_space_maintainers(scenario)
-            if maintainers_code:
-                specific_codes.append(maintainers_code)
-                activated_subtopics.append("Space Maintainers (D1510-D1575)")
-                
-        if "D1701-D1707" in preventive_result:
-            print("Activating subtopic: Vaccinations (D1701-D1707)")
-            vaccination_code = activate_vaccinations(scenario)
-            if vaccination_code:
-                specific_codes.append(vaccination_code)
-                activated_subtopics.append("Vaccinations (D1701-D1707)")
-        
-        # Choose the primary subtopic (either the first activated or a default)
-        primary_subtopic = activated_subtopics[0] if activated_subtopics else "Dental Prophylaxis (D1110-D1120)"
-        
-        # Format detailed results if specific codes were found
-        if specific_codes:
+    def analyze_preventive(self, scenario: str) -> str:
+        """Analyze the scenario to determine applicable code ranges."""
+        try:
+            print(f"Analyzing preventive scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code_range = result.strip()
+            print(f"Preventive analyze_preventive result: {code_range}")
+            return code_range
+        except Exception as e:
+            print(f"Error in analyze_preventive: {str(e)}")
+            return ""
+    
+    async def activate_preventive(self, scenario: str) -> dict:
+        """Activate relevant subtopics in parallel and return detailed results."""
+        try:
+            # Get the code range from the analysis
+            preventive_result = self.analyze_preventive(scenario)
+            if not preventive_result:
+                print("No preventive result returned")
+                return {}
+            
+            print(f"Preventive Result in activate_preventive: {preventive_result}")
+            
+            # Activate subtopics in parallel using the registry
+            result = await self.registry.activate_all(scenario, preventive_result)
+            
             # Return a dictionary with the required fields
             return {
                 "code_range": preventive_result,
-                "subtopic": primary_subtopic,
-                "activated_subtopics": activated_subtopics,  # Add this for clarity about which subtopics were activated
-                "codes": specific_codes
+                "activated_subtopics": result["activated_subtopics"],
+                "codes": result["topic_result"]
             }
-            
-        # Return a dictionary even if no specific codes were found
-        return {
-            "code_range": preventive_result,
-            "subtopic": primary_subtopic,
-            "activated_subtopics": activated_subtopics,
-            "codes": []
-        }
-    except Exception as e:
-        print(f"Error in preventive analysis: {str(e)}")
-        return {}
+        except Exception as e:
+            print(f"Error in preventive analysis: {str(e)}")
+            return {}
+    
+    async def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = await self.activate_preventive(scenario)
+        print(f"\n=== PREVENTIVE ANALYSIS RESULT ===")
+        print(f"CODE RANGE: {result.get('code_range', 'None')}")
+        print(f"ACTIVATED SUBTOPICS: {', '.join(result.get('activated_subtopics', []))}")
+        print(f"SPECIFIC CODES: {', '.join(result.get('codes', []))}")
 
+preventive_service = PreventiveServices()
 # Example usage
 if __name__ == "__main__":
-    # Print the current Gemini model and temperature being used
-    llm_service = get_llm_service()
-    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
+    async def main():
+        preventive_service = PreventiveServices()
+        scenario = input("Enter a preventive dental scenario: ")
+        await preventive_service.run_analysis(scenario)
     
-    scenario = input("Enter a preventive dental scenario: ")
-    result = activate_preventive(scenario)
-    print(f"\n=== PREVENTIVE ANALYSIS RESULT ===")
-    print(f"CODE RANGE: {result.get('code_range', 'None')}")
-    print(f"PRIMARY SUBTOPIC: {result.get('subtopic', 'None')}")
-    print(f"ACTIVATED SUBTOPICS: {', '.join(result.get('activated_subtopics', []))}")
-    print(f"SPECIFIC CODES: {', '.join(result.get('codes', []))}")
+    asyncio.run(main())

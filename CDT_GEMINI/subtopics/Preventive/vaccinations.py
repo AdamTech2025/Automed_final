@@ -3,33 +3,49 @@ Module for extracting vaccination codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_vaccinations_extractor(temperature=0.0):
+class VaccinationsServices:
     """
-    Create a LangChain-based vaccinations code extractor.
+    Class for extracting vaccination codes.
     """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
     
-    prompt_template = PromptTemplate(
-        template=f"""
+    def __init__(self, llm_service: LLMService = None):
+        """
+        Initialize the VaccinationsServices class.
+        
+        Args:
+            llm_service (LLMService, optional): LLM service instance. Defaults to None.
+        """
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+        
+    def _create_prompt_template(self) -> PromptTemplate:
+        """
+        Create a LangChain-based prompt template for vaccination code extraction.
+        
+        Returns:
+            PromptTemplate: A configured prompt template for vaccination code extraction.
+        """
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert
 
  Before picking a code, ask:
 - What was the primary reason the patient came in? Was it for a preventive vaccination, or to address a specific health concern?
 - Which vaccine is being administered (e.g., Pfizer, Moderna, AstraZeneca, Janssen, HPV), and what dose in the series (first, second, third, booster)?
 - Is the patient pediatric or adult, and does the dosage align with their age group or formulation (e.g., tris-sucrose pediatric)?
-- Are there any contraindications, allergies, or prior vaccine reactions in the patient’s medical history?
+- Are there any contraindications, allergies, or prior vaccine reactions in the patient's medical history?
 - Is this a standard vaccination procedure, or does it require a narrative report (e.g., D1999 for unspecified cases)?
 
 ---
@@ -198,117 +214,111 @@ You are a highly experienced dental coding expert
   - For children aged 5-11 in a two-dose series.
 - **What to check:**
   - Confirm patient age (5-11) and no prior vaccination.
-  - Verify pediatric formulation (10mcg/0.2mL, tris-sucrose buffer).
-  - Check for allergies or contraindications specific to children.
+  - Verify pediatric formulation (10mcg/0.2mL) with tris-sucrose buffer.
+  - Review for allergies or contraindications specific to children.
 - **Notes:**
-  - Pediatric-specific—document age and dose details.
+  - Age-specific—document lot number and injection site.
+  - Use orange cap vials (distinct from adult/adolescent purple cap).
   - Schedule second dose (D1714) 21 days later.
-  - Distinct from adult formulation (D1701).
 
 #### Code: D1714 - Pfizer-BioNTech Covid-19 Vaccine Administration Tris-Sucrose Pediatric — Second Dose
 - **When to use:**
   - Administration of the second dose of Pfizer-BioNTech pediatric Covid-19 vaccine (mRNA, 10mcg/0.2mL, tris-sucrose, intramuscular).
-  - Completes the pediatric two-dose series.
+  - Completes the primary series for children aged 5-11.
 - **What to check:**
-  - Confirm first dose (D1713) given 21 days prior.
-  - Verify same pediatric formulation and dosage.
-  - Assess for reactions from the first dose.
+  - Confirm first dose (D1713) given 21 days prior (±4 days).
+  - Verify correct pediatric formulation and dosage.
+  - Assess for reactions to the first dose.
 - **Notes:**
-  - Marks full vaccination for ages 5-11—document thoroughly.
-  - Not for adult doses or boosters.
-  - Educate parents on post-vaccination monitoring.
+  - Marks completion of pediatric primary series.
+  - Document using same color cap vial as first dose (orange).
+  - Parent education on side effects and post-vaccination care is essential.
 
-#### Code: D1781 - Vaccine Administration — Human Papillomavirus — Dose 1
+#### Code: D9997 - Dental Case Management — Patients With Special Health Care Needs
 - **When to use:**
-  - Administration of the first dose of HPV vaccine (Gardasil 9, 0.5mL, intramuscular).
-  - Prevents HPV-related diseases (e.g., oral cancers).
+  - Additional coordination of oral health care services for patients with special needs.
+  - May include integration with vaccine administration for high-risk patients.
 - **What to check:**
-  - Confirm patient eligibility (typically ages 9-45) and no prior HPV vaccination.
-  - Verify vaccine type (Gardasil 9) and dosage (0.5mL).
-  - Check for allergies (e.g., yeast) or contraindications.
+  - Confirm patient has documented special health care needs affecting dental care.
+  - Verify additional time/resources were required (e.g., coordination with PCP).
+  - Assess if case management was directly related to vaccination.
 - **Notes:**
-  - First of 2-3 dose series—document schedule (e.g., 0, 2, 6 months).
-  - Relevant in dentistry due to oral cancer prevention.
-  - Schedule second dose (D1782) accordingly.
-
-#### Code: D1782 - Vaccine Administration — Human Papillomavirus — Dose 2
-- **When to use:**
-  - Administration of the second dose of HPV vaccine (Gardasil 9, 0.5mL, intramuscular).
-  - Part of the HPV vaccination series.
-- **What to check:**
-  - Confirm first dose (D1781) given (e.g., 1-2 months prior).
-  - Verify same vaccine type and dosage.
-  - Assess for prior dose reactions.
-- **Notes:**
-  - Second dose timing varies (e.g., 2 months if <15, 6 months if older).
-  - Document progress in series and patient tolerance.
-  - May complete series for younger patients; third dose (D1783) for others.
-
-#### Code: D1783 - Vaccine Administration — Human Papillomavirus — Dose 3
-- **When to use:**
-  - Administration of the third dose of HPV vaccine (Gardasil 9, 0.5mL, intramuscular).
-  - Completes the three-dose series for full immunity.
-- **What to check:**
-  - Confirm two prior doses (D1781, D1782) and timing (e.g., 6 months after first).
-  - Verify consistent vaccine type and dosage.
-  - Check for adverse reactions from earlier doses.
-- **Notes:**
-  - Required for patients starting series at age 15+ or immunocompromised.
-  - Document completion and educate on long-term benefits.
-  - Not needed if two-dose schedule applies (ages 9-14).
-
-#### Code: D1999 - Unspecified Preventive Procedure, By Report
-- **When to use:**
-  - For a preventive procedure not adequately described by existing codes.
-  - Requires a narrative report to justify its use (e.g., unique vaccination scenario).
-- **What to check:**
-  - Confirm no specific code applies to the procedure performed.
-  - Assess the preventive nature and patient need (e.g., experimental vaccine).
-  - Prepare detailed documentation explaining the service.
-- **Notes:**
-  - Narrative required—include procedure details, rationale, and materials.
-  - Payer approval may vary; pre-authorization recommended.
-  - Use sparingly when standard codes (e.g., D1701-D1783) don’t fit.
+  - Not specific to vaccines; documents complex care coordination.
+  - May be used alongside vaccine codes if applicable.
+  - Requires documentation of special needs and coordination efforts.
 
 ---
 
 ### Key Takeaways:
-- *Vaccine Specificity:* Codes are tied to manufacturer, dose number, and formulation (e.g., pediatric vs. adult, mRNA vs. viral vector)—match precisely.
-- *Dose Sequence Matters:* Differentiate between primary series (first/second/third), boosters, and single-dose vaccines for accurate coding.
-- *Age and Eligibility:* Pediatric (D1713, D1714) and adult doses vary—verify patient age and formulation.
-- *Patient Education:* Inform patients of series timing, side effects, and follow-up needs, though not billable under these codes.
-- *Documentation Precision:* Record vaccine type, lot number, dose number, injection site, and patient response to support claims and audits.
+- COVID-19 vaccine codes are specific to the manufacturer, dose number, and formulation.
+- Proper documentation of vaccine details (lot, site, patient consent) is crucial.
+- Pediatric formulations have dedicated codes distinct from adult versions.
+- Boosters and third doses have separate codes based on clinical indication.
+- Case management codes may apply for patients with special needs requiring vaccination.
+- Always verify the latest CDC and regulatory guidance before administering vaccines in dental settings.
 
-
-Scenario:
-"{{question}}"
+SCENARIO: {{scenario}}
 
 {PROMPT}
 """,
-        input_variables=["question"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    def extract_vaccinations_code(self, scenario: str) -> str:
+        """
+        Extract the appropriate vaccination code based on a clinical scenario.
+        
+        Args:
+            scenario (str): The clinical scenario to analyze.
+            
+        Returns:
+            str: The extracted vaccination code or empty string if none found.
+        """
+        try:
+            print(f"Analyzing vaccination scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Vaccination extract_vaccinations_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in vaccination code extraction: {str(e)}")
+            return ""
+    
+    def activate_vaccinations(self, scenario: str) -> str:
+        """
+        Activate the vaccination code extraction process and return results.
+        
+        Args:
+            scenario (str): The clinical scenario to analyze.
+            
+        Returns:
+            str: The extracted vaccination code or empty string if none found.
+        """
+        try:
+            result = self.extract_vaccinations_code(scenario)
+            if not result:
+                print("No vaccination code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating vaccination analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """
+        Run the analysis and print results.
+        
+        Args:
+            scenario (str): The clinical scenario to analyze.
+        """
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_vaccinations(scenario)
+        print(f"\n=== VACCINATION ANALYSIS RESULT ===")
+        print(f"VACCINATION CODE: {result if result else 'None'}")
 
-def extract_vaccinations_code(scenario, temperature=0.0):
-    """
-    Extract vaccinations code(s) for a given scenario.
-    """
-    try:
-        chain = create_vaccinations_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Vaccinations code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_vaccinations_code: {str(e)}")
-        return ""
 
-def activate_vaccinations(scenario):
-    """
-    Activate vaccinations analysis and return results.
-    """
-    try:
-        return extract_vaccinations_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_vaccinations: {str(e)}")
-        return "" 
+vaccinations_service = VaccinationsServices()
+# Example usage
+if __name__ == "__main__":
+    scenario = input("Enter a vaccination dental scenario: ")
+    vaccinations_service.run_analysis(scenario) 

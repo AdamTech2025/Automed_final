@@ -3,27 +3,30 @@ Module for extracting unspecified removable prosthodontic procedure codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
 
-
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_unspecified_removable_prosthodontic_procedure_extractor(temperature=0.0):
-    """
-    Create a LangChain-based unspecified removable prosthodontic procedure code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class UnspecifiedRemovableProsthodonticProcedureServices:
+    """Class to analyze and extract unspecified removable prosthodontic procedure codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template=f"""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing unspecified removable prosthodontic procedure services."""
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert
 
 ### **Before Picking a Code, Ask:**
@@ -38,7 +41,7 @@ You are a highly experienced dental coding expert
 #### **Code: D5899**  
 **Heading:** Unspecified removable prosthodontic procedure, by report  
 **When to Use:**  
-- Used only when a **removable prosthodontic service** doesn’t match any existing CDT code.  
+- Used only when a **removable prosthodontic service** doesn't match any existing CDT code.  
 - Common scenarios include **custom modifications**, **digital workflows**, or **novel techniques** not covered under standard codes.  
 **What to Check:**  
 - Confirm that no appropriate CDT code exists (D5110–D5876 range).  
@@ -58,35 +61,46 @@ You are a highly experienced dental coding expert
 - **Billing May Be Delayed**: Be prepared for payer follow-up or prior authorization requests.
 
 
-Scenario:
-"{{question}}"
+Scenario: {{scenario}}
 
 {PROMPT}
 """,
-        input_variables=["question"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template)
+    def extract_unspecified_removable_prosthodontic_procedure_code(self, scenario: str) -> str:
+        """Extract unspecified removable prosthodontic procedure code(s) for a given scenario."""
+        try:
+            print(f"Analyzing unspecified removable prosthodontic procedure scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Unspecified removable prosthodontic procedure extract_unspecified_removable_prosthodontic_procedure_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in unspecified removable prosthodontic procedure code extraction: {str(e)}")
+            return ""
+    
+    def activate_unspecified_removable_prosthodontic_procedure(self, scenario: str) -> str:
+        """Activate the unspecified removable prosthodontic procedure analysis process and return results."""
+        try:
+            result = self.extract_unspecified_removable_prosthodontic_procedure_code(scenario)
+            if not result:
+                print("No unspecified removable prosthodontic procedure code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating unspecified removable prosthodontic procedure analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_unspecified_removable_prosthodontic_procedure(scenario)
+        print(f"\n=== UNSPECIFIED REMOVABLE PROSTHODONTIC PROCEDURE ANALYSIS RESULT ===")
+        print(f"UNSPECIFIED REMOVABLE PROSTHODONTIC PROCEDURE CODE: {result if result else 'None'}")
 
-def extract_unspecified_removable_prosthodontic_procedure_code(scenario, temperature=0.0):
-    """
-    Extract unspecified removable prosthodontic procedure code(s) for a given scenario.
-    """
-    try:
-        chain = create_unspecified_removable_prosthodontic_procedure_extractor(temperature)
-        result = invoke_chain(chain, {"question": scenario})
-        print(f"Unspecified removable prosthodontic procedure code result: {result}")
-        return result.strip()
-    except Exception as e:
-        print(f"Error in extract_unspecified_removable_prosthodontic_procedure_code: {str(e)}")
-        return ""
-
-def activate_unspecified_removable_prosthodontic_procedure(scenario):
-    """
-    Activate unspecified removable prosthodontic procedure analysis and return results.
-    """
-    try:
-        return extract_unspecified_removable_prosthodontic_procedure_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_unspecified_removable_prosthodontic_procedure: {str(e)}")
-        return "" 
+# Example usage
+if __name__ == "__main__":
+    unspecified_removable_prosthodontic_procedure_service = UnspecifiedRemovableProsthodonticProcedureServices()
+    scenario = input("Enter an unspecified removable prosthodontic procedure dental scenario: ")
+    unspecified_removable_prosthodontic_procedure_service.run_analysis(scenario) 

@@ -1,19 +1,29 @@
 import os
 import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+
+# Add the parent directory to the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(current_dir))
 sys.path.append(parent_dir)
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
 
-
-
-def create_apicoectomy_extractor():
-    """
-    Create a LangChain-based Apicoectomy/Periradicular Services code extractor.
-    """
-    prompt_template = f"""
+class ApicoectomyServices:
+    """Class to analyze and extract apicoectomy/periradicular services codes based on dental scenarios."""
+    
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing apicoectomy/periradicular services."""
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced dental coding expert
 
 ### Before Picking a Code, Ask:
@@ -267,7 +277,7 @@ You are a highly experienced dental coding expert
 
 #### Code: D3450
 **Heading:** Root amputation — per root  
-**Description:** Root resection of a multi-rooted tooth while leaving the crown. If the crown is sectioned, see D3920.  
+**Description:** Root resection of a multi-rooted tooth while leaving the crown. If the crown is section Biology sectioned, see D3920.  
 **When to Use:**  
 - The patient has a multi-rooted tooth (e.g., molar) with one root requiring removal while preserving the crown.  
 - Use per root amputated.  
@@ -322,47 +332,47 @@ You are a highly experienced dental coding expert
 - **Documentation Heavy:** Insurance often demands narratives, X-rays, and clinical justification for surgical codes.  
 - **Procedure Limits:** Some codes (e.g., D3501-D3503) exclude combination with others—check compatibility.
 
-
-
-
-### **Scenario:**
-"{{scenario}}"
+Scenario: {{scenario}}
 
 {PROMPT}
-"""
+""",
+            input_variables=["scenario"]
+        )
     
-    prompt = PromptTemplate(template=prompt_template, input_variables=["scenario"])
-    return create_chain(prompt)
+    def extract_apicoectomy_code(self, scenario: str) -> str:
+        """Extract apicoectomy/periradicular services code(s) for a given scenario."""
+        try:
+            print(f"Analyzing apicoectomy scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Apicoectomy extract_apicoectomy_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in apicoectomy code extraction: {str(e)}")
+            return ""
+    
+    def activate_apicoectomy(self, scenario: str) -> str:
+        """Activate the apicoectomy analysis process and return results."""
+        try:
+            result = self.extract_apicoectomy_code(scenario)
+            if not result:
+                print("No apicoectomy code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating apicoectomy analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_apicoectomy(scenario)
+        print(f"\n=== APICOECTOMY ANALYSIS RESULT ===")
+        print(f"APICOECTOMY CODE: {result if result else 'None'}")
 
-def extract_apicoectomy_code(scenario):
-    """
-    Extract Apicoectomy/Periradicular Services code(s) for a given scenario.
-    """
-    try:
-        extractor = create_apicoectomy_extractor()
-        result = invoke_chain(extractor, {"scenario": scenario})
-        return result.get("text", "").strip()
-    except Exception as e:
-        print(f"Error in apicoectomy code extraction: {str(e)}")
-        return None
-
-def activate_apicoectomy(scenario):
-    """
-    Activate Apicoectomy/Periradicular Services analysis and return results.
-    """
-    try:
-        result = extract_apicoectomy_code(scenario)
-        return result
-    except Exception as e:
-        print(f"Error activating apicoectomy analysis: {str(e)}")
-        return None
-
+apicoectomy_service = ApicoectomyServices()
 # Example usage
 if __name__ == "__main__":
-    # Print the current Gemini model and temperature being used
-    llm_service = get_llm_service()
-    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
-    
-    scenario = "A patient has persistent pain in tooth #8 (maxillary right central incisor) despite having a root canal two years ago. Radiographs show a periapical lesion. The dentist performs an apicoectomy, removing the root tip and surgically sealing the canal. No retrograde filling material is placed."
-    result = activate_apicoectomy(scenario)
-    print(result) 
+    apicoectomy_service = ApicoectomyServices()
+    scenario = input("Enter an apicoectomy dental scenario: ")
+    apicoectomy_service.run_analysis(scenario)

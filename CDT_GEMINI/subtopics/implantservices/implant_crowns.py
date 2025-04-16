@@ -1,151 +1,230 @@
-"""
-Module for extracting single crowns, implant supported codes.
-"""
-
 import os
 import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+
+# Add the parent directory to the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(current_dir))
 sys.path.append(parent_dir)
-from llm_services import create_chain, invoke_chain, get_llm_service, set_model_for_file
+
+# Import modules
 from subtopics.prompt.prompt import PROMPT
 
-
-
-def create_implant_crowns_extractor():
-    """
-    Creates a LangChain-based extractor for implant supported crown codes.
-    """
-    template = f"""
-    You are a dental coding expert specializing in implant services.
+class SingleCrownsImplantSupportedServices:
+    """Class to analyze and extract implant-supported single crown codes based on dental scenarios."""
     
-  ## **Single Crowns, Implant Supported** 
- 
-### **Before picking a code, ask:** 
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing implant-supported single crowns."""
+        return PromptTemplate(
+            template=f"""
+You are a dental coding expert specializing in implant services.
+
+### Before Picking a Code, Ask:
 - What material is the crown made of? (porcelain/ceramic, metal, porcelain-fused-to-metal, etc.)
 - If it's porcelain-fused-to-metal, what type of metal alloy is used? (high noble, predominantly base, noble, titanium)
 - Is the crown being attached directly to the implant (not using an abutment)?
 - Is this a single crown restoration or part of a multi-unit prosthesis?
 - What is the location of the implant in the mouth?
 - Are there special considerations for material selection based on esthetics or functional requirements?
- 
----
- 
-### **Porcelain/Ceramic Option**
- 
-#### **Code: D6065** – *Implant supported porcelain/ceramic crown* 
-**Use when:** A single all-ceramic or all-porcelain crown is being placed directly on an implant without an intermediate abutment.
-**Check:** Verify the crown is fully made of porcelain/ceramic material with no metal substructure.
-**Note:** Ideal for anterior teeth where esthetics are a primary concern. These restorations provide excellent translucency and natural appearance.
- 
----
- 
-### **Porcelain Fused to Metal (PFM) Options**
- 
-#### **Code: D6066** – *Implant supported crown — porcelain fused to high noble alloys* 
-**Use when:** Placing a porcelain-fused-to-metal crown directly on an implant with a high noble metal substructure.
-**Check:** Confirm the metal used contains ≥60% noble metal, with ≥40% gold.
-**Note:** High noble metals provide excellent biocompatibility and minimal corrosion, with good bond strength to porcelain.
- 
-#### **Code: D6082** – *Implant supported crown — porcelain fused to predominantly base alloys* 
-**Use when:** Placing a porcelain-fused-to-metal crown directly on an implant with a predominantly base metal substructure.
-**Check:** Ensure the metal contains <25% noble metal.
-**Note:** More economical option that may be suitable for posterior restorations where esthetics are less critical.
- 
-#### **Code: D6083** – *Implant supported crown — porcelain fused to noble alloys* 
-**Use when:** Placing a porcelain-fused-to-metal crown directly on an implant with a noble metal substructure.
-**Check:** Verify the metal contains ≥25% noble metal.
-**Note:** Noble metals offer a balance between cost and biocompatibility, making them a good middle option.
- 
-#### **Code: D6084** – *Implant supported crown — porcelain fused to titanium or titanium alloys* 
-**Use when:** Placing a porcelain-fused-to-titanium crown directly on an implant.
-**Check:** Confirm the substructure is specifically titanium or a titanium alloy.
-**Note:** Titanium offers excellent biocompatibility, strength, and lightweight properties, making it ideal for patients with metal sensitivities.
- 
----
- 
-### **Full Metal Options**
- 
-#### **Code: D6067** – *Implant supported crown — high noble alloys* 
-**Use when:** Placing a full metal crown made of high noble alloys directly on an implant.
-**Check:** Verify the metal contains ≥60% noble metal, with ≥40% gold.
-**Note:** These crowns are excellent for posterior teeth where esthetics is less critical but strength and durability are paramount.
- 
-#### **Code: D6086** – *Implant supported crown — predominantly base alloys* 
-**Use when:** Placing a full metal crown made of predominantly base alloys directly on an implant.
-**Check:** Confirm the metal contains <25% noble metal.
-**Note:** More economical option that still provides good strength for posterior restorations.
- 
-#### **Code: D6087** – *Implant supported crown — noble alloys* 
-**Use when:** Placing a full metal crown made of noble alloys directly on an implant.
-**Check:** Ensure the metal contains ≥25% noble metal.
-**Note:** Provides a balance of cost, durability, and biocompatibility for posterior restorations.
- 
-#### **Code: D6088** – *Implant supported crown — titanium and titanium alloys* 
-**Use when:** Placing a full titanium crown directly on an implant.
-**Check:** Verify the crown is made entirely of titanium or titanium alloy.
-**Note:** Excellent option for patients with metal allergies, offering superior strength-to-weight ratio and biocompatibility.
- 
----
- 
-### **Key Takeaways:** 
-- All of these codes are specifically for **single** crown restorations placed **directly on implants** without an intermediate abutment.
-- For crowns placed on abutments, use the abutment-supported crown codes (D6058-D6064, D6094, D6097) instead.
-- Material selection is the primary differentiating factor between these codes.
-- The codes are categorized by both the visible material (porcelain/ceramic vs. metal) and the type of metal used.
-- Documentation should specify the exact materials used to support the selected code.
-- Consider both functional needs (strength, durability) and esthetic requirements when selecting materials.
-- Verify that the restoration is specifically an implant-supported crown, not an abutment-supported crown.
-    
-    SCENARIO: {{scenario}}
-    
-    {PROMPT}
-    """
-    
-    prompt = PromptTemplate(template=template, input_variables=["scenario"])
-    return create_chain(prompt)
 
-def extract_implant_crowns_code(scenario):
-    """
-    Extracts implant supported crown code(s) for a given scenario.
-    """
-    try:
-        extractor = create_implant_crowns_extractor()
-        result = invoke_chain(extractor, {"scenario": scenario})
-        return result.get("text", "").strip()
-    except Exception as e:
-        print(f"Error in implant crowns code extraction: {str(e)}")
-        return None
+---
 
-def activate_single_crowns_implant(scenario):
-    """
-    Analyze a dental scenario to determine single crowns, implant supported code.
+### Single Crowns, Implant Supported
+
+#### Code: D6065
+**Heading:** Implant supported porcelain/ceramic crown  
+**When to Use:**  
+- A single all-ceramic or all-porcelain crown is placed directly on an implant without an intermediate abutment.  
+- Use for restorations fully made of porcelain/ceramic with no metal substructure.  
+**What to Check:**  
+- Confirm the crown material is entirely porcelain or ceramic via lab specs.  
+- Verify the crown is attached directly to the implant, not via an abutment or part of a multi-unit prosthesis.  
+- Assess the tooth position (often anterior) for esthetic priority.  
+- Check for patient allergies or esthetic requirements favoring ceramics.  
+**Notes:**  
+- Ideal for anterior teeth due to excellent translucency and natural appearance.  
+- Not for porcelain-fused-to-metal crowns (see D6066, D6082, D6083, D6084) or abutment-supported crowns (see D6058).  
+- Documentation should specify material and direct implant support for insurance.  
+
+#### Code: D6066
+**Heading:** Implant supported crown — porcelain fused to high noble alloys  
+**When to Use:**  
+- A porcelain-fused-to-metal crown with a high noble metal substructure is placed directly on an implant.  
+- Use when the metal contains ≥60% noble metal, with ≥40% gold.  
+**What to Check:**  
+- Confirm the metal meets high noble criteria (≥60% noble, ≥40% gold) via lab report.  
+- Verify the crown is single-unit and attached directly to the implant.  
+- Assess biocompatibility needs (e.g., minimal corrosion risk).  
+- Check esthetic and functional balance (suitable for anterior or posterior).  
+**Notes:**  
+- Offers excellent biocompatibility and bond strength to porcelain.  
+- Not for base or noble metals (see D6082, D6083) or abutment-supported crowns (see D6059).  
+- Requires material documentation for insurance justification.  
+
+#### Code: D6082
+**Heading:** Implant supported crown — porcelain fused to predominantly base alloys  
+**When to Use:**  
+- A porcelain-fused-to-metal crown with a predominantly base metal substructure is placed directly on an implant.  
+- Use when the metal contains <25% noble metal.  
+**What to Check:**  
+- Confirm the metal is predominantly base (<25% noble) via lab specs.  
+- Verify the crown is a single-unit restoration attached directly to the implant.  
+- Assess cost considerations or patient allergies to base metals.  
+- Check suitability for posterior teeth where esthetics is less critical.  
+**Notes:**  
+- More affordable but may have reduced biocompatibility in sensitive patients.  
+- Not for high noble or noble metals (see D6066, D6083) or abutment-supported crowns (see D6060).  
+- Document material and direct implant support for clarity.  
+
+#### Code: D6083
+**Heading:** Implant supported crown — porcelain fused to noble alloys  
+**When to Use:**  
+- A porcelain-fused-to-metal crown with a noble metal substructure is placed directly on an implant.  
+- Use when the metal contains ≥25% noble metal but does not meet high noble criteria.  
+**What to Check:**  
+- Confirm the metal contains ≥25% noble metal via lab documentation.  
+- Verify the crown is single-unit and attached directly to the implant.  
+- Assess the balance of cost, durability, and esthetics.  
+- Check for patient-specific needs (e.g., metal sensitivity).  
+**Notes:**  
+- Balances cost and biocompatibility for anterior or posterior use.  
+- Not for high noble or base metals (see D6066, D6082) or abutment-supported crowns (see D6061).  
+- Include metal composition in records for insurance.  
+
+#### Code: D6084
+**Heading:** Implant supported crown — porcelain fused to titanium or titanium alloys  
+**When to Use:**  
+- A porcelain-fused-to-titanium crown is placed directly on an implant.  
+- Use when the substructure is specifically titanium or a titanium alloy.  
+**What to Check:**  
+- Confirm the substructure is titanium or titanium alloy via lab report.  
+- Verify the crown is a single-unit restoration attached directly to the implant.  
+- Assess patient needs for lightweight, biocompatible materials (e.g., metal allergies).  
+- Check esthetic and functional requirements.  
+**Notes:**  
+- Ideal for patients with metal sensitivities due to titanium’s biocompatibility.  
+- Not for other metal types (see D6066, D6082, D6083) or abutment-supported crowns (see D6097).  
+- Documentation should note titanium use for insurance approval.  
+
+#### Code: D6067
+**Heading:** Implant supported crown — high noble alloys  
+**When to Use:**  
+- A full metal crown made of high noble alloys is placed directly on an implant.  
+- Use when the metal contains ≥60% noble metal, with ≥40% gold.  
+**What to Check:**  
+- Confirm the metal meets high noble criteria (≥60% noble, ≥40% gold) via lab specs.  
+- Verify the crown is full metal and attached directly to the implant.  
+- Assess suitability for posterior teeth where strength is prioritized.  
+- Check patient tolerance for metal visibility.  
+**Notes:**  
+- Excellent for posterior restorations due to durability.  
+- Not for porcelain-fused or base metal crowns (see D6066, D6086) or abutment-supported crowns (see D6062).  
+- Requires material documentation for insurance.  
+
+#### Code: D6086
+**Heading:** Implant supported crown — predominantly base alloys  
+**When to Use:**  
+- A full metal crown made of predominantly base alloys is placed directly on an implant.  
+- Use when the metal contains <25% noble metal.  
+**What to Check:**  
+- Confirm the metal is predominantly base (<25% noble) via lab report.  
+- Verify the crown is full metal and single-unit attached directly to the implant.  
+- Assess cost-effectiveness and patient acceptance of metal esthetics.  
+- Check for posterior placement where strength is key.  
+**Notes:**  
+- Economical option with good strength for posterior teeth.  
+- Not for noble or high noble metals (see D6067, D6087) or abutment-supported crowns (see D6063).  
+- Document material details clearly.  
+
+#### Code: D6087
+**Heading:** Implant supported crown — noble alloys  
+**When to Use:**  
+- A full metal crown made of noble alloys is placed directly on an implant.  
+- Use when the metal contains ≥25% noble metal but is not high noble.  
+**What to Check:**  
+- Confirm the metal contains ≥25% noble metal via lab specs.  
+- Verify the crown is full metal and attached directly to the implant.  
+- Assess durability vs. esthetic trade-offs for posterior use.  
+- Check patient-specific needs (e.g., biocompatibility).  
+**Notes:**  
+- Balances cost and durability for posterior restorations.  
+- Not for base or high noble metals (see D6067, D6086) or abutment-supported crowns (see D6064).  
+- Include metal composition in documentation.  
+
+#### Code: D6088
+**Heading:** Implant supported crown — titanium and titanium alloys  
+**When to Use:**  
+- A full titanium crown is placed directly on an implant.  
+- Use when the crown is made entirely of titanium or titanium alloy.  
+**What to Check:**  
+- Confirm the crown is entirely titanium or titanium alloy via lab report.  
+- Verify it is a single-unit restoration attached directly to the implant.  
+- Assess patient needs for biocompatibility or lightweight materials.  
+- Check functional requirements (often posterior).  
+**Notes:**  
+- Excellent for patients with metal allergies due to titanium’s properties.  
+- Not for porcelain-fused titanium crowns (see D6084) or abutment-supported crowns (see D6094).  
+- Documentation should specify titanium use for insurance clarity.  
+
+---
+
+### Key Takeaways:
+- **Single-Unit Focus:** All codes are for single crowns placed directly on implants, not via abutments or as part of multi-unit prostheses.  
+- **Material Drives Coding:** Codes differ by crown material (porcelain/ceramic, metal, porcelain-fused-to-metal) and metal type (high noble, noble, base, titanium).  
+- **Implant Direct Support:** Ensure the crown is attached directly to the implant, not an abutment-supported restoration.  
+- **Esthetics vs. Function:** Porcelain/ceramic (D6065) suits anterior teeth; metal crowns (D6067, D6086–D6088) are better for posterior strength.  
+- **Documentation Critical:** Specify material, metal composition, and direct implant support in records for insurance and clarity.
+
+Scenario: {{scenario}}
+
+{PROMPT}
+""",
+            input_variables=["scenario"]
+        )
     
-    Args:
-        scenario (str): The dental scenario to analyze.
-        
-    Returns:
-        str: The identified single crowns, implant supported code or empty string if none found.
-    """
-    try:
-        result = extract_implant_crowns_code(scenario)
-        
-        # Return empty string if no code found
-        if result == "None" or not result or "not applicable" in result.lower():
+    def extract_implant_crowns_code(self, scenario: str) -> str:
+        """Extract implant-supported single crown code(s) for a given scenario."""
+        try:
+            print(f"Analyzing implant crowns scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Implant crowns extract_implant_crowns_code result: {code}")
+            if code.lower() in ["none", "", "not applicable"]:
+                return ""
+            return code
+        except Exception as e:
+            print(f"Error in implant crowns code extraction: {str(e)}")
             return ""
-            
-        return result
-    except Exception as e:
-        print(f"Error in activate_single_crowns_implant: {str(e)}")
-        return ""
+    
+    def activate_single_crowns_implant(self, scenario: str) -> str:
+        """Activate the implant-supported single crowns analysis process and return results."""
+        try:
+            result = self.extract_implant_crowns_code(scenario)
+            if not result:
+                print("No implant crowns code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating implant crowns analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_single_crowns_implant(scenario)
+        print(f"\n=== IMPLANT SUPPORTED CROWNS ANALYSIS RESULT ===")
+        print(f"IMPLANT SUPPORTED CROWN CODE: {result if result else 'None'}")
 
+implant_crowns_service = SingleCrownsImplantSupportedServices()
 # Example usage
 if __name__ == "__main__":
-    # Print the current Gemini model and temperature being used
-    llm_service = get_llm_service()
-    print(f"Using Gemini model: {llm_service.gemini_model} with temperature: {llm_service.temperature}")
-    
-    scenario = "A patient with an implant at position #8 (upper right central incisor) requires a new crown. The dentist plans to place an all-ceramic crown directly onto the implant without using an abutment for optimal esthetics."
-    result = activate_single_crowns_implant(scenario)
-    print(result) 
+    crowns_service = SingleCrownsImplantSupportedServices()
+    scenario = input("Enter an implant-supported single crown dental scenario: ")
+    crowns_service.run_analysis(scenario)
