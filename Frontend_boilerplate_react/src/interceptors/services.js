@@ -1,12 +1,40 @@
 import apiInstance from './axios.jsx';
 
 // Dental scenario service
-export const analyzeDentalScenario = async (scenarioData) => {
+export const analyzeDentalScenario = async (scenarioData, signal) => {
   try {
-    const response = await apiInstance.post('/api/analyze', scenarioData);
+    const response = await apiInstance.post('/api/analyze', scenarioData, {
+      signal: signal // Pass the AbortController signal
+    });
     return response.data;
   } catch (error) {
+    // If request was aborted, rethrow the AbortError
+    if (error.name === 'CanceledError' || error.name === 'AbortError') {
+      const abortError = new Error('Request was cancelled');
+      abortError.name = 'AbortError';
+      throw abortError;
+    }
     throw error.response?.data || { message: 'Failed to analyze scenario' };
+  }
+};
+
+// Batch analyze multiple dental scenarios
+export const analyzeBatchScenarios = async (scenariosArray, signal) => {
+  try {
+    const response = await apiInstance.post('/api/analyze-batch', {
+      scenarios: scenariosArray
+    }, {
+      signal: signal // Pass the AbortController signal
+    });
+    return response.data;
+  } catch (error) {
+    // If request was aborted, rethrow the AbortError
+    if (error.name === 'CanceledError' || error.name === 'AbortError') {
+      const abortError = new Error('Request was cancelled');
+      abortError.name = 'AbortError';
+      throw abortError;
+    }
+    throw error.response?.data || { message: 'Failed to analyze scenarios in batch' };
   }
 };
 

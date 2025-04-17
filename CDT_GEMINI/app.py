@@ -134,6 +134,9 @@ def map_to_cdt_category(specific_code: str) -> str:
 class ScenarioRequest(BaseModel):
     scenario: str
 
+class BatchScenarioRequest(BaseModel):
+    scenarios: List[str]
+
 class QuestionAnswersRequest(BaseModel):
     answers: str
 
@@ -1164,6 +1167,84 @@ async def store_code_status(request: CodeStatusRequest):
         import traceback
         error_details = traceback.format_exc()
         print(f"❌ ERROR: {str(e)}")
+        print(f"STACK TRACE: {error_details}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "details": error_details
+        }
+
+# API endpoint to process multiple scenarios in batch
+@app.post("/api/analyze-batch")
+async def analyze_batch(request: BatchScenarioRequest):
+    """Process multiple dental scenarios in parallel."""
+    try:
+        print(f"\n*************************** PROCESSING BATCH OF {len(request.scenarios)} SCENARIOS ***************************")
+        
+        # Limit the maximum number of concurrent operations
+        max_concurrent = min(3, len(request.scenarios))
+        
+        # Create a semaphore to limit concurrency
+        semaphore = asyncio.Semaphore(max_concurrent)
+        
+        # Define a function to process a single scenario with rate limiting
+        async def process_scenario(scenario, index):
+            try:
+                # Acquire semaphore to limit concurrent processing
+                async with semaphore:
+                    print(f"Processing scenario {index+1}/{len(request.scenarios)}")
+                    
+                    # Create a single scenario request
+                    single_request = ScenarioRequest(scenario=scenario)
+                    
+                    # Set a timeout to prevent hanging
+                    timeout = 60  # 60 seconds timeout per scenario
+                    try:
+                        # Process using the existing analyze_web function with a timeout
+                        result = await asyncio.wait_for(
+                            analyze_web(single_request), 
+                            timeout=timeout
+                        )
+                        return result
+                    except asyncio.TimeoutError:
+                        print(f"Timeout processing scenario {index+1}")
+                        return {
+                            "status": "error",
+                            "message": "Processing timed out. The scenario may be too complex or the system is under heavy load."
+                        }
+            except Exception as e:
+                # Handle rate limit errors specifically
+                if "rate limit" in str(e).lower() or "quota" in str(e).lower() or "429" in str(e):
+                    print(f"Rate limit exceeded for scenario {index+1}")
+                    return {
+                        "status": "error",
+                        "message": "API rate limit exceeded. Please try again in a few moments or process fewer scenarios at once."
+                    }
+                print(f"Error processing scenario {index+1}: {str(e)}")
+                return {
+                    "status": "error",
+                    "message": str(e)
+                }
+        
+        # Create tasks for processing each scenario with controlled concurrency
+        tasks = []
+        for i, scenario in enumerate(request.scenarios):
+            task = asyncio.create_task(process_scenario(scenario, i))
+            tasks.append(task)
+        
+        # Wait for all tasks to complete
+        results = await asyncio.gather(*tasks)
+        
+        # Return all results
+        return {
+            "status": "success",
+            "batch_results": results
+        }
+        
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"❌ BATCH PROCESSING ERROR: {str(e)}")
         print(f"STACK TRACE: {error_details}")
         return {
             "status": "error",

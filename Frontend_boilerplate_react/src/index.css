@@ -4,10 +4,41 @@
 
 /* @import url("https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap"); */
 
+@layer base {
+  :root {
+    /* Light theme variables */
+    --color-bg-primary: #ffffff;
+    --color-bg-secondary: #f1f5f9;
+    --color-bg-card: #ffffff;
+    --color-text-primary: #1e293b;
+    --color-text-secondary: #64748b;
+    --color-border: #e2e8f0;
+    --color-input-bg: #ffffff;
+    --color-primary: #3b82f6;
+    --color-primary-hover: #2563eb;
+  }
+
+  .dark {
+    /* Dark theme variables */
+    --color-bg-primary: #1e293b;
+    --color-bg-secondary: #0f172a;
+    --color-bg-card: #2c3e50;
+    --color-text-primary: #f1f5f9;
+    --color-text-secondary: #cbd5e1;
+    --color-border: #334155;
+    --color-input-bg: #334155;
+    --color-primary: #3b82f6;
+    --color-primary-hover: #60a5fa;
+  }
+}
+
 body {
   margin: 0;
   font-family: "Roboto", sans-serif;
   overflow-x: hidden;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 /* }
 html, body {
@@ -15,19 +46,35 @@ html, body {
 } */
 
  html.dark {
-  background-color: #333;
-  color: white;
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text-primary);
 }
 
 html.light {
-  background-color: #fff;
-  color: black;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
 } 
 
 nav {
-  background-color: transparent;
+  background-color: var(--color-bg-card);
+  transition: background-color 0.3s ease;
 }
 button {
   cursor: pointer;
   outline: none;
+}
+
+.theme-toggle {
+  cursor: pointer;
+  transition: transform 0.3s ease;
+}
+
+.theme-toggle:hover {
+  transform: rotate(12deg);
+}
+
+/* Animated theme transitions */
+* {
+  transition-property: color, background-color, border-color;
+  transition-duration: 200ms;
 }

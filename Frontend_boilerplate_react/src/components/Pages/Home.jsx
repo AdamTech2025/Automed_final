@@ -2,8 +2,10 @@ import { FaTooth, FaCogs, FaCheck, FaTimes, FaPaperPlane, FaRobot, FaCopy } from
 import { analyzeDentalScenario, submitSelectedCodes, addCustomCode } from '../../interceptors/services.js';
 import { useState, useEffect } from 'react';
 import Questioner from './Questioner.jsx';
+import { useTheme } from '../../context/ThemeContext';
 
 const Home = () => {
+  const { isDark } = useTheme();
   const [scenario, setScenario] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -211,7 +213,10 @@ const Home = () => {
     return (
       <div className="mb-6">
         <div 
-          className={`flex items-center justify-between p-4 ${topic === 'custom_codes' ? 'bg-blue-50' : 'bg-gray-50'} rounded-lg cursor-pointer hover:bg-gray-100 transition-colors`}
+          className={`flex items-center justify-between p-4 ${topic === 'custom_codes' ? 
+            (isDark ? 'bg-blue-900/30' : 'bg-blue-50') : 
+            (isDark ? 'bg-gray-800' : 'bg-gray-50')
+          } rounded-lg cursor-pointer hover:${isDark ? 'bg-gray-700' : 'bg-gray-100'} transition-colors`}
           onClick={() => toggleTopic(topic)}
         >
           <h3 className="text-lg font-semibold">{topicName}</h3>
@@ -233,28 +238,34 @@ const Home = () => {
               <div 
                 key={`topic-${index}-${topic}-${codeData.code}`}
                 className={`mt-4 transition-all duration-300 ease-in-out ${
-                  isAccepted ? 'bg-green-50 border-green-200' : 
-                  isDenied ? 'bg-red-50 border-red-200' : 
-                  'bg-white border-gray-200'
+                  isAccepted ? (isDark ? 'bg-green-900/30 border-green-700' : 'bg-green-50 border-green-200') : 
+                  isDenied ? (isDark ? 'bg-red-900/30 border-red-700' : 'bg-red-50 border-red-200') : 
+                  (isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200')
                 }`}
               >
                 <div 
                   id={`code-${codeData.code}`} 
                   className={`p-4 rounded-lg shadow-sm border transition-colors duration-300 ${
-                  isAccepted ? 'border-green-300' : 
-                  isDenied ? 'border-red-300' : 
+                  isAccepted ? (isDark ? 'border-green-700' : 'border-green-300') : 
+                  isDenied ? (isDark ? 'border-red-700' : 'border-red-300') : 
                   topic === 'custom_codes' && 'isApplicable' in codeData ? 
-                    (codeData.isApplicable ? 'border-green-300' : 'border-red-300') :
-                  'border-gray-200'
+                    (codeData.isApplicable ? 
+                      (isDark ? 'border-green-700' : 'border-green-300') : 
+                      (isDark ? 'border-red-700' : 'border-red-300')
+                    ) :
+                  (isDark ? 'border-gray-700' : 'border-gray-200')
                 }`}
                 >
                   <div className="flex justify-between items-center mb-2">
                     <span className={`font-mono px-2 py-1 rounded ${
-                      isAccepted ? 'bg-green-100 text-green-800' : 
-                      isDenied ? 'bg-red-100 text-red-800' : 
+                      isAccepted ? (isDark ? 'bg-green-900 text-green-200' : 'bg-green-100 text-green-800') : 
+                      isDenied ? (isDark ? 'bg-red-900 text-red-200' : 'bg-red-100 text-red-800') : 
                       topic === 'custom_codes' && 'isApplicable' in codeData ? 
-                        (codeData.isApplicable ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800') :
-                      'bg-gray-100 text-gray-800'
+                        (codeData.isApplicable ? 
+                          (isDark ? 'bg-green-900 text-green-200' : 'bg-green-100 text-green-800') : 
+                          (isDark ? 'bg-red-900 text-red-200' : 'bg-red-100 text-red-800')
+                        ) :
+                      (isDark ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-800')
                     }`}>
                       {codeData.code}
                     </span>
@@ -267,7 +278,7 @@ const Home = () => {
                         className={`p-2 rounded-full transition-all duration-200 ${
                           isAccepted 
                             ? 'bg-green-500 text-white scale-110' 
-                            : 'bg-gray-200 text-gray-600 hover:bg-green-500 hover:text-white hover:scale-110'
+                            : (isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-600') + ' hover:bg-green-500 hover:text-white hover:scale-110'
                         }`}
                       >
                         <FaCheck />
@@ -280,7 +291,7 @@ const Home = () => {
                         className={`p-2 rounded-full transition-all duration-200 ${
                           isDenied 
                             ? 'bg-red-500 text-white scale-110' 
-                            : 'bg-gray-200 text-gray-600 hover:bg-red-500 hover:text-white hover:scale-110'
+                            : (isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-600') + ' hover:bg-red-500 hover:text-white hover:scale-110'
                         }`}
                       >
                         <FaTimes />
@@ -288,20 +299,26 @@ const Home = () => {
                     </div>
                   </div>
                   <p className={`text-sm mb-1 ${
-                    isAccepted ? 'text-green-700' : 
-                    isDenied ? 'text-red-700' : 
+                    isAccepted ? (isDark ? 'text-green-300' : 'text-green-700') : 
+                    isDenied ? (isDark ? 'text-red-300' : 'text-red-700') : 
                     topic === 'custom_codes' && 'isApplicable' in codeData ? 
-                      (codeData.isApplicable ? 'text-green-700' : 'text-red-700') :
-                    'text-gray-600'
+                      (codeData.isApplicable ? 
+                        (isDark ? 'text-green-300' : 'text-green-700') : 
+                        (isDark ? 'text-red-300' : 'text-red-700')
+                      ) :
+                    (isDark ? 'text-gray-300' : 'text-gray-600')
                   }`}>
                     <span className="font-medium">Explanation:</span> {codeData.explanation}
                   </p>
                   <p className={`text-sm ${
-                    isAccepted ? 'text-green-700' : 
-                    isDenied ? 'text-red-700' : 
+                    isAccepted ? (isDark ? 'text-green-300' : 'text-green-700') : 
+                    isDenied ? (isDark ? 'text-red-300' : 'text-red-700') : 
                     topic === 'custom_codes' && 'isApplicable' in codeData ? 
-                      (codeData.isApplicable ? 'text-green-700' : 'text-red-700') :
-                    'text-gray-600'
+                      (codeData.isApplicable ? 
+                        (isDark ? 'text-green-300' : 'text-green-700') : 
+                        (isDark ? 'text-red-300' : 'text-red-700')
+                      ) :
+                    (isDark ? 'text-gray-300' : 'text-gray-600')
                   }`}>
                     <span className="font-medium">Doubt:</span> {codeData.doubt}
                   </p>
@@ -323,22 +340,22 @@ const Home = () => {
     const icdExplanation = result.data.inspector_results.icd?.explanation || '';
 
     return (
-      <div className="mt-8 p-4 bg-blue-50 rounded-lg border border-blue-200 ai-final-analysis-content relative">
+      <div className={`mt-8 p-4 ${isDark ? 'bg-blue-900/30 border-blue-700' : 'bg-blue-50 border-blue-200'} rounded-lg border ai-final-analysis-content relative`}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center">
-            <FaRobot className="text-blue-500 mr-2" />
-            <h3 className="text-lg font-semibold text-blue-700">AI Final Analysis</h3>
+            <FaRobot className={`${isDark ? 'text-blue-400' : 'text-blue-500'} mr-2`} />
+            <h3 className={`text-lg font-semibold ${isDark ? 'text-blue-400' : 'text-blue-700'}`}>AI Final Analysis</h3>
           </div>
           <button
             onClick={handleCopyCodes}
-            className="text-blue-500 hover:text-blue-700 transition-colors"
+            className={`${isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-500 hover:text-blue-700'} transition-colors`}
           >
             <FaCopy className="inline mr-1" /> Copy Codes
           </button>
         </div>
         
         <div className="mb-4">
-          <h4 className="font-medium text-gray-700 mb-2">CDT Codes:</h4>
+          <h4 className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'} mb-2`}>CDT Codes:</h4>
           <div className="flex flex-wrap gap-2">
             {cdtCodes.map((code, index) => {
               const isAccepted = selectedCodes.accepted.includes(code);
@@ -350,10 +367,10 @@ const Home = () => {
                   onClick={() => scrollToCode(code)}
                   className={`cursor-pointer px-3 py-1 rounded-full text-sm transition-all duration-200 ${
                     isAccepted 
-                      ? 'bg-green-100 text-green-800 border border-green-300' : 
-                    isDenied 
-                      ? 'bg-red-100 text-red-800 border border-red-300' : 
-                      'bg-blue-100 text-blue-800'
+                      ? (isDark ? 'bg-green-900/60 text-green-200 border-green-700' : 'bg-green-100 text-green-800 border border-green-300') 
+                      : isDenied 
+                        ? (isDark ? 'bg-red-900/60 text-red-200 border-red-700' : 'bg-red-100 text-red-800 border border-red-300')
+                        : (isDark ? 'bg-blue-800/60 text-blue-200' : 'bg-blue-100 text-blue-800')
                   }`}
                 >
                   {code}
@@ -361,22 +378,24 @@ const Home = () => {
               );
             })}
           </div>
-          <p className="text-sm text-gray-600 mt-2">{cdtExplanation}</p>
+          <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'} mt-2`}>{cdtExplanation}</p>
         </div>
 
         <div className="mb-4">
-          <h4 className="font-medium text-gray-700 mb-2">ICD Codes:</h4>
+          <h4 className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'} mb-2`}>ICD Codes:</h4>
           <div className="flex flex-wrap gap-2">
             {icdCodes.map((code, index) => (
               <span 
                 key={`icd-code-${index}-${code}`}
-                className="px-3 py-1 rounded-full text-sm bg-purple-100 text-purple-800"
+                className={`px-3 py-1 rounded-full text-sm ${
+                  isDark ? 'bg-purple-900/60 text-purple-200' : 'bg-purple-100 text-purple-800'
+                }`}
               >
                 {code}
               </span>
             ))}
           </div>
-          <p className="text-sm text-gray-600 mt-2">{icdExplanation}</p>
+          <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'} mt-2`}>{icdExplanation}</p>
         </div>
       </div>
     );
@@ -416,12 +435,12 @@ const Home = () => {
     };
     
     return (
-      <div className="mt-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
+      <div className={`mt-8 p-4 ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'} rounded-lg border`}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Your Selections</h3>
           <button
             onClick={handleCopySelectedCodes}
-            className="text-blue-500 hover:text-blue-700 transition-colors flex items-center"
+            className={`${isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-500 hover:text-blue-700'} transition-colors flex items-center`}
           >
             <FaCopy className="mr-1" /> Copy All
           </button>
@@ -429,12 +448,14 @@ const Home = () => {
         
         {selectedCodes.accepted.length > 0 && (
           <div>
-            <h4 className="font-medium text-green-700 mb-2">Accepted Codes:</h4>
+            <h4 className={`font-medium ${isDark ? 'text-green-400' : 'text-green-700'} mb-2`}>Accepted Codes:</h4>
             <div className="flex flex-wrap gap-2">
               {selectedCodes.accepted.map((code, index) => (
                 <span 
                   key={`accepted-${index}-${code}`}
-                  className="px-3 py-1 rounded-full text-sm bg-green-100 text-green-800 border border-green-300"
+                  className={`px-3 py-1 rounded-full text-sm ${
+                    isDark ? 'bg-green-900/60 text-green-200 border border-green-700' : 'bg-green-100 text-green-800 border border-green-300'
+                  }`}
                 >
                   {code}
                 </span>
@@ -541,7 +562,7 @@ const Home = () => {
   };
 
   return (
-    <div className="flex flex-col bg-gray-100">
+    <div className={`flex flex-col transition-colors`}>
       {/* Questioner Modal */}
       {result && (
         <Questioner
@@ -558,9 +579,9 @@ const Home = () => {
 
       {/* Main content container */}
       <div className="flex-grow flex items-center justify-center p-4">
-        <div className="w-full  p-4 md:p-6 bg-white rounded-lg shadow-lg">
+        <div className={`w-full p-4 md:p-6 ${isDark ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg transition-colors`}>
           {/* Header */}
-          <div className="bg-blue-500 text-white p-4 rounded-lg mb-6">
+          <div className={`${isDark ? 'bg-blue-900' : 'bg-blue-500'} text-white p-4 rounded-lg mb-6 transition-colors`}>
             <h2 className="text-xl md:text-2xl font-semibold flex items-center">
               <FaTooth className="mr-2" /> Dental Scenario
             </h2>
@@ -572,7 +593,7 @@ const Home = () => {
               <div>
                 <label
                   htmlFor="scenario"
-                  className="block text-gray-700 font-medium mb-2 text-sm md:text-base"
+                  className={`block ${isDark ? 'text-gray-200' : 'text-gray-700'} font-medium mb-2 text-sm md:text-base`}
                 >
                   Enter dental scenario to analyze:
                 </label>
@@ -580,7 +601,11 @@ const Home = () => {
                   id="scenario"
                   name="scenario"
                   rows="6"
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-sm md:text-base"
+                  className={`w-full p-3 border ${
+                    isDark ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-white border-gray-300 text-gray-900'
+                  } rounded-lg focus:outline-none ${
+                    isDark ? 'focus:border-blue-400' : 'focus:border-blue-500'
+                  } text-sm md:text-base transition-colors`}
                   placeholder="Describe the dental procedure or diagnosis..."
                   value={scenario}
                   onChange={(e) => setScenario(e.target.value)}
@@ -591,7 +616,11 @@ const Home = () => {
               <div className="flex justify-end">
                 <button
                   type="submit"
-                  className="bg-blue-600 text-white px-4 py-2 md:px-6 md:py-2 rounded-lg shadow-md hover:bg-blue-700 disabled:bg-gray-400 text-sm md:text-base transition-all duration-300"
+                  className={`${
+                    isDark ? 'bg-blue-700 hover:bg-blue-600' : 'bg-blue-600 hover:bg-blue-700'
+                  } text-white px-4 py-2 md:px-6 md:py-2 rounded-lg shadow-md disabled:${
+                    isDark ? 'bg-gray-700' : 'bg-gray-400'
+                  } text-sm md:text-base transition-all duration-300`}
                   disabled={loading}
                 >
                   <FaCogs className="inline mr-2" />
@@ -611,7 +640,7 @@ const Home = () => {
               <div className="mt-6">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-semibold">Analysis Results</h3>
-                  <div className="text-sm text-gray-600">
+                  <div className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                     Selected: {selectedCodes.accepted.length}
                   </div>
                 </div>
@@ -622,32 +651,40 @@ const Home = () => {
                     <div key={`topic-container-${index}-${topic}`}>{renderCodeSection(topic)}</div>
                   ))
                 ) : (
-                  <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                    <p className="text-gray-600">No code sections available for this analysis.</p>
+                  <div className={`mt-4 p-4 ${isDark ? 'bg-gray-700' : 'bg-gray-50'} rounded-lg`}>
+                    <p className={`${isDark ? 'text-gray-300' : 'text-gray-600'}`}>No code sections available for this analysis.</p>
                   </div>
                 )}
 
                 {/* Add Code Section */}
-                <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <div className={`mt-6 p-4 ${isDark ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'} rounded-lg border`}>
                   <h3 className="text-lg font-semibold mb-3">Add Custom Code</h3>
                   <div className="flex items-center mb-2">
                     <input
                       type="text"
                       placeholder="Enter CDT code (e.g., D1120)"
-                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-sm md:text-base"
+                      className={`w-full p-2 border ${
+                        isDark ? 'bg-gray-800 border-gray-600 text-gray-100' : 'bg-white border-gray-300 text-gray-900'
+                      } rounded-lg focus:outline-none ${
+                        isDark ? 'focus:border-blue-400' : 'focus:border-blue-500'
+                      } text-sm md:text-base`}
                       value={newCode}
                       onChange={(e) => setNewCode(e.target.value)}
                       disabled={loading}
                     />
                     <button
                       onClick={handleAddCode}
-                      className="ml-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-all duration-300 disabled:bg-gray-400 flex items-center"
+                      className={`ml-2 px-4 py-2 ${
+                        isDark ? 'bg-blue-700 hover:bg-blue-600' : 'bg-blue-600 hover:bg-blue-700'
+                      } text-white rounded-lg shadow-md transition-all duration-300 disabled:${
+                        isDark ? 'bg-gray-700' : 'bg-gray-400'
+                      } flex items-center`}
                       disabled={loading || !newCode.trim() || !result?.data?.record_id}
                     >
                       {loading ? 'Analyzing...' : 'Analyze Code'}
                     </button>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'} mt-1`}>
                     Add a custom CDT code to check if it&apos;s applicable to this scenario.
                     The AI will analyze and provide a recommendation.
                   </p>
@@ -660,9 +697,9 @@ const Home = () => {
                     disabled={submitting || !areAllCodesSelected()}
                     className={`px-4 py-2 rounded-lg shadow-md flex items-center transition-all duration-300 ${
                       areAllCodesSelected() 
-                        ? 'bg-green-600 text-white hover:bg-green-700' 
-                        : 'bg-gray-400 text-white cursor-not-allowed'
-                    }`}
+                        ? (isDark ? 'bg-green-700 hover:bg-green-600' : 'bg-green-600 hover:bg-green-700') 
+                        : (isDark ? 'bg-gray-700' : 'bg-gray-400') + ' cursor-not-allowed'
+                    } text-white`}
                   >
                     <FaPaperPlane className="mr-2" />
                     {submitting 
@@ -678,9 +715,9 @@ const Home = () => {
 
             {/* Error */}
             {error && (
-              <div className="mt-4 p-4 bg-red-100 rounded-lg">
-                <h3 className="font-semibold text-red-800 text-sm md:text-base">Error:</h3>
-                <p className="text-xs md:text-sm">{error}</p>
+              <div className={`mt-4 p-4 ${isDark ? 'bg-red-900/30' : 'bg-red-100'} rounded-lg`}>
+                <h3 className={`font-semibold ${isDark ? 'text-red-300' : 'text-red-800'} text-sm md:text-base`}>Error:</h3>
+                <p className={`text-xs md:text-sm ${isDark ? 'text-red-200' : 'text-red-700'}`}>{error}</p>
               </div>
             )}
           </div>
