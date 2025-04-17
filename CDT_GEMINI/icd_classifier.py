@@ -4,41 +4,51 @@ from dotenv import load_dotenv
 from llm_services import generate_response, get_service, set_model, set_temperature
 from typing import Dict, Any, Optional, List
 from llm_services import OPENROUTER_MODEL, DEFAULT_TEMP
-# Import all ICD topic functions 
-from icdtopics.dentalencounters import activate_dental_encounters
-from icdtopics.dentalcaries import activate_dental_caries
-from icdtopics.disordersofteeth import activate_disorders_of_teeth
-from icdtopics.disordersofpulpandperiapicaltissues import activate_pulp_periapical_disorders
-from icdtopics.diseasesandconditionsoftheperiodontium import activate_periodontium_disorders
-from icdtopics.alveolarridgedisorders import activate_alveolar_ridge_disorders
-from icdtopics.findingsofbostteeth import activate_lost_teeth
-from icdtopics.developmentdisordersofteethandjaws import activate_developmental_disorders
-from icdtopics.treatmentcomplications import activate_treatment_complications
-from icdtopics.inflammatoryconditionsofthmucosa import activate_inflammatory_mucosa_conditions
-from icdtopics.tmjdiseasesandconditions import activate_tmj_disorders
-from icdtopics.breathingspeechandsleepdisorders import activate_breathing_speech_sleep_disorders
-from icdtopics.traumaandrelatedconditions import activate_trauma_conditions
-from icdtopics.oralneoplasms import activate_oral_neoplasms
-from icdtopics.pathologies import activate_pathologies
-from icdtopics.medicalfindingsrelatedtodentaltreatment import activate_medical_findings
-from icdtopics.socialdeterminants import activate_social_determinants
-from icdtopics.symptomsanddisorderspertienttoorthodontiacases import activate_orthodontia_cases
+# Import all ICD topic services
+from icdtopics.dentalencounters import dental_encounters_service
+from icdtopics.dentalcaries import dental_caries_service
+from icdtopics.disordersofteeth import teeth_disorders_service
+from icdtopics.disordersofpulpandperiapicaltissues import pulp_periapical_service
+from icdtopics.diseasesandconditionsoftheperiodontium import periodontium_diseases_service
+from icdtopics.alveolarridgedisorders import alveolar_ridge_disorders_service
+from icdtopics.findingsofbostteeth import lost_teeth_service
+from icdtopics.developmentdisordersofteethandjaws import development_disorders_service
+from icdtopics.treatmentcomplications import treatment_complications_service
+from icdtopics.inflammatoryconditionsofthmucosa import inflammatory_mucosa_service
+from icdtopics.tmjdiseasesandconditions import tmj_disorders_service
+from icdtopics.breathingspeechandsleepdisorders import breathing_sleep_disorders_service
+from icdtopics.traumaandrelatedconditions import trauma_conditions_service
+from icdtopics.oralneoplasms import oral_neoplasms_service
+from icdtopics.pathologies import pathologies_service
+from icdtopics.medicalfindingsrelatedtodentaltreatment import medical_findings_service
+from icdtopics.socialdeterminants import social_determinants_service
+from icdtopics.symptomsanddisorderspertienttoorthodontiacases import orthodontia_cases_service
 
 load_dotenv()
 
 class ICDClassifier:
     """Class to handle ICD code classification for dental scenarios"""
     
-    # Keep your existing category mappings as class attributes
+    # Map category numbers to their respective service methods
     ICD_CATEGORY_FUNCTIONS = {
-        "1": activate_dental_encounters, "2": activate_dental_caries, "3": activate_disorders_of_teeth,
-        "4": activate_pulp_periapical_disorders, "5": activate_periodontium_disorders, 
-        "6": activate_alveolar_ridge_disorders, "7": activate_lost_teeth, 
-        "8": activate_developmental_disorders, "9": activate_treatment_complications,
-        "10": activate_inflammatory_mucosa_conditions, "11": activate_tmj_disorders,
-        "12": activate_breathing_speech_sleep_disorders, "13": activate_trauma_conditions,
-        "14": activate_oral_neoplasms, "15": activate_pathologies, "16": activate_medical_findings,
-        "17": activate_social_determinants, "18": activate_orthodontia_cases
+        "1": dental_encounters_service.activate_dental_encounters,
+        "2": dental_caries_service.activate_dental_caries,
+        "3": teeth_disorders_service.activate_disorders_of_teeth,
+        "4": pulp_periapical_service.activate_pulp_periapical_disorders,
+        "5": periodontium_diseases_service.activate_periodontium_disorders,
+        "6": alveolar_ridge_disorders_service.activate_alveolar_ridge_disorders,
+        "7": lost_teeth_service.activate_lost_teeth,
+        "8": development_disorders_service.activate_development_disorders,
+        "9": treatment_complications_service.activate_treatment_complications,
+        "10": inflammatory_mucosa_service.activate_inflammatory_mucosa,
+        "11": tmj_disorders_service.activate_tmj_disorders,
+        "12": breathing_sleep_disorders_service.activate_breathing_sleep_disorders,
+        "13": trauma_conditions_service.activate_trauma_conditions,
+        "14": oral_neoplasms_service.activate_oral_neoplasms,
+        "15": pathologies_service.activate_pathologies,
+        "16": medical_findings_service.activate_medical_findings,
+        "17": social_determinants_service.activate_social_determinants,
+        "18": orthodontia_cases_service.activate_orthodontia_cases
     }
 
     ICD_CATEGORY_NAMES = {

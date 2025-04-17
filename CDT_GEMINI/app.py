@@ -6,6 +6,7 @@ import asyncio
 from typing import Dict, Any, List
 import json
 import datetime
+import time  # Import the time module
 
 # Import the data cleaner and cdt classifier
 from data_cleaner import DentalScenarioProcessor
@@ -158,15 +159,19 @@ class CodeStatusRequest(BaseModel):
 @app.post("/api/analyze")
 async def analyze_web(request: ScenarioRequest):
     """Process the dental scenario through the data cleaner, CDT classifier, and topic activators."""
+    start_time = time.time()
     try:
         # Step 1: Process the input through data_cleaner
+        step_start_time = time.time()
         print("\n*************************** STEP 1: DATA CLEANING ***************************")
         print(f"🔍 INPUT SCENARIO: {request.scenario}")
         processed_result = cleaner.process(request.scenario)
         processed_scenario = processed_result["standardized_scenario"]
         print(f"✅ PROCESSED SCENARIO: {processed_scenario}")
+        print(f"⏱️ Data Cleaning Time: {time.time() - step_start_time:.2f} seconds")
         
         # Step 2: Process the cleaned scenario with CDT and ICD classifiers in parallel
+        step_start_time = time.time()
         print("\n*************************** STEP 2: PARALLEL CLASSIFICATION ***************************")
         print(f"⏳ RUNNING CDT & ICD CLASSIFICATION IN PARALLEL...")
         
@@ -184,6 +189,8 @@ async def analyze_web(request: ScenarioRequest):
         # Await both results
         cdt_result, icd_result = await asyncio.gather(cdt_task, icd_task)
         
+        print(f"⏱️ Parallel Classification Time: {time.time() - step_start_time:.2f} seconds")
+        
         # Log CDT results
         print(f"🏆 CDT CLASSIFICATION COMPLETE with {len(cdt_result.get('formatted_results', []))} code ranges")
         
@@ -196,6 +203,7 @@ async def analyze_web(request: ScenarioRequest):
                 print(f"📋 ICD CODES IDENTIFIED: {', '.join(icd_result.get('icd_codes', []))}")
         
         # Step 3: Activate topics in parallel based on code ranges
+        step_start_time = time.time()
         print("\n*************************** STEP 3: TOPIC ACTIVATION ***************************")
         print(f"⚡ ACTIVATING TOPICS IN PARALLEL...")
         range_codes = cdt_result["range_codes_string"].split(",")
@@ -218,8 +226,10 @@ async def analyze_web(request: ScenarioRequest):
         topic_result = topic_results.get('topic_result', [])
         print(f"🎯 TOPICS ACTIVATED: {activated_subtopics}")
         print(f"📋 SPECIFIC CODES IDENTIFIED: {len(topic_result)}")
+        print(f"⏱️ Topic Activation Time: {time.time() - step_start_time:.2f} seconds")
         
         # Step 4: Process results for response
+        step_start_time = time.time()
         print("\n*************************** STEP 4: PROCESSING RESULTS ***************************")
         
         # Process the CDT classification data for better structure
@@ -561,6 +571,9 @@ async def analyze_web(request: ScenarioRequest):
         }
         
         print("\n*************************** PROCESSING COMPLETE ***************************")
+        
+        total_time = time.time() - start_time
+        print(f"⏱️ TOTAL analyze_web TIME: {total_time:.2f} seconds")
         
         return {
             "status": "success",
@@ -1198,7 +1211,7 @@ async def analyze_batch(request: BatchScenarioRequest):
                     single_request = ScenarioRequest(scenario=scenario)
                     
                     # Set a timeout to prevent hanging
-                    timeout = 60  # 60 seconds timeout per scenario
+                    timeout = 180  # 180 seconds (3 minutes) timeout per scenario
                     try:
                         # Process using the existing analyze_web function with a timeout
                         result = await asyncio.wait_for(
@@ -1207,10 +1220,10 @@ async def analyze_batch(request: BatchScenarioRequest):
                         )
                         return result
                     except asyncio.TimeoutError:
-                        print(f"Timeout processing scenario {index+1}")
+                        print(f"Timeout processing scenario {index+1} after {timeout} seconds")
                         return {
                             "status": "error",
-                            "message": "Processing timed out. The scenario may be too complex or the system is under heavy load."
+                            "message": f"Processing timed out after {timeout} seconds. The scenario may be too complex or the system is under heavy load."
                         }
             except Exception as e:
                 # Handle rate limit errors specifically

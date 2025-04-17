@@ -1,7 +1,8 @@
 import { useState,useRef } from 'react';
 import { FaTooth, FaPlusCircle, FaMinusCircle, FaPaperPlane, FaRobot, FaCopy, FaSpinner, FaExclamationTriangle, FaStop } from 'react-icons/fa';
-import { analyzeDentalScenario, analyzeBatchScenarios } from '../../interceptors/services.js';
+import { analyzeDentalScenario, analyzeBatchScenarios, submitQuestionAnswers } from '../../interceptors/services.js';
 import { useTheme } from '../../context/ThemeContext';
+import Questioner from './Questioner';
 
 const Questions = () => {
   const { isDark } = useTheme();
@@ -10,6 +11,11 @@ const Questions = () => {
   const [batchLoading, setBatchLoading] = useState(false);
   const [globalError, setGlobalError] = useState(null);
   const abortControllerRef = useRef(null);
+
+  // State for Questioner Modal
+  const [isQuestionerVisible, setIsQuestionerVisible] = useState(false);
+  const [currentQuestionerData, setCurrentQuestionerData] = useState(null);
+  const [currentRecordId, setCurrentRecordId] = useState(null);
 
   const handleQuestionChange = (id, value) => {
     setQuestions(questions.map(q => 
@@ -67,9 +73,26 @@ const Questions = () => {
       
       abortControllerRef.current = null;
       
-      setQuestions(questions.map(q => 
-        q.id === id ? { ...q, result: response, loading: false } : q
-      ));
+      // Process successful response
+      if (response?.status === 'success' && response?.data) {
+        setQuestions(prevQuestions => prevQuestions.map(q => 
+          q.id === id ? { ...q, result: response, loading: false } : q
+        ));
+
+        // Check for questions and show modal if needed
+        if (response.data.questioner_data?.has_questions) {
+          console.log("Questions found for record:", response.data.record_id);
+          setCurrentQuestionerData(response.data.questioner_data);
+          setCurrentRecordId(response.data.record_id);
+          setIsQuestionerVisible(true);
+        } else {
+          console.log("No questions needed for record:", response.data.record_id);
+          // Potentially trigger inspectors directly if no questions (optional)
+        }
+      } else {
+        // Handle non-success status within the response
+        throw new Error(response?.message || 'Analysis failed with non-success status');
+      }
     } catch (err) {
       // Check if request was aborted
       if (err.name === 'AbortError') {
@@ -136,9 +159,30 @@ const Questions = () => {
             if (result.status === 'error') {
               updatedQuestions[resultIndex].error = result.message;
               updatedQuestions[resultIndex].result = null;
-            } else {
+            } else if (result.status === 'success' && result.data) {
               updatedQuestions[resultIndex].result = result;
               updatedQuestions[resultIndex].error = null;
+
+              // Check for questions from batch result
+              if (result.data.questioner_data?.has_questions) {
+                 // Prioritize showing the first questioner found in the batch
+                 if (!isQuestionerVisible) { 
+                    console.log("Questions found in batch for record:", result.data.record_id);
+                    setCurrentQuestionerData(result.data.questioner_data);
+                    setCurrentRecordId(result.data.record_id);
+                    setIsQuestionerVisible(true);
+                 } else {
+                    console.log("Another questioner pending from batch for record:", result.data.record_id);
+                    // Handle case where multiple questions in a batch need answers (e.g., queue them?)
+                    // For now, we only show the first one.
+                 }
+              } else {
+                 console.log("No questions needed for batch record:", result.data.record_id);
+              }
+            } else {
+              // Handle unexpected result structure
+              updatedQuestions[resultIndex].error = 'Unexpected response structure from batch';
+              updatedQuestions[resultIndex].result = null;
             }
             
             updatedQuestions[resultIndex].loading = false;
@@ -192,6 +236,36 @@ const Questions = () => {
     }).catch(err => {
       console.error('Failed to copy results: ', err);
     });
+  };
+
+  // Handle successful submission of answers from Questioner modal
+  const handleQuestionerSubmitSuccess = (response) => {
+    if (response?.status === 'success' && response?.data && currentRecordId) {
+      // Find the question in the state that corresponds to the submitted answers
+      setQuestions(prevQuestions => prevQuestions.map(q => {
+        // Check if the result exists and matches the record ID
+        if (q.result?.data?.record_id === currentRecordId) {
+          // Create a deep copy to avoid mutation issues
+          const updatedResult = JSON.parse(JSON.stringify(q.result));
+          // Update the inspector_results within the result object
+          if (updatedResult.data) {
+             updatedResult.data.inspector_results = response.data.inspector_results;
+             // Optionally update questioner_data as well if needed
+             updatedResult.data.questioner_data = response.data.questioner_data;
+          } 
+          return { ...q, result: updatedResult };
+        }
+        return q;
+      }));
+      console.log("Updated results after questioner submission for record:", currentRecordId);
+    } else {
+      console.error("Failed to update results after questioner submission:", response);
+      // Optionally show an error message to the user
+    }
+    // Reset questioner state regardless of success/failure of update
+    setIsQuestionerVisible(false);
+    setCurrentQuestionerData(null);
+    setCurrentRecordId(null);
   };
 
   const renderResults = (question) => {
@@ -398,6 +472,22 @@ const Questions = () => {
             </div>
           ))}
         </div>
+
+        {/* Questioner Modal */} 
+        {isQuestionerVisible && currentQuestionerData && currentRecordId && (
+          <Questioner 
+            isVisible={isQuestionerVisible}
+            onClose={() => {
+              setIsQuestionerVisible(false); 
+              setCurrentQuestionerData(null); 
+              setCurrentRecordId(null);
+            }}
+            questions={currentQuestionerData} // Pass the specific questioner data
+            recordId={currentRecordId} // Pass the specific record ID
+            onSubmitSuccess={handleQuestionerSubmitSuccess} // Pass the handler function
+          />
+        )}
+
       </div>
     </div>
   );
