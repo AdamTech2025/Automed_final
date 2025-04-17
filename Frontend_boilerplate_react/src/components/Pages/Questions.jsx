@@ -25,26 +25,127 @@ const Questions = () => {
   useEffect(() => {
     // Only check if the questioner isn't already visible
     if (!isQuestionerVisible) {
-      // Look through all questions for questioner_data
-      const questionWithQuestioner = questions.find(q => 
+      // Process all questions at once instead of one by one
+      const needsQuestioning = questions.filter(q => 
         q.result?.data?.questioner_data?.has_questions &&
         !q.processedQuestioner // Track if we've already processed this questioner
       );
       
-      if (questionWithQuestioner) {
-        console.log(`Found questions needing answers for question ID ${questionWithQuestioner.id}`);
-        setCurrentQuestionerData(questionWithQuestioner.result.data.questioner_data);
-        setCurrentRecordId(questionWithQuestioner.result.data.record_id);
-        setIsQuestionerVisible(true);
+      if (needsQuestioning.length > 0) {
+        console.log(`Found ${needsQuestioning.length} scenarios needing answers`);
         
-        // Mark this question as having its questioner processed
+        // Combine all questions into a single questioner data object
+        const combinedQuestionerData = {
+          cdt_questions: {
+            questions: [],
+            explanation: "",
+            has_questions: false
+          },
+          icd_questions: {
+            questions: [],
+            explanation: "",
+            has_questions: false
+          },
+          has_questions: false,
+          scenarios: []
+        };
+        
+        // Collect record IDs that need questioning
+        const recordIds = [];
+        
+        needsQuestioning.forEach(q => {
+          const questionerData = q.result.data.questioner_data;
+          const recordId = q.result.data.record_id;
+          const questionId = q.id;
+          
+          // Add scenario info to track which questions belong to which scenario
+          combinedQuestionerData.scenarios.push({
+            recordId,
+            questionId,
+            text: q.text
+          });
+          
+          // Add CDT questions with scenario identifier
+          if (questionerData.cdt_questions?.questions?.length > 0) {
+            combinedQuestionerData.cdt_questions.has_questions = true;
+            combinedQuestionerData.has_questions = true;
+            
+            // Ensure correct object structure for Questioner component
+            questionerData.cdt_questions.questions.forEach((questionItem, index) => {
+              const baseId = `cdt-${recordId}-${index}`;
+              let questionObj;
+              if (typeof questionItem === 'string') {
+                // If backend sends a string, create object with 'question' prop
+                questionObj = {
+                  question: questionItem, // Use 'question' property name
+                  id: baseId,
+                  scenarioId: questionId, // Frontend question ID acts as scenario ID here
+                  recordId: recordId     // Backend record ID
+                };
+              } else {
+                // If backend sends an object, ensure 'question' prop exists and IDs are correct
+                questionObj = {
+                  ...questionItem,
+                  question: questionItem.question || questionItem.text || "Missing question text", // Use 'question', fallback to 'text'
+                  id: questionItem.id || baseId, // Use provided ID or generate one
+                  scenarioId: questionId, // Ensure frontend scenario ID is set
+                  recordId: recordId     // Ensure backend record ID is set
+                };
+              }
+              combinedQuestionerData.cdt_questions.questions.push(questionObj);
+            });
+          }
+          
+          // Add ICD questions with scenario identifier
+          if (questionerData.icd_questions?.questions?.length > 0) {
+            combinedQuestionerData.icd_questions.has_questions = true;
+            combinedQuestionerData.has_questions = true;
+            
+            // Ensure correct object structure for Questioner component
+            questionerData.icd_questions.questions.forEach((questionItem, index) => {
+              const baseId = `icd-${recordId}-${index}`;
+               let questionObj;
+              if (typeof questionItem === 'string') {
+                 // If backend sends a string, create object with 'question' prop
+                questionObj = {
+                  question: questionItem, // Use 'question' property name
+                  id: baseId,
+                  scenarioId: questionId, // Frontend question ID acts as scenario ID here
+                  recordId: recordId     // Backend record ID
+                };
+              } else {
+                 // If backend sends an object, ensure 'question' prop exists and IDs are correct
+                questionObj = {
+                  ...questionItem,
+                  question: questionItem.question || questionItem.text || "Missing question text", // Use 'question', fallback to 'text'
+                  id: questionItem.id || baseId, // Use provided ID or generate one
+                  scenarioId: questionId, // Ensure frontend scenario ID is set
+                  recordId: recordId     // Ensure backend record ID is set
+                };
+              }
+              combinedQuestionerData.icd_questions.questions.push(questionObj);
+            });
+          }
+          
+          recordIds.push(recordId);
+        });
+        
+        // Mark all questions as processed to prevent showing them again
         setQuestions(prevQuestions => prevQuestions.map(q => 
-          q.id === questionWithQuestioner.id 
+          needsQuestioning.some(nq => nq.id === q.id)
             ? { ...q, processedQuestioner: true } 
             : q
         ));
+        
+        // Set combined data for the questioner
+        setCurrentQuestionerData(combinedQuestionerData);
+        setCurrentRecordId(recordIds.join(','));
+        setIsQuestionerVisible(true);
+        
+        // Clear the pending queue since we're handling all questions at once
+        setQuestionPendingQueue([]);
       } else if (questionPendingQueue.length > 0) {
-        // Process the next item in the queue
+        // Process the next item in the queue (keeping this for backward compatibility)
         const nextInQueue = questionPendingQueue[0];
         console.log(`Processing next questioner from queue for record ID: ${nextInQueue.recordId}`);
         
@@ -360,29 +461,35 @@ const Questions = () => {
   };
 
   // Handle successful submission of answers from Questioner modal
-  const handleQuestionerSubmitSuccess = (response) => {
-    if (response?.status === 'success' && response?.data && currentRecordId) {
-      // Find the question in the state that corresponds to the submitted answers
-      setQuestions(prevQuestions => prevQuestions.map(q => {
-        // Check if the result exists and matches the record ID
-        if (q.result?.data?.record_id === currentRecordId) {
-          // Create a deep copy to avoid mutation issues
-          const updatedResult = JSON.parse(JSON.stringify(q.result));
-          // Update the inspector_results within the result object
-          if (updatedResult.data) {
-             updatedResult.data.inspector_results = response.data.inspector_results;
-             // Optionally update questioner_data as well if needed
-             updatedResult.data.questioner_data = response.data.questioner_data;
-          } 
-          return { ...q, result: updatedResult };
-        }
-        return q;
-      }));
-      console.log("Updated results after questioner submission for record:", currentRecordId);
-    } else {
-      console.error("Failed to update results after questioner submission:", response);
-      // Optionally show an error message to the user
+  const handleQuestionerSubmitSuccess = (responses) => {
+    if (!Array.isArray(responses)) {
+      responses = [responses]; // Convert single response to array for consistent handling
     }
+    
+    responses.forEach(response => {
+      if (response?.status === 'success' && response?.data && response?.recordId) {
+        // Find the question in the state that corresponds to the submitted answers
+        setQuestions(prevQuestions => prevQuestions.map(q => {
+          // Check if the result exists and matches the record ID
+          if (q.result?.data?.record_id === response.recordId) {
+            // Create a deep copy to avoid mutation issues
+            const updatedResult = JSON.parse(JSON.stringify(q.result));
+            // Update the inspector_results within the result object
+            if (updatedResult.data) {
+               updatedResult.data.inspector_results = response.data.inspector_results;
+               // Optionally update questioner_data as well if needed
+               updatedResult.data.questioner_data = response.data.questioner_data;
+            } 
+            return { ...q, result: updatedResult };
+          }
+          return q;
+        }));
+        console.log("Updated results after questioner submission for record:", response.recordId);
+      } else {
+        console.error("Failed to update results after questioner submission:", response);
+        // Optionally show an error message to the user
+      }
+    });
     
     // Reset questioner state regardless of success/failure of update
     setIsQuestionerVisible(false);
@@ -652,17 +759,12 @@ const Questions = () => {
               setCurrentRecordId(null);
             }}
             questions={{
-              cdt_questions: (currentQuestionerData.cdt_questions?.questions || []).map(q => ({
-                ...q,
-                id: q.id || `cdt-${Math.random().toString(36).substr(2, 9)}` // Ensure every question has an id
-              })),
-              icd_questions: (currentQuestionerData.icd_questions?.questions || []).map(q => ({
-                ...q,
-                id: q.id || `icd-${Math.random().toString(36).substr(2, 9)}` // Ensure every question has an id
-              }))
+              cdt_questions: currentQuestionerData.cdt_questions.questions || [],
+              icd_questions: currentQuestionerData.icd_questions.questions || []
             }}
             recordId={currentRecordId}
             onSubmitSuccess={handleQuestionerSubmitSuccess}
+            scenarios={currentQuestionerData.scenarios || []}
           />
         )}
 
