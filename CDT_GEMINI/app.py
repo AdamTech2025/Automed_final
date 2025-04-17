@@ -498,8 +498,8 @@ async def run_inspectors_for_scenario(record_id: str) -> dict:
                  final_inspector_results = json.loads(complete_data['inspector_results'])
              elif inspector_run_result.get('status') == 'success': # Fallback
                   final_inspector_results = inspector_run_result
-        except json.JSONDecodeError:
-             print(f"❌ Error decoding JSON from DB on trigger_inspectors for {record_id}: {json_err}")
+        except json.JSONDecodeError as e:
+             print(f"❌ Error decoding JSON from DB on trigger_inspectors for {record_id}: {e}")
              # Handle error appropriately
 
         # Extract data for response structure
@@ -704,8 +704,8 @@ async def submit_question_answers(record_id: str, request: QuestionAnswersReques
              # Fallback to result from the run if DB column is empty (e.g., if update failed or race condition)
              elif inspector_run_result.get('status') == 'success':
                   final_inspector_results = inspector_run_result
-        except json.JSONDecodeError as json_err:
-             print(f"❌ Error decoding JSON from DB after answering questions for {record_id}: {json_err}")
+        except json.JSONDecodeError as e:
+             print(f"❌ Error decoding JSON from DB after answering questions for {record_id}: {e}")
              # Handle error - perhaps return error or partial data
 
         # Extract data for response structure
@@ -759,8 +759,8 @@ async def trigger_inspectors(record_id: str):
                  final_inspector_results = json.loads(complete_data['inspector_results'])
              elif inspector_run_result.get('status') == 'success': # Fallback
                   final_inspector_results = inspector_run_result
-        except json.JSONDecodeError as json_err:
-             print(f"❌ Error decoding JSON from DB on trigger_inspectors for {record_id}: {json_err}")
+        except json.JSONDecodeError as e:
+             print(f"❌ Error decoding JSON from DB on trigger_inspectors for {record_id}: {e}")
              # Handle error appropriately
 
         # Extract data for response structure
