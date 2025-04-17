@@ -77,8 +77,7 @@ export const addCustomCode = async (code, scenario, recordId) => {
       scenario,
       record_id: recordId
     });
-    // Return the entire response data, not just response.data
-    return response;
+    return response.data;
   } catch (error) {
     throw error.response?.data || { message: 'Failed to add custom code' };
   }
