@@ -3,25 +3,30 @@ Module for extracting pathologies ICD-10 codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from icdtopics.prompt import PROMPT
 
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_pathologies_extractor(temperature=0.0):
-    """
-    Create a LangChain-based pathologies code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class PathologiesServices:
+    """Class to analyze and extract pathologies ICD-10 codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template="""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing pathologies."""
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced medical coding expert specializing in pathologies. 
 Analyze the given scenario and determine the most applicable ICD-10 code(s).
 
@@ -102,53 +107,47 @@ Analyze the given scenario and determine the most applicable ICD-10 code(s).
 - M87.00: Idiopathic aseptic necrosis of unspecified bone
 - M87.180: Osteonecrosis due to drugs, jaw
 
-Scenario: {{scenario}}
+SCENARIO: {{scenario}}
 
-{prompt}
+{PROMPT}
 """,
-        input_variables=["scenario", "prompt"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template.partial(prompt=PROMPT))
+    def extract_pathologies_code(self, scenario: str) -> str:
+        """Extract pathologies code(s) for a given scenario."""
+        try:
+            print(f"Analyzing pathologies scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Pathologies extract_pathologies_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in pathologies code extraction: {str(e)}")
+            return ""
+    
+    def activate_pathologies(self, scenario: str) -> str:
+        """Activate the pathologies analysis process and return results."""
+        try:
+            result = self.extract_pathologies_code(scenario)
+            if not result:
+                print("No pathologies code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating pathologies analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_pathologies(scenario)
+        print(f"\n=== PATHOLOGIES ANALYSIS RESULT ===")
+        print(f"PATHOLOGIES CODE: {result if result else 'None'}")
 
-def extract_pathologies_code(scenario, temperature=0.0):
-    """
-    Extract pathologies code(s) for a given scenario.
-    """
-    try:
-        chain = create_pathologies_extractor(temperature)
-        result = chain.invoke({"scenario": scenario})
-        # Handle different return formats from LangChain
-        if isinstance(result, dict):
-            if "text" in result:
-                result_text = result["text"]
-            elif "output_text" in result:
-                result_text = result["output_text"]
-            else:
-                result_text = str(result)
-        elif hasattr(result, "content"):
-            result_text = result.content
-        else:
-            result_text = str(result)
-        
-        print(f"Result: {result_text}")
-        return result_text.strip()
-    except Exception as e:
-        print(f"Error in extract_pathologies_code: {str(e)}")
-        return ""
 
-def activate_pathologies(scenario):
-    """
-    Activate pathologies analysis and return results.
-    """
-    try:
-        return extract_pathologies_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_pathologies: {str(e)}")
-        return ""
-
+pathologies_service = PathologiesServices()
 # Example usage
 if __name__ == "__main__":
-    scenario = "Patient presents with a salivary stone in the submandibular gland."
-    result = activate_pathologies(scenario)
-    print(result)
+    scenario = input("Enter a pathologies dental scenario: ")
+    pathologies_service.run_analysis(scenario)
