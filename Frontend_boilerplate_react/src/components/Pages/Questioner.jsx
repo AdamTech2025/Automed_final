@@ -63,62 +63,75 @@ const Questioner = ({ isVisible, onClose, questions, onSubmitSuccess, scenarios 
     setError(null);
     
     try {
-      // Group answers by record ID
-      const answersByRecordId = {};
+      // Group answers by record ID, also tracking scenarioIds
+      const answersByRecord = {}; // { recordId: { payload: { cdt_answers: [], icd_answers: [] }, scenarioIds: [] } }
       
       // Process CDT answers
       Object.entries(answers.cdt).forEach(([questionId, value]) => {
-        // Find the corresponding question to get its recordId
         const question = filteredCdtQuestions.find(q => q.id === questionId);
         if (question && question.recordId) {
-          if (!answersByRecordId[question.recordId]) {
-            answersByRecordId[question.recordId] = {
-              cdt_answers: [],
-              icd_answers: []
+          const recordId = question.recordId;
+          const scenarioId = question.scenarioId; // Original frontend question ID
+
+          if (!answersByRecord[recordId]) {
+            answersByRecord[recordId] = {
+              payload: { cdt_answers: [], icd_answers: [] },
+              scenarioIds: []
             };
           }
           
-          answersByRecordId[question.recordId].cdt_answers.push({
-            id: questionId,
+          answersByRecord[recordId].payload.cdt_answers.push({
+            id: questionId, // Questioner's internal ID
             answer: value
           });
+          // Track unique scenarioIds associated with this recordId
+          if (!answersByRecord[recordId].scenarioIds.includes(scenarioId)) {
+            answersByRecord[recordId].scenarioIds.push(scenarioId);
+          }
         }
       });
       
       // Process ICD answers
       Object.entries(answers.icd).forEach(([questionId, value]) => {
-        // Find the corresponding question to get its recordId
         const question = filteredIcdQuestions.find(q => q.id === questionId);
         if (question && question.recordId) {
-          if (!answersByRecordId[question.recordId]) {
-            answersByRecordId[question.recordId] = {
-              cdt_answers: [],
-              icd_answers: []
-            };
-          }
-          
-          answersByRecordId[question.recordId].icd_answers.push({
-            id: questionId,
-            answer: value
-          });
+           const recordId = question.recordId;
+           const scenarioId = question.scenarioId; // Original frontend question ID
+
+           if (!answersByRecord[recordId]) {
+             answersByRecord[recordId] = {
+               payload: { cdt_answers: [], icd_answers: [] },
+               scenarioIds: []
+             };
+           }
+           
+           answersByRecord[recordId].payload.icd_answers.push({
+             id: questionId, // Questioner's internal ID
+             answer: value
+           });
+           // Track unique scenarioIds associated with this recordId
+           if (!answersByRecord[recordId].scenarioIds.includes(scenarioId)) {
+             answersByRecord[recordId].scenarioIds.push(scenarioId);
+           }
         }
       });
       
-      // Submit answers for each record ID and collect responses
-      const submitPromises = Object.entries(answersByRecordId).map(async ([recordId, payload]) => {
-        const response = await submitQuestionAnswers(payload, recordId);
-        // Add recordId to response for identification
-        if (response) {
-          response.recordId = recordId;
-        }
-        return response;
+      // Submit answers for each record ID and collect structured responses
+      const submitPromises = Object.entries(answersByRecord).map(async ([recordId, data]) => {
+        const response = await submitQuestionAnswers(data.payload, recordId);
+        // Return the structured response needed by the parent
+        return {
+           response: response, // The raw API response
+           recordId: recordId,
+           scenarioIds: data.scenarioIds // Pass back the associated frontend question IDs
+         };
       });
       
-      const responses = await Promise.all(submitPromises);
-      onSubmitSuccess(responses);
+      const structuredResponses = await Promise.all(submitPromises);
+      onSubmitSuccess(structuredResponses); // Pass the array of structured responses
       
-      // If all successful, close the modal
-      if (responses.every(r => r && r.status === 'success')) {
+      // Close modal only if all submissions were successful based on the raw response
+      if (structuredResponses.every(r => r.response && r.response.status === 'success')) {
         onClose();
       }
     } catch (err) {

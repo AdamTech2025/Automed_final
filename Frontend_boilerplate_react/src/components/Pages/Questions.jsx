@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
-import { FaTooth, FaPlusCircle, FaMinusCircle, FaPaperPlane, FaRobot, FaCopy, FaSpinner, FaExclamationTriangle, FaStop } from 'react-icons/fa';
-import { analyzeDentalScenario, analyzeBatchScenarios } from '../../interceptors/services.js';
+import { FaTooth, FaPlusCircle, FaMinusCircle, FaPaperPlane, FaRobot, FaCopy, FaSpinner, FaExclamationTriangle, FaStop, FaCheck, FaTimes, FaCogs } from 'react-icons/fa';
+import { analyzeDentalScenario, analyzeBatchScenarios, addCustomCode } from '../../interceptors/services.js';
 import { useTheme } from '../../context/ThemeContext';
 import Questioner from './Questioner';
 
 const Questions = () => {
   const { isDark } = useTheme();
-  const [questions, setQuestions] = useState([{ id: 1, text: '', result: null, loading: false, error: null }]);
+  const [questions, setQuestions] = useState([{ id: 1, text: '', result: null, loading: false, error: null, processedQuestioner: false }]);
   const [nextId, setNextId] = useState(2);
   const [batchLoading, setBatchLoading] = useState(false);
   const [globalError, setGlobalError] = useState(null);
@@ -18,9 +18,13 @@ const Questions = () => {
   // State for Questioner Modal
   const [isQuestionerVisible, setIsQuestionerVisible] = useState(false);
   const [currentQuestionerData, setCurrentQuestionerData] = useState(null);
-  const [currentRecordId, setCurrentRecordId] = useState(null);
   const [questionPendingQueue, setQuestionPendingQueue] = useState([]);
-  
+
+  // State for code selection per question
+  const [selectedCodes, setSelectedCodes] = useState({});
+  const [newCodeInputs, setNewCodeInputs] = useState({});
+  const [customCodeLoading, setCustomCodeLoading] = useState({});
+
   // Check if there are questions that need answering in any of the results
   useEffect(() => {
     // Only check if the questioner isn't already visible
@@ -139,7 +143,6 @@ const Questions = () => {
         
         // Set combined data for the questioner
         setCurrentQuestionerData(combinedQuestionerData);
-        setCurrentRecordId(recordIds.join(','));
         setIsQuestionerVisible(true);
         
         // Clear the pending queue since we're handling all questions at once
@@ -150,7 +153,6 @@ const Questions = () => {
         console.log(`Processing next questioner from queue for record ID: ${nextInQueue.recordId}`);
         
         setCurrentQuestionerData(nextInQueue.questionerData);
-        setCurrentRecordId(nextInQueue.recordId);
         setIsQuestionerVisible(true);
         
         // Remove this item from the queue
@@ -182,8 +184,13 @@ const Questions = () => {
   };
 
   const addQuestion = () => {
-    setQuestions([...questions, { id: nextId, text: '', result: null, loading: false, error: null }]);
-    setNextId(nextId + 1);
+    const newQuestionId = nextId;
+    setQuestions([...questions, { id: newQuestionId, text: '', result: null, loading: false, error: null, processedQuestioner: false }]);
+    setNextId(newQuestionId + 1);
+    // Initialize state for the new question
+    setSelectedCodes(prev => ({ ...prev, [newQuestionId]: { accepted: [], denied: [] } }));
+    setNewCodeInputs(prev => ({ ...prev, [newQuestionId]: '' }));
+    setCustomCodeLoading(prev => ({ ...prev, [newQuestionId]: false }));
   };
 
   const removeQuestion = (id) => {
@@ -198,6 +205,10 @@ const Questions = () => {
         }
       }
       setQuestions(questions.filter(q => q.id !== id));
+      // Clean up state for the removed question
+      setSelectedCodes(prev => { const newState = { ...prev }; delete newState[id]; return newState; });
+      setNewCodeInputs(prev => { const newState = { ...prev }; delete newState[id]; return newState; });
+      setCustomCodeLoading(prev => { const newState = { ...prev }; delete newState[id]; return newState; });
     }
   };
 
@@ -233,16 +244,22 @@ const Questions = () => {
     const question = questions.find(q => q.id === id);
     if (!question || !question.text.trim()) return;
 
+    // Reset state for this question before analysis
+    setSelectedCodes(prev => ({ ...prev, [id]: { accepted: [], denied: [] } }));
+    setNewCodeInputs(prev => ({ ...prev, [id]: '' }));
+    setCustomCodeLoading(prev => ({ ...prev, [id]: false }));
+
     // Set loading state immediately to give visual feedback
-    setQuestions(prevQuestions => 
-      prevQuestions.map(q => 
-        q.id === id ? { ...q, loading: true, error: null } : q
+    setQuestions(prevQuestions =>
+      prevQuestions.map(q =>
+        q.id === id ? { ...q, loading: true, error: null, result: null, processedQuestioner: false } : q // Reset result and processed flag
       )
     );
     
     setGlobalError(null);
     setActiveRequests(prev => prev + 1);
 
+    let wasAborted = false; // Flag to check if aborted
     try {
       // Create a new AbortController for this specific request
       const abortController = new AbortController();
@@ -250,8 +267,8 @@ const Questions = () => {
       
       console.log(`Starting analysis for question ${id}...`);
       
-      const response = await analyzeDentalScenario({ 
-        scenario: question.text 
+      const response = await analyzeDentalScenario({
+        scenario: question.text
       }, abortController.signal);
       
       // Remove the controller after completion
@@ -261,32 +278,25 @@ const Questions = () => {
 
       // Process successful response
       if (response?.status === 'success' && response?.data) {
-        setQuestions(prevQuestions => prevQuestions.map(q => 
+        setQuestions(prevQuestions => prevQuestions.map(q =>
           q.id === id ? { ...q, result: response, loading: false } : q
         ));
 
-        // Check for questions and add to queue or show immediately
+        // Initialize selected codes based on inspector results (if any)
+        const inspectorCodes = response.data.inspector_results?.cdt?.codes || [];
+        setSelectedCodes(prev => ({
+          ...prev,
+          [id]: { accepted: inspectorCodes, denied: [] } // Pre-accept codes from inspector
+        }));
+
+
+        // Check for questions and add to queue or show immediately (using combined logic)
         if (response.data.questioner_data?.has_questions) {
           console.log("Questions found for record:", response.data.record_id);
-          
-          if (isQuestionerVisible) {
-            // If questioner is already visible, add to queue
-            console.log(`Questioner already visible, adding record ${response.data.record_id} to queue`);
-            setQuestionPendingQueue(prevQueue => [
-              ...prevQueue, 
-              { recordId: response.data.record_id, questionerData: response.data.questioner_data }
-            ]);
-          } else {
-            // If questioner isn't visible, show immediately
-            setCurrentQuestionerData(response.data.questioner_data);
-            setCurrentRecordId(response.data.record_id);
-            setIsQuestionerVisible(true);
-            
-            // Mark this question as having its questioner processed
-            setQuestions(prevQuestions => prevQuestions.map(q => 
-              q.id === id ? { ...q, processedQuestioner: true } : q
-            ));
-          }
+          // Mark this question as processed to prevent immediate trigger (useEffect handles it)
+           setQuestions(prevQuestions => prevQuestions.map(q =>
+             q.id === id ? { ...q, processedQuestioner: false } : q // Let useEffect handle combining
+           ));
         } else {
           console.log("No questions needed for record:", response.data.record_id);
         }
@@ -295,31 +305,37 @@ const Questions = () => {
         throw new Error(response?.message || 'Analysis failed with non-success status');
       }
     } catch (err) {
-      // Check if request was aborted
       if (err.name === 'AbortError') {
-        console.log(`Request for question ${id} was cancelled`);
-        return;
+        wasAborted = true;
       }
       
       // Handle rate limit errors
       const errorMessage = err.message || 'Failed to analyze';
-      const isRateLimit = errorMessage.includes('rate limit') || 
-                         errorMessage.includes('quota') || 
+      const isRateLimit = errorMessage.includes('rate limit') ||
+                         errorMessage.includes('quota') ||
                          errorMessage.includes('429');
       
-      setQuestions(prevQuestions => prevQuestions.map(q => 
-        q.id === id ? { 
-          ...q, 
-          error: isRateLimit 
-            ? "API rate limit reached. Please try again in a few moments." 
+      setQuestions(prevQuestions => prevQuestions.map(q =>
+        q.id === id ? {
+          ...q,
+          error: isRateLimit
+            ? "API rate limit reached. Please try again in a few moments."
             : errorMessage,
-          loading: false 
+          loading: false
         } : q
       ));
       
       console.error(`Error analyzing question ${id}:`, err);
     } finally {
-      setActiveRequests(prev => prev - 1);
+      // Ensure controller is cleaned up even if error occurred before delete in try block
+      if (abortControllerRef.current[id]) {
+         console.warn(`Controller cleanup needed in finally for ${id}`);
+         delete abortControllerRef.current[id];
+      }
+      // Decrement count if the operation wasn't aborted
+      if (!wasAborted) {
+          setActiveRequests(prev => Math.max(0, prev - 1));
+      }
     }
   };
 
@@ -329,51 +345,37 @@ const Questions = () => {
     const questionsToProcess = questions.filter(q => q.text.trim() !== '');
     if (questionsToProcess.length === 0) return;
 
-    // Option 1: Use the batch API endpoint (controlled parallelism)
-    // Comment out this if statement and uncomment the code below for individual parallel requests
-    if (questionsToProcess.length > 1) {
-      // Use the batch API
-      processBatch(questionsToProcess);
-    } else {
-      // For a single question, just use the regular analyze
-      const questionId = questionsToProcess[0].id;
-      analyzeQuestion(questionId);
-    }
-    
-    // Option 2: Use individual requests for maximum parallelism
-    // Uncomment this section and comment out the if-statement above to use this approach
-    /*
-    // Set loading states
-    setQuestions(prevQuestions => 
-      prevQuestions.map(q => 
-        q.text.trim() !== '' ? { ...q, loading: true, error: null } : q
-      )
-    );
-    
-    // Fire off all requests in parallel
-    questionsToProcess.forEach(question => {
-      // Don't await here - let them all run in parallel
-      analyzeQuestion(question.id);
+    // Reset state for all questions being processed
+    questionsToProcess.forEach(q => {
+       setSelectedCodes(prev => ({ ...prev, [q.id]: { accepted: [], denied: [] } }));
+       setNewCodeInputs(prev => ({ ...prev, [q.id]: '' }));
+       setCustomCodeLoading(prev => ({ ...prev, [q.id]: false }));
     });
-    */
+
+    // Use the batch API endpoint (controlled parallelism)
+    processBatch(questionsToProcess);
   };
   
   // Process using the batch API endpoint
   const processBatch = async (questionsToProcess) => {
     // Set loading state for all questions being processed
     setBatchLoading(true);
-    setQuestions(prevQuestions => 
-      prevQuestions.map(q => 
-        q.text.trim() !== '' ? { ...q, loading: true, error: null } : q
+    setQuestions(prevQuestions =>
+      prevQuestions.map(q =>
+        questionsToProcess.some(qp => qp.id === q.id)
+          ? { ...q, loading: true, error: null, result: null, processedQuestioner: false } // Reset result and processed flag
+          : q
       )
     );
     
     setGlobalError(null);
-    setActiveRequests(prev => prev + questionsToProcess.length);
+    setActiveRequests(prev => prev + questionsToProcess.length); // Increment for each question in batch
+
+    const batchId = 'batch-' + Date.now();
+    let wasAbortedBatch = false; // Flag for batch abortion
 
     try {
       // Create a new AbortController for this batch request
-      const batchId = 'batch-' + Date.now();
       const abortController = new AbortController();
       abortControllerRef.current[batchId] = abortController;
       
@@ -384,183 +386,404 @@ const Questions = () => {
         abortController.signal
       );
       
-      // Remove the controller after completion
+      // Remove the controller after successful API call completion
       delete abortControllerRef.current[batchId];
       
       if (response.status === 'success' && response.batch_results) {
         // Update each question with its corresponding result
         const updatedQuestions = [...questions];
-        
-        questionsToProcess.forEach((question, index) => {
-          const resultIndex = updatedQuestions.findIndex(q => q.id === question.id);
+
+        questionsToProcess.forEach((processedQuestion, index) => {
+          const resultIndex = updatedQuestions.findIndex(q => q.id === processedQuestion.id);
           if (resultIndex !== -1 && response.batch_results[index]) {
-            const result = response.batch_results[index];
-            
+            const resultData = response.batch_results[index];
+            const questionId = processedQuestion.id;
+
+            updatedQuestions[resultIndex].loading = false; // Set loading false for this question
+
             // Check if this individual result has an error
-            if (result.status === 'error') {
-              updatedQuestions[resultIndex].error = result.message;
+            if (resultData.status === 'error') {
+              updatedQuestions[resultIndex].error = resultData.message || 'Failed in batch';
               updatedQuestions[resultIndex].result = null;
-            } else if (result.status === 'success' && result.data) {
-              updatedQuestions[resultIndex].result = result;
+            } else if (resultData.status === 'success' && resultData.data) {
+              updatedQuestions[resultIndex].result = resultData; // Store the whole item {status: 'success', data: {...}}
               updatedQuestions[resultIndex].error = null;
 
+              // Initialize selected codes based on inspector results
+              const inspectorCodes = resultData.data.inspector_results?.cdt?.codes || [];
+              setSelectedCodes(prev => ({
+                ...prev,
+                [questionId]: { accepted: inspectorCodes, denied: [] } // Pre-accept codes
+              }));
+
               // Check for questions from batch result
-              if (result.data.questioner_data?.has_questions) {
-                 // Add to queue for processing one by one
-                 setQuestionPendingQueue(prevQueue => [
-                   ...prevQueue,
-                   { recordId: result.data.record_id, questionerData: result.data.questioner_data }
-                 ]);
-                 console.log(`Added record ${result.data.record_id} from batch to questioner queue`);
+              if (resultData.data.questioner_data?.has_questions) {
+                 updatedQuestions[resultIndex].processedQuestioner = false; // Mark for useEffect check
+                 console.log(`Questions potentially needed for batch record: ${resultData.data.record_id}`);
               } else {
-                 console.log("No questions needed for batch record:", result.data.record_id);
+                 console.log("No questions needed for batch record:", resultData.data.record_id);
+                 updatedQuestions[resultIndex].processedQuestioner = true; // Mark as processed if no questions
               }
             } else {
               // Handle unexpected result structure
               updatedQuestions[resultIndex].error = 'Unexpected response structure from batch';
               updatedQuestions[resultIndex].result = null;
             }
-            
-            updatedQuestions[resultIndex].loading = false;
           }
         });
         
         setQuestions(updatedQuestions);
+
       } else {
-        throw new Error('Failed to process batch analysis');
+        throw new Error(response.message || 'Failed to process batch analysis or invalid response format');
       }
     } catch (err) {
-      // Check if request was aborted
       if (err.name === 'AbortError') {
-        console.log('Batch request was cancelled');
-        return;
+        wasAbortedBatch = true;
       }
       
       // Handle rate limit errors
       const errorMessage = err.message || 'Failed to analyze in batch';
-      const isRateLimit = errorMessage.includes('rate limit') || 
-                         errorMessage.includes('quota') || 
+      const isRateLimit = errorMessage.includes('rate limit') ||
+                         errorMessage.includes('quota') ||
                          errorMessage.includes('429');
       
-      const displayError = isRateLimit 
-        ? "API rate limit reached. Please try fewer questions at a time or wait a moment before trying again." 
+      const displayError = isRateLimit
+        ? "API rate limit reached. Please try fewer questions at a time or wait a moment before trying again."
         : errorMessage;
       
       setGlobalError(displayError);
       
-      // Set error for all questions being processed
-      setQuestions(prevQuestions => 
-        prevQuestions.map(q => 
-          q.text.trim() !== '' ? { ...q, error: displayError, loading: false } : q
+      // Set error and stop loading for all questions being processed
+      setQuestions(prevQuestions =>
+        prevQuestions.map(q =>
+          questionsToProcess.some(qp => qp.id === q.id)
+            ? { ...q, error: displayError, loading: false }
+            : q
         )
       );
     } finally {
       setBatchLoading(false);
-      setActiveRequests(prev => prev - questionsToProcess.length);
+       // Ensure controller is cleaned up
+       if (abortControllerRef.current[batchId]) {
+           console.warn(`Controller cleanup needed in finally for ${batchId}`);
+           delete abortControllerRef.current[batchId];
+       }
+      // Decrement count if the operation wasn't aborted
+      if (!wasAbortedBatch) {
+          setActiveRequests(prev => Math.max(0, prev - questionsToProcess.length));
+      }
     }
   };
 
-  // Handle successful submission of answers from Questioner modal
-  const handleQuestionerSubmitSuccess = (responses) => {
-    if (!Array.isArray(responses)) {
-      responses = [responses]; // Convert single response to array for consistent handling
+  // Handle code selection (accept/deny) for a specific question
+  const handleCodeSelection = (questionId, code, action) => {
+    setSelectedCodes(prev => {
+      // Ensure the entry for this questionId exists
+      const currentSelection = prev[questionId] || { accepted: [], denied: [] };
+      const newState = { ...prev };
+      
+      // Create new arrays for accepted/denied for this specific question
+      let newAccepted = [...currentSelection.accepted];
+      let newDenied = [...currentSelection.denied];
+      
+      // Remove code from both lists if it exists
+      newAccepted = newAccepted.filter(c => c !== code);
+      newDenied = newDenied.filter(c => c !== code);
+      
+      // Add to appropriate list
+      if (action === 'accept') {
+        newAccepted.push(code);
+      } else if (action === 'deny') {
+        newDenied.push(code);
+      }
+      
+      // Update the state for this specific questionId
+      newState[questionId] = { accepted: newAccepted, denied: newDenied };
+      
+      return newState;
+    });
+  };
+
+  // Handle input change for custom code
+  const handleNewCodeChange = (questionId, value) => {
+    setNewCodeInputs(prev => ({
+      ...prev,
+      [questionId]: value
+    }));
+  };
+
+  // Handle adding a custom code for a specific question
+  const handleAddCode = async (questionId) => {
+    const question = questions.find(q => q.id === questionId);
+    const newCode = newCodeInputs[questionId];
+    
+    if (!question || !newCode?.trim()) {
+      setGlobalError("Please enter a valid code for the selected question.");
+      return;
     }
     
-    responses.forEach(response => {
-      if (response?.status === 'success' && response?.data && response?.recordId) {
-        // Find the question in the state that corresponds to the submitted answers
+    const recordId = question.result?.data?.record_id;
+    const scenarioText = question.text;
+
+    if (!recordId) {
+      setGlobalError("No active analysis session for this question. Please analyze first.");
+      return;
+    }
+
+    setCustomCodeLoading(prev => ({ ...prev, [questionId]: true }));
+    setGlobalError(null); // Clear global error
+
+    try {
+      const response = await addCustomCode(newCode, scenarioText, recordId);
+      console.log(`Custom code response for question ${questionId}:`, response);
+      
+      if (response.status === 'success' && response.inspector_results) {
+        // Update the result state for this specific question
         setQuestions(prevQuestions => prevQuestions.map(q => {
-          // Check if the result exists and matches the record ID
-          if (q.result?.data?.record_id === response.recordId) {
+          if (q.id === questionId) {
             // Create a deep copy to avoid mutation issues
             const updatedResult = JSON.parse(JSON.stringify(q.result));
             // Update the inspector_results within the result object
             if (updatedResult.data) {
-               updatedResult.data.inspector_results = response.data.inspector_results;
-               // Optionally update questioner_data as well if needed
-               updatedResult.data.questioner_data = response.data.questioner_data;
-            } 
+               updatedResult.data.inspector_results = response.inspector_results;
+            }
             return { ...q, result: updatedResult };
           }
           return q;
         }));
-        console.log("Updated results after questioner submission for record:", response.recordId);
+        
+        // Auto-select based on applicability
+        if (response.is_applicable) {
+          handleCodeSelection(questionId, newCode, 'accept');
+        } else {
+           handleCodeSelection(questionId, newCode, 'deny'); // Deny if not applicable
+        }
+
+        // Clear the input
+        setNewCodeInputs(prev => ({ ...prev, [questionId]: '' }));
+
       } else {
-        console.error("Failed to update results after questioner submission:", response);
-        // Optionally show an error message to the user
+        throw new Error(response.message || "Received invalid response format from add custom code");
       }
-    });
-    
-    // Reset questioner state regardless of success/failure of update
-    setIsQuestionerVisible(false);
-    setCurrentQuestionerData(null);
-    setCurrentRecordId(null);
+    } catch (err) {
+      console.error(`Error adding custom code for question ${questionId}:`, err);
+      // Set error specific to the question or globally
+      setQuestions(prev => prev.map(q => q.id === questionId ? { ...q, error: err.message || 'Failed to add custom code' } : q));
+      // setGlobalError(err.message || 'Failed to add custom code');
+    } finally {
+      setCustomCodeLoading(prev => ({ ...prev, [questionId]: false }));
+    }
   };
 
+
+  // Handle successful submission of answers from Questioner modal
+  const handleQuestionerSubmitSuccess = (structuredResponses) => {
+    console.log("Received structured responses from Questioner:", structuredResponses);
+    if (!Array.isArray(structuredResponses)) {
+      console.error("Invalid payload from Questioner: expected an array.");
+      structuredResponses = []; // Prevent errors
+    }
+    
+    // Create a Set of updated question IDs to avoid duplicate state updates if mapping is complex
+    const updatedQuestionIds = new Set();
+    let overallError = null;
+
+    // Use a functional update for setQuestions to ensure we work with the latest state
+    setQuestions(prevQuestions => {
+        // Create a mutable copy of the previous questions
+        let newQuestions = [...prevQuestions];
+
+        structuredResponses.forEach(structuredResponse => {
+            const { response, recordId, scenarioIds } = structuredResponse;
+
+            if (response?.status === 'success' && response?.data && Array.isArray(scenarioIds)) {
+                // Find all frontend questions that match the scenarioIds for this recordId
+                scenarioIds.forEach(scenarioId => {
+                    const questionIndex = newQuestions.findIndex(q => q.id === scenarioId);
+
+                    if (questionIndex !== -1) {
+                         console.log(`Updating question ID ${scenarioId} with data from record ${recordId}`);
+                         const existingQuestion = newQuestions[questionIndex];
+                         
+                         // Create a deep copy of the result to update safely
+                         // Ensure existing result and data structure exist before copying
+                         let updatedResultData = {};
+                         if (existingQuestion.result?.data) {
+                              try {
+                                   updatedResultData = JSON.parse(JSON.stringify(existingQuestion.result.data));
+                              } catch(parseError) {
+                                   console.error("Failed to parse existing result data for question:", scenarioId, parseError);
+                                   updatedResultData = {}; // Start fresh if parsing fails
+                              }
+                         } else {
+                              console.warn("Existing result.data not found for question:", scenarioId, "Creating structure.");
+                              // Create base structure if it doesn't exist
+                              updatedResultData = { record_id: recordId }; 
+                         }
+                         
+                         // Update inspector_results and questioner_data
+                         updatedResultData.inspector_results = response.data.inspector_results;
+                         updatedResultData.questioner_data = response.data.questioner_data;
+                         
+                         // Update the specific question in the newQuestions array
+                         newQuestions[questionIndex] = {
+                           ...existingQuestion,
+                           result: {
+                               ...existingQuestion.result, // Keep other potential top-level result props
+                               data: updatedResultData // Set the updated data
+                           },
+                           processedQuestioner: true // Mark as processed
+                         };
+                         
+                         // Initialize selected codes based on new inspector results
+                         const inspectorCodes = response.data.inspector_results?.cdt?.codes || [];
+                         setSelectedCodes(prevSelected => ({
+                           ...prevSelected,
+                           [scenarioId]: { accepted: inspectorCodes, denied: [] }
+                         }));
+
+                        updatedQuestionIds.add(scenarioId); // Track which IDs were updated
+
+                    } else {
+                         console.warn(`Could not find frontend question with scenarioId: ${scenarioId} to update.`);
+                    }
+                });
+            } else {
+                // Handle failed submission for this recordId
+                const errorMsg = `Failed to process answers for record ${recordId || 'unknown'}: ${response?.message || 'Unknown error'}`;
+                console.error("Error in structured response:", errorMsg, structuredResponse);
+                overallError = overallError ? `${overallError}\n${errorMsg}` : errorMsg;
+                // Optionally mark associated questions with an error state?
+                 if (Array.isArray(scenarioIds)) {
+                      newQuestions = newQuestions.map(q => 
+                           scenarioIds.includes(q.id) 
+                              ? { ...q, error: response?.message || 'Answer submission failed', processedQuestioner: true } 
+                              : q
+                      );
+                 }
+            }
+        });
+
+       // Return the modified array for the state update
+       return newQuestions;
+    });
+
+    // Show global error if any submissions failed
+    if (overallError) {
+         setGlobalError(overallError);
+    }
+    
+    // Reset questioner state
+    setIsQuestionerVisible(false);
+    setCurrentQuestionerData(null);
+  };
+
+  // Modified to copy only accepted codes for the specific question
   const handleCopyResults = (id) => {
+    const accepted = selectedCodes[id]?.accepted || [];
+    if (accepted.length === 0) {
+       alert('No accepted codes to copy.');
+       return;
+    }
+
     const question = questions.find(q => q.id === id);
-    if (!question?.result?.data?.inspector_results) return;
     
-    const cdtCodes = question.result.data.inspector_results.cdt?.codes || [];
-    const icdCodes = question.result.data.inspector_results.icd?.codes || [];
-    
-    let textToCopy = `Question: ${question.text}\n\nCDT Codes: ${cdtCodes.join(', ')}\nICD Codes: ${icdCodes.join(', ')}`;
+    let textToCopy = `Question: ${question?.text || 'N/A'}
+
+Accepted CDT Codes: ${accepted.join(', ')}`;
+    // Optionally add accepted ICD codes if managed similarly
     
     navigator.clipboard.writeText(textToCopy).then(() => {
-      alert('Results copied to clipboard!');
+      alert('Accepted codes copied to clipboard!');
     }).catch(err => {
       console.error('Failed to copy results: ', err);
     });
   };
 
+  // Render results section for a single question, including selection controls
   const renderResults = (question) => {
+    const questionId = question.id; // ID for state access
     if (!question.result?.data?.inspector_results) return null;
 
-    const cdtCodes = question.result.data.inspector_results.cdt?.codes || [];
-    const icdCodes = question.result.data.inspector_results.icd?.codes || [];
-    const cdtExplanation = question.result.data.inspector_results.cdt?.explanation || '';
-    const icdExplanation = question.result.data.inspector_results.icd?.explanation || '';
+    const inspectorData = question.result.data.inspector_results;
+    const cdtCodes = inspectorData.cdt?.codes || [];
+    const icdCodes = inspectorData.icd?.codes || []; // Keep displaying ICD for context
+    const cdtExplanation = inspectorData.cdt?.explanation || '';
+    const icdExplanation = inspectorData.icd?.explanation || ''; // Keep displaying ICD explanation
+
+    const currentSelected = selectedCodes[questionId] || { accepted: [], denied: [] };
 
     return (
       <div className={`mt-4 p-4 ${isDark ? 'bg-blue-900/30 border-blue-700' : 'bg-blue-50 border-blue-200'} rounded-lg border relative`}>
+        {/* Header and Copy Button */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center">
             <FaRobot className={`${isDark ? 'text-blue-400' : 'text-blue-500'} mr-2`} />
             <h3 className={`text-lg font-semibold ${isDark ? 'text-blue-400' : 'text-blue-700'}`}>Results</h3>
           </div>
           <button
-            onClick={() => handleCopyResults(question.id)}
-            className={`${isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-500 hover:text-blue-700'} transition-colors`}
+            onClick={() => handleCopyResults(questionId)} // Pass question ID
+            className={`${isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-500 hover:text-blue-700'} transition-colors flex items-center text-sm`}
+            disabled={currentSelected.accepted.length === 0} // Disable if no accepted codes
           >
-            <FaCopy className="inline mr-1" /> Copy
+            <FaCopy className="inline mr-1" /> Copy Accepted
           </button>
         </div>
         
+        {/* CDT Codes Section */}
         <div className="mb-4">
           <h4 className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'} mb-2`}>CDT Codes:</h4>
           <div className="flex flex-wrap gap-2">
-            {cdtCodes.length > 0 ? cdtCodes.map((code, index) => (
-              <span 
-                key={`cdt-code-${index}-${code}`}
-                className={`px-3 py-1 rounded-full text-sm ${
-                  isDark ? 'bg-blue-800/60 text-blue-200' : 'bg-blue-100 text-blue-800'
-                }`}
-              >
-                {code}
-              </span>
-            )) : (
+            {cdtCodes.length > 0 ? cdtCodes.map((code, index) => {
+              const isAccepted = currentSelected.accepted.includes(code);
+              const isDenied = currentSelected.denied.includes(code);
+              
+              return (
+                <div
+                  key={`cdt-code-${questionId}-${index}-${code}`}
+                  className={`relative group px-3 py-1 rounded-full text-sm transition-all duration-200 cursor-pointer border ${
+                    isAccepted
+                      ? (isDark ? 'bg-green-900/60 text-green-200 border-green-700' : 'bg-green-100 text-green-800 border-green-300')
+                      : isDenied
+                        ? (isDark ? 'bg-red-900/60 text-red-200 border-red-700' : 'bg-red-100 text-red-800 border-red-300')
+                        : (isDark ? 'bg-blue-800/60 text-blue-200 border-blue-700' : 'bg-blue-100 text-blue-800 border-blue-300')
+                  }`}
+                >
+                  {code}
+                  {/* Hover Icons */}
+                  <div className="absolute inset-0 flex items-center justify-center space-x-1 bg-black bg-opacity-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    <button
+                      title="Accept"
+                      onClick={(e) => { e.stopPropagation(); handleCodeSelection(questionId, code, 'accept'); }}
+                      className={`p-1 rounded-full ${isAccepted ? 'bg-green-500' : 'bg-gray-600 hover:bg-green-500'} text-white text-xs`}
+                    >
+                      <FaCheck />
+                    </button>
+                    <button
+                      title="Reject"
+                      onClick={(e) => { e.stopPropagation(); handleCodeSelection(questionId, code, 'deny'); }}
+                       className={`p-1 rounded-full ${isDenied ? 'bg-red-500' : 'bg-gray-600 hover:bg-red-500'} text-white text-xs`}
+                    >
+                      <FaTimes />
+                    </button>
+                  </div>
+                </div>
+              );
+            }) : (
               <span className="text-sm text-gray-500">No CDT codes found</span>
             )}
           </div>
-          <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'} mt-2`}>{cdtExplanation}</p>
+          {cdtExplanation && <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'} mt-2 whitespace-pre-wrap`}>{cdtExplanation}</p>}
         </div>
 
+        {/* ICD Codes Section (Display only, no selection) */}
         <div className="mb-2">
           <h4 className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'} mb-2`}>ICD Codes:</h4>
           <div className="flex flex-wrap gap-2">
             {icdCodes.length > 0 ? icdCodes.map((code, index) => (
-              <span 
-                key={`icd-code-${index}-${code}`}
+              <span
+                key={`icd-code-${questionId}-${index}-${code}`}
                 className={`px-3 py-1 rounded-full text-sm ${
                   isDark ? 'bg-purple-900/60 text-purple-200' : 'bg-purple-100 text-purple-800'
                 }`}
@@ -571,16 +794,60 @@ const Questions = () => {
               <span className="text-sm text-gray-500">No ICD codes found</span>
             )}
           </div>
-          <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'} mt-2`}>{icdExplanation}</p>
+           {icdExplanation && <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'} mt-2 whitespace-pre-wrap`}>{icdExplanation}</p>}
         </div>
         
-        {question.result?.data?.questioner_data?.has_questions && (
+        {/* Questioner Pending Indicator */}
+        {question.result?.data?.questioner_data?.has_questions && !question.processedQuestioner && (
           <div className={`mt-2 p-2 ${isDark ? 'bg-yellow-800/30' : 'bg-yellow-100'} rounded-lg border border-yellow-400`}>
             <p className={`text-sm ${isDark ? 'text-yellow-200' : 'text-yellow-800'}`}>
-              This scenario required additional questions that were processed{question.processedQuestioner ? '' : ' or are pending'}.
+              This scenario requires additional questions (pending display).
             </p>
           </div>
         )}
+
+        {/* Add Custom Code Section */}
+         <div className={`mt-6 pt-4 border-t ${isDark ? 'border-gray-600' : 'border-gray-300'}`}>
+           <h4 className="text-md font-semibold mb-3">Add Custom CDT Code</h4>
+           <div className="flex items-center mb-2">
+             <input
+               type="text"
+               placeholder="Enter CDT code (e.g., D1120)"
+               className={`flex-grow p-2 border ${
+                 isDark ? 'bg-gray-800 border-gray-600 text-gray-100' : 'bg-white border-gray-300 text-gray-900'
+               } rounded-lg focus:outline-none ${
+                 isDark ? 'focus:border-blue-400' : 'focus:border-blue-500'
+               } text-sm`}
+               value={newCodeInputs[questionId] || ''}
+               onChange={(e) => handleNewCodeChange(questionId, e.target.value)}
+               disabled={customCodeLoading[questionId] || question.loading}
+             />
+             <button
+               onClick={() => handleAddCode(questionId)}
+               className={`ml-2 px-4 py-2 ${
+                 isDark ? 'bg-blue-700 hover:bg-blue-600' : 'bg-blue-600 hover:bg-blue-700'
+               } text-white rounded-lg shadow-md transition-all duration-300 disabled:${
+                 isDark ? 'bg-gray-700' : 'bg-gray-400'
+               } flex items-center text-sm`}
+               disabled={customCodeLoading[questionId] || question.loading || !newCodeInputs[questionId]?.trim() || !question.result?.data?.record_id}
+             >
+               {customCodeLoading[questionId] ? (
+                 <>
+                   <FaSpinner className="inline mr-1 animate-spin" />
+                   Analyzing...
+                 </>
+               ) : (
+                 <>
+                    <FaCogs className="inline mr-1" />
+                    Analyze Code
+                  </>
+               )}
+             </button>
+           </div>
+           <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'} mt-1`}>
+             Add a custom CDT code to check its applicability.
+           </p>
+         </div>
       </div>
     );
   };
@@ -590,87 +857,98 @@ const Questions = () => {
     return questions.filter(q => q.text.trim() !== '').length;
   };
 
-  // Count pending questioners (in queue plus visible ones)
+  // Count pending questioners (in queue)
   const getPendingQuestionersCount = () => {
-    return questionPendingQueue.length + (isQuestionerVisible ? 1 : 0);
+     // Count based on questions state directly instead of queue
+     return questions.filter(q =>
+       q.result?.data?.questioner_data?.has_questions && !q.processedQuestioner
+     ).length;
   };
 
   return (
     <div className="flex-grow flex justify-center p-4">
       <div className={`w-full max-w-4xl ${isDark ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg p-6 transition-colors`}>
-        <div className={`${isDark ? 'bg-blue-900' : 'bg-blue-500'} text-white p-4 rounded-lg mb-6 flex justify-between items-center`}>
-          <h2 className="text-xl md:text-2xl font-semibold flex items-center">
-            <FaTooth className="mr-2" /> Multiple Dental Scenarios
+        {/* Header */}
+        <div className={`${isDark ? 'bg-blue-900' : 'bg-blue-500'} text-white p-4 rounded-lg mb-6 flex flex-wrap justify-between items-center gap-2`}>
+          <h2 className="text-xl md:text-2xl font-semibold flex items-center flex-wrap gap-x-2">
+            <FaTooth className="mr-1" /> Multiple Dental Scenarios
             {activeRequests > 0 && (
-              <span className="ml-2 text-sm bg-green-500 px-2 py-1 rounded-full">
-                {activeRequests} Active {activeRequests === 1 ? 'Request' : 'Requests'}
+              <span className="text-sm bg-green-500 px-2 py-0.5 rounded-full whitespace-nowrap">
+                {activeRequests} Active
               </span>
             )}
             {getPendingQuestionersCount() > 0 && (
-              <span className="ml-2 text-sm bg-yellow-500 px-2 py-1 rounded-full">
-                {getPendingQuestionersCount()} Pending {getPendingQuestionersCount() === 1 ? 'Questioner' : 'Questioners'}
+              <span className="text-sm bg-yellow-500 text-black px-2 py-0.5 rounded-full whitespace-nowrap">
+                {getPendingQuestionersCount()} Pending Qs
               </span>
             )}
           </h2>
           <div className="flex space-x-2">
-            {batchLoading ? (
-              <button 
+             {/* Cancel Button */}
+            {(batchLoading || activeRequests > 0) && (
+              <button
                 onClick={cancelProcessing}
-                className={`${isDark ? 'bg-red-700 hover:bg-red-600' : 'bg-red-600 hover:bg-red-500'} 
-                text-white px-3 py-2 rounded-lg transition-colors flex items-center`}
+                className={`${isDark ? 'bg-red-700 hover:bg-red-600' : 'bg-red-600 hover:bg-red-500'}
+                text-white px-3 py-2 rounded-lg transition-colors flex items-center text-sm`}
+                title="Cancel all ongoing analyses"
               >
                 <FaStop className="inline mr-1" />
-                Cancel
-              </button>
-            ) : (
-              <button 
-                onClick={analyzeAllQuestions}
-                className={`${
-                  batchLoading || getValidQuestionsCount() === 0
-                    ? (isDark ? 'bg-gray-700' : 'bg-gray-400') 
-                    : (isDark ? 'bg-green-700 hover:bg-green-600' : 'bg-green-600 hover:bg-green-500')
-                } text-white px-3 py-2 rounded-lg transition-colors flex items-center`}
-                disabled={batchLoading || getValidQuestionsCount() === 0}
-              >
-                {batchLoading ? (
-                  <>
-                    <FaSpinner className="inline mr-1 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <FaPaperPlane className="inline mr-1" />
-                    Analyze All
-                  </>
-                )}
+                Cancel All
               </button>
             )}
-            <button 
-              onClick={addQuestion}
-              className={`${isDark ? 'bg-blue-700 hover:bg-blue-600' : 'bg-blue-600 hover:bg-blue-500'} 
-                text-white p-2 rounded-full transition-colors flex items-center`}
-              disabled={batchLoading}
+             {/* Analyze All Button */}
+            <button
+              onClick={analyzeAllQuestions}
+              className={`${
+                batchLoading || activeRequests > 0 || getValidQuestionsCount() === 0
+                  ? (isDark ? 'bg-gray-700 text-gray-400' : 'bg-gray-400 text-gray-700')
+                  : (isDark ? 'bg-green-700 hover:bg-green-600' : 'bg-green-600 hover:bg-green-500')
+              } text-white px-3 py-2 rounded-lg transition-colors flex items-center text-sm`}
+              disabled={batchLoading || activeRequests > 0 || getValidQuestionsCount() === 0}
             >
-              <FaPlusCircle className="mr-1" /> Add Question
+              {batchLoading ? (
+                <>
+                  <FaSpinner className="inline mr-1 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <FaPaperPlane className="inline mr-1" />
+                  Analyze All ({getValidQuestionsCount()})
+                </>
+              )}
+            </button>
+             {/* Add Question Button */}
+            <button
+              onClick={addQuestion}
+              className={`${isDark ? 'bg-blue-700 hover:bg-blue-600' : 'bg-blue-600 hover:bg-blue-500'}
+                text-white p-2 rounded-full transition-colors flex items-center`}
+              disabled={batchLoading || activeRequests > 0}
+              title="Add another question input"
+            >
+              <FaPlusCircle />
             </button>
           </div>
         </div>
 
+        {/* Global Error */}
         {globalError && (
           <div className={`mb-4 p-4 rounded-lg ${isDark ? 'bg-red-900/30' : 'bg-red-100'} flex items-start`}>
-            <FaExclamationTriangle className={`mt-1 ${isDark ? 'text-red-400' : 'text-red-600'} mr-2`} />
+            <FaExclamationTriangle className={`mt-1 ${isDark ? 'text-red-400' : 'text-red-600'} mr-2 flex-shrink-0`} />
             <div>
               <h3 className={`font-bold ${isDark ? 'text-red-300' : 'text-red-700'} mb-1`}>Error</h3>
               <p className={`${isDark ? 'text-red-200' : 'text-red-600'}`}>{globalError}</p>
-              <p className="text-sm mt-1 opacity-80">For better performance, try processing fewer questions at once.</p>
+              {globalError.includes('rate limit') && <p className="text-sm mt-1 opacity-80">Try fewer questions or wait before trying again.</p>}
             </div>
+             <button onClick={() => setGlobalError(null)} className={`ml-auto text-sm ${isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'}`}>&times;</button>
           </div>
         )}
 
+        {/* Questions List */}
         <div className="space-y-6">
           {questions.map((question) => (
-            <div 
-              key={question.id} 
+            <div
+              key={question.id}
               className={`p-4 rounded-lg border ${
                 isDark ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'
               }`}
@@ -678,27 +956,29 @@ const Questions = () => {
               <div className="flex justify-between items-center mb-3">
                 <h3 className={`font-semibold ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
                   Question {question.id}
-                  {question.result?.data?.questioner_data?.has_questions && (
-                    <span className={`ml-2 text-xs px-2 py-1 rounded-full ${
+                  {question.result?.data?.questioner_data?.has_questions && !question.processedQuestioner && (
+                    <span title="Requires answers" className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${
                       isDark ? 'bg-yellow-800/60 text-yellow-200' : 'bg-yellow-100 text-yellow-800'
                     }`}>
-                      Has Questions
+                      <FaExclamationTriangle className="inline mb-px" /> Qs
                     </span>
                   )}
                 </h3>
                 {questions.length > 1 && (
-                  <button 
+                  <button
                     onClick={() => removeQuestion(question.id)}
-                    className={`${isDark ? 'text-red-400 hover:text-red-300' : 'text-red-500 hover:text-red-600'} 
+                    className={`${isDark ? 'text-red-400 hover:text-red-300' : 'text-red-500 hover:text-red-600'}
                       transition-colors`}
-                    disabled={batchLoading}
+                    disabled={batchLoading || question.loading || activeRequests > 0} // Disable if any activity
+                    title="Remove this question"
                   >
                     <FaMinusCircle />
                   </button>
                 )}
               </div>
               
-              <div className="mb-3">
+              {/* Text Area */}
+              <div className="mb-3 relative">
                 <textarea
                   placeholder="Describe the dental procedure or diagnosis..."
                   className={`w-full p-3 border ${
@@ -709,60 +989,67 @@ const Questions = () => {
                   rows="4"
                   value={question.text}
                   onChange={(e) => handleQuestionChange(question.id, e.target.value)}
-                  disabled={batchLoading || question.loading}
+                  disabled={batchLoading || question.loading || activeRequests > 0} // Disable if any activity
                 ></textarea>
+                 {/* Loading Spinner */}
+                 {question.loading && (
+                     <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30 rounded-lg">
+                         <FaSpinner className={`animate-spin text-3xl ${isDark ? 'text-blue-300' : 'text-blue-500'}`} />
+                     </div>
+                 )}
               </div>
               
-              <div className="flex justify-end">
-                <button
-                  onClick={() => analyzeQuestion(question.id)}
-                  disabled={question.loading || !question.text.trim() || batchLoading}
-                  className={`${
-                    question.loading || !question.text.trim() || batchLoading
-                      ? (isDark ? 'bg-gray-600' : 'bg-gray-400') 
-                      : (isDark ? 'bg-blue-700 hover:bg-blue-600' : 'bg-blue-600 hover:bg-blue-700')
-                  } text-white px-4 py-2 rounded-lg shadow-md transition-all duration-300 flex items-center`}
-                >
-                  {question.loading ? (
-                    <>
-                      <FaSpinner className="inline mr-2 animate-spin" />
-                      Analyzing...
-                    </>
-                  ) : (
-                    <>
+              {/* Individual Analyze Button (Hidden if batch processing) */}
+              {!batchLoading && activeRequests === 0 && (
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => analyzeQuestion(question.id)}
+                      disabled={!question.text.trim()}
+                      className={`${
+                        !question.text.trim()
+                          ? (isDark ? 'bg-gray-600 text-gray-400' : 'bg-gray-400 text-gray-700')
+                          : (isDark ? 'bg-blue-700 hover:bg-blue-600' : 'bg-blue-600 hover:bg-blue-700')
+                      } text-white px-4 py-2 rounded-lg shadow-md transition-all duration-300 flex items-center text-sm`}
+                    >
                       <FaPaperPlane className="inline mr-2" />
-                      Analyze
-                    </>
-                  )}
-                </button>
-              </div>
+                      Analyze This
+                    </button>
+                  </div>
+              )}
               
-              {question.error && (
+              {/* Individual Error */}
+              {question.error && !globalError && ( // Show only if no global error
                 <div className={`mt-4 p-3 rounded-lg ${isDark ? 'bg-red-900/30 text-red-200' : 'bg-red-100 text-red-700'}`}>
-                  {question.error}
+                  Error: {question.error}
                 </div>
               )}
               
+              {/* Render Results Section */}
               {renderResults(question)}
             </div>
           ))}
         </div>
 
-        {/* Questioner Modal */} 
-        {isQuestionerVisible && currentQuestionerData && currentRecordId && (
-          <Questioner 
+        {/* Questioner Modal */}
+        {isQuestionerVisible && currentQuestionerData && ( // Removed currentRecordId check
+          <Questioner
             isVisible={isQuestionerVisible}
             onClose={() => {
               console.log("Questioner closed by user");
-              setIsQuestionerVisible(false); 
-              setCurrentQuestionerData(null); 
-              setCurrentRecordId(null);
+              setIsQuestionerVisible(false);
+              setCurrentQuestionerData(null);
+              // Mark any associated questions as processed so modal doesn't re-appear immediately if closed without submit
+               setQuestions(prevQuestions => prevQuestions.map(q =>
+                 currentQuestionerData.scenarios.some(s => s.questionId === q.id)
+                   ? { ...q, processedQuestioner: true }
+                   : q
+               ));
             }}
             questions={{
-              cdt_questions: currentQuestionerData.cdt_questions.questions || [],
-              icd_questions: currentQuestionerData.icd_questions.questions || []
+              cdt_questions: currentQuestionerData.cdt_questions?.questions || [],
+              icd_questions: currentQuestionerData.icd_questions?.questions || []
             }}
-            recordId={currentRecordId}
+            // recordId prop removed as it's handled internally now
             onSubmitSuccess={handleQuestionerSubmitSuccess}
             scenarios={currentQuestionerData.scenarios || []}
           />
