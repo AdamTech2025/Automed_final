@@ -497,8 +497,6 @@ async def run_inspectors_for_scenario(record_id: str) -> dict:
              if complete_data.get('inspector_results'):
                  final_inspector_results = json.loads(complete_data['inspector_results'])
              elif inspector_run_result.get('status') == 'success': # Fallback
-                  final_inspector_results = inspector_run_result.get('inspector_results', {})
-             else: # If run also failed, store that result
                   final_inspector_results = inspector_run_result
         except json.JSONDecodeError:
              print(f"❌ Error decoding JSON from DB on trigger_inspectors for {record_id}: {json_err}")
@@ -951,78 +949,63 @@ async def add_custom_code(request: CustomCodeRequest):
     try:
         print(f"\n*************************** ADDING CUSTOM CODE FOR RECORD {request.record_id} ***************************")
         print(f"Custom code: {request.code}")
-        print(f"Scenario: {request.scenario}") # Assuming scenario is still needed by Add_code_data
-
+        print(f"Scenario: {request.scenario}")
+        
         # Run the custom code analysis
-        analysis_result = Add_code_data(request.scenario, request.code) # This looks synchronous
-
+        analysis_result = Add_code_data(request.scenario, request.code)
+        
         # Get the existing analysis from the database
         analysis = db.get_complete_analysis(request.record_id)
         if not analysis:
-            return {"status": "error", "message": f"No analysis found with ID: {request.record_id}"}
-
-        # Parse the existing inspector results data safely
-        inspector_results = {}
-        try:
-             if analysis.get("inspector_results"):
-                  inspector_results = json.loads(analysis["inspector_results"])
-             # Ensure basic structure
-             if "cdt" not in inspector_results: inspector_results["cdt"] = {"codes": [], "rejected_codes": [], "explanation": ""}
-             if "icd" not in inspector_results: inspector_results["icd"] = {"codes": [], "rejected_codes": [], "explanation": ""}
-
-        except json.JSONDecodeError:
-             print(f"Warning: Could not parse existing inspector results for {request.record_id}. Starting fresh.")
-             inspector_results = {
-                 "cdt": {"codes": [], "rejected_codes": [], "explanation": ""},
-                 "icd": {"codes": [], "rejected_codes": [], "explanation": ""},
-                 "timestamp": str(datetime.datetime.now())
-             }
-
-
+            return {
+                "status": "error",
+                "message": f"No analysis found with ID: {request.record_id}"
+            }
+            
+        # Parse the analysis result to extract components
+        explanation = ""
+        doubt = "None"
+        
+        # Extract explanation and doubt from the analysis result
+        if "Explanation:" in analysis_result:
+            explanation = analysis_result.split("Explanation:")[1].strip()
+            if "Doubt:" in explanation:
+                parts = explanation.split("Doubt:")
+                explanation = parts[0].strip()
+                doubt = parts[1].strip()
+        else:
+            explanation = analysis_result
+            
         # Check if the code is likely applicable based on the analysis result
         is_applicable = "Applicable? Yes" in analysis_result
-
-        # Update the CDT inspector results
-        cdt_inspector = inspector_results["cdt"]
-        custom_code_entry = f"\n\nCustom Code {request.code}: {analysis_result}"
-
-        if is_applicable:
-            if "codes" not in cdt_inspector: cdt_inspector["codes"] = []
-            if request.code not in cdt_inspector["codes"]: cdt_inspector["codes"].append(request.code)
-             # Remove from rejected if it was there previously
-            if "rejected_codes" in cdt_inspector and request.code in cdt_inspector["rejected_codes"]:
-                 cdt_inspector["rejected_codes"].remove(request.code)
-        else:
-            if "rejected_codes" not in cdt_inspector: cdt_inspector["rejected_codes"] = []
-            if request.code not in cdt_inspector["rejected_codes"]: cdt_inspector["rejected_codes"].append(request.code)
-            # Remove from accepted if it was there previously
-            if "codes" in cdt_inspector and request.code in cdt_inspector["codes"]:
-                 cdt_inspector["codes"].remove(request.code)
-
-        # Append analysis explanation
-        if "explanation" not in cdt_inspector: cdt_inspector["explanation"] = ""
-        # Avoid duplicate explanations if re-adding
-        if custom_code_entry not in cdt_inspector["explanation"]:
-             cdt_inspector["explanation"] += custom_code_entry
-
-        # Update the timestamp
-        inspector_results["timestamp"] = str(datetime.datetime.now())
-        inspector_results["updated_by"] = "custom_code"
-
-        # Update the database
-        db.update_inspector_results(request.record_id, json.dumps(inspector_results))
-
-        print(f"✅ Custom code analysis completed and saved to database")
-
-        # Return the updated inspector results
+        
+        # Format the response in the expected structure
+        code_data = {
+            "code": request.code,
+            "explanation": explanation,
+            "doubt": doubt,
+            "isApplicable": is_applicable
+        }
+        
         return {
             "status": "success",
             "message": "Custom code analysis completed",
-            "analysis": analysis_result,
-            "is_applicable": is_applicable,
-            "inspector_results": inspector_results # Return the updated structure
+            "data": {
+                "code_data": code_data,
+                "inspector_results": {
+                    "cdt": {
+                        "codes": [request.code] if is_applicable else [],
+                        "rejected_codes": [] if is_applicable else [request.code],
+                        "explanation": explanation
+                    },
+                    "icd": {
+                        "codes": [],
+                        "explanation": ""
+                    }
+                }
+            }
         }
-
+        
     except Exception as e:
         error_details = traceback.format_exc()
         print(f"❌ ERROR adding custom code: {str(e)}")
