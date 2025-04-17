@@ -25,25 +25,31 @@ ICD Analysis Results:
 
 Instructions:
 
-1. Only ask questions that would directly impact the code selection. Do not ask questions that can be reasonably inferred from the scenario or that won't change the code selection.
+##Dont ask any questions to the user unless and untill if the question can make a change in the codes. Else dont ask any questions. Just use the information provided and make the best judgement call.
 
-2. For CDT codes, focus on:
-   - Whether the patient is new or established (impacts evaluation codes)
-   - The extent of the cavity (number of surfaces involved)
-   - Whether radiographs were taken and what type
-   - Only ask about treatment details if treatment was performed
 
 IMPORTANT TASK TO FOLLOW: 
-- Analyse only the cdt_analysis and icd_analysis ask questions only from the output you get from the file.
+- Analyse only the cdt_analysis and ask questions only from the output you get from the file and do not look into the scenario. 
 - Mostly try not to ask any questions, if basic assumptions solve the problem, do not ask questions.
 
-4. If the scenario provides sufficient information for accurate coding, do not ask any questions.
+Separate by Category:
+
+
+CDT: If there is any missing information relevant to ADA dental procedure codes.
+
+
+ICD: If there is any missing information relevant to ICD-10 diagnostic codes.
+
+
+Avoid Unnecessary Questions: If the scenario contains all the critical information needed for accurate coding, do not ask any questions.
+
+
 
 Return your response in this exact format:
-CDT_QUESTIONS: [List only the most critical CDT-specific questions that would impact code selection, one per line, or "None" if no questions are needed]
-CDT_EXPLANATION: [Briefly explain why these specific CDT questions are necessary for code selection]
-ICD_QUESTIONS: [List only the most critical ICD-specific questions that would impact code selection, one per line, or "None" if no questions are needed]
-ICD_EXPLANATION: [Briefly explain why these specific ICD questions are necessary for code selection]
+CDT_QUESTIONS: [List CDT-specific questions, one per line, or "None" if no questions are needed]
+CDT_EXPLANATION: [Briefly explain why these CDT questions are necessary or why no questions are needed]
+ICD_QUESTIONS: [List ICD-specific questions, one per line, or "None" if no questions are needed]
+ICD_EXPLANATION: [Briefly explain why these ICD questions are necessary or why no questions are needed]
 """
 
     def __init__(self, model: str = OPENROUTER_MODEL, temperature: float = DEFAULT_TEMP):
