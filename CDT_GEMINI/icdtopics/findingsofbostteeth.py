@@ -3,29 +3,34 @@ Module for extracting findings of bost teeth ICD-10 codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from icdtopics.prompt import PROMPT
 
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_bost_teeth_findings_extractor(temperature=0.0):
-    """
-    Create a LangChain-based bost teeth findings code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class LostTeethServices:
+    """Class to analyze and extract findings of lost teeth ICD-10 codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template="""
-You are a highly experienced medical coding expert specializing in findings of bost teeth. 
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing findings of lost teeth."""
+        return PromptTemplate(
+            template=f"""
+You are a highly experienced medical coding expert specializing in findings of lost teeth. 
 Analyze the given scenario and determine the most applicable ICD-10 code(s).
 
-10.1 Findings of Bost Teeth:
+10.1 Findings of Lost Teeth:
 - K08.121: Complete loss of teeth due to trauma, class I
 - K08.122: Complete loss of teeth due to trauma, class II
 - K08.123: Complete loss of teeth due to trauma, class III
@@ -42,54 +47,47 @@ Analyze the given scenario and determine the most applicable ICD-10 code(s).
 - K08.194: Complete loss of teeth due to other specified cause, class IV
 - K08.199: Complete loss of teeth due to other specified cause, unspecified class
 
-Scenario: {scenario}
+SCENARIO: {{scenario}}
 
-{prompt}
+{PROMPT}
 """,
-        input_variables=["scenario", "prompt"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template.partial(prompt=PROMPT))
+    def extract_lost_teeth_code(self, scenario: str) -> str:
+        """Extract findings of lost teeth code(s) for a given scenario."""
+        try:
+            print(f"Analyzing lost teeth scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Lost teeth extract_lost_teeth_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in lost teeth code extraction: {str(e)}")
+            return ""
+    
+    def activate_lost_teeth(self, scenario: str) -> str:
+        """Activate the lost teeth analysis process and return results."""
+        try:
+            result = self.extract_lost_teeth_code(scenario)
+            if not result:
+                print("No lost teeth code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating lost teeth analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_lost_teeth(scenario)
+        print(f"\n=== LOST TEETH ANALYSIS RESULT ===")
+        print(f"LOST TEETH CODE: {result if result else 'None'}")
 
-def extract_bost_teeth_findings_code(scenario, temperature=0.0):
-    """
-    Extract bost teeth findings code(s) for a given scenario.
-    """
-    try:
-        chain = create_bost_teeth_findings_extractor(temperature)
-        result = chain.invoke({"scenario": scenario})
-        
-        # Handle different return formats from LangChain
-        if isinstance(result, dict):
-            if "text" in result:
-                result_text = result["text"]
-            elif "output_text" in result:
-                result_text = result["output_text"]
-            else:
-                result_text = str(result)
-        elif hasattr(result, "content"):
-            result_text = result.content
-        else:
-            result_text = str(result)
-            
-        print(f"Bost teeth findings code result: {result_text}")
-        return result_text.strip()
-    except Exception as e:
-        print(f"Error in extract_bost_teeth_findings_code: {str(e)}")
-        return ""
 
-def activate_lost_teeth(scenario):
-    """
-    Activate bost teeth findings analysis and return results.
-    """
-    try:
-        return extract_bost_teeth_findings_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_lost_teeth: {str(e)}")
-        return ""
-
+lost_teeth_service = LostTeethServices()
 # Example usage
 if __name__ == "__main__":
-    scenario = "Patient has complete loss of teeth due to periodontal disease, class II configuration."
-    result = activate_lost_teeth(scenario)
-    print(result) 
+    scenario = input("Enter a findings of lost teeth dental scenario: ")
+    lost_teeth_service.run_analysis(scenario) 

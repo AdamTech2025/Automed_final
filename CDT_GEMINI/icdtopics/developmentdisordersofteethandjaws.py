@@ -3,25 +3,30 @@ Module for extracting development disorders of teeth and jaws ICD-10 codes.
 """
 
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
+import sys
 from langchain.prompts import PromptTemplate
+from llm_services import LLMService, get_service, set_model, set_temperature
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(parent_dir)
+
+# Import modules
 from icdtopics.prompt import PROMPT
 
-# Load environment variables
-load_dotenv()
-
-# Get model name from environment variable, default to gpt-4o if not set
- 
-def create_development_disorders_teeth_jaws_extractor(temperature=0.0):
-    """
-    Create a LangChain-based development disorders of teeth and jaws code extractor.
-    """
-    llm = ChatGoogleGenerativeAI(model="models/gemini-2.5-pro-exp-03-25", temperature=temperature)
+class DevelopmentDisordersServices:
+    """Class to analyze and extract development disorders of teeth and jaws ICD-10 codes based on dental scenarios."""
     
-    prompt_template = PromptTemplate(
-        template="""
+    def __init__(self, llm_service: LLMService = None):
+        """Initialize with an optional LLMService instance."""
+        self.llm_service = llm_service or get_service()
+        self.prompt_template = self._create_prompt_template()
+    
+    def _create_prompt_template(self) -> PromptTemplate:
+        """Create the prompt template for analyzing development disorders of teeth and jaws."""
+        return PromptTemplate(
+            template=f"""
 You are a highly experienced medical coding expert specializing in development disorders of teeth and jaws. 
 Analyze the given scenario and determine the most applicable ICD-10 code(s).
 
@@ -83,8 +88,6 @@ Analyze the given scenario and determine the most applicable ICD-10 code(s).
 - M26.19: Other specified anomalies of jaw-cranial base relationship
 - M26.20: Unspecified anomaly of dental arch relationship
 
-Scenario: {{scenario}}
-
 8.7 Cleft Lip and Palate
 - Q35.1: Cleft hard palate
 - Q35.3: Cleft soft palate
@@ -109,57 +112,47 @@ Scenario: {{scenario}}
 - Q38.5: Other congenital malformations of mouth
 - Q38.6: Ankyloglossia
 
-Instructions: Based on the scenario, identify the most specific and appropriate ICD-10-CM code(s) from the developmental disorders of teeth and jaws category. Provide a brief explanation for your selection.
+SCENARIO: {{scenario}}
 
-Respond in this format:
-[CATEGORY]: Brief explanation of the selected category
-[CODE]: Specific ICD-10 code
-{prompt}
+{PROMPT}
 """,
-
-        input_variables=["scenario", "prompt"]
-    )
+            input_variables=["scenario"]
+        )
     
-    return LLMChain(llm=llm, prompt=prompt_template.partial(prompt=PROMPT))
+    def extract_development_disorders_code(self, scenario: str) -> str:
+        """Extract development disorders of teeth and jaws code(s) for a given scenario."""
+        try:
+            print(f"Analyzing development disorders scenario: {scenario[:100]}...")
+            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            code = result.strip()
+            print(f"Development disorders extract_development_disorders_code result: {code}")
+            return code
+        except Exception as e:
+            print(f"Error in development disorders code extraction: {str(e)}")
+            return ""
+    
+    def activate_development_disorders(self, scenario: str) -> str:
+        """Activate the development disorders analysis process and return results."""
+        try:
+            result = self.extract_development_disorders_code(scenario)
+            if not result:
+                print("No development disorders code returned")
+                return ""
+            return result
+        except Exception as e:
+            print(f"Error activating development disorders analysis: {str(e)}")
+            return ""
+    
+    def run_analysis(self, scenario: str) -> None:
+        """Run the analysis and print results."""
+        print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
+        result = self.activate_development_disorders(scenario)
+        print(f"\n=== DEVELOPMENT DISORDERS ANALYSIS RESULT ===")
+        print(f"DEVELOPMENT DISORDERS CODE: {result if result else 'None'}")
 
-def extract_development_disorders_teeth_jaws_code(scenario, temperature=0.0):
-    """
-    Extract development disorders of teeth and jaws code(s) for a given scenario.
-    """
-    try:
-        chain = create_development_disorders_teeth_jaws_extractor(temperature)
-        result = chain.invoke({"scenario": scenario})
-        # Handle different return formats from LangChain
-        if isinstance(result, dict):
-            if "text" in result:
-                result_text = result["text"]
-            elif "output_text" in result:
-                result_text = result["output_text"]
-            else:
-                result_text = str(result)
-        elif hasattr(result, "content"):
-            result_text = result.content
-        else:
-            result_text = str(result)
-        
-        print(f"Result: {result_text}")
-        return result_text.strip()
-    except Exception as e:
-        print(f"Error in extract_development_disorders_teeth_jaws_code: {str(e)}")
-        return ""
 
-def activate_developmental_disorders(scenario):
-    """
-    Activate development disorders of teeth and jaws analysis and return results.
-    """
-    try:
-        return extract_development_disorders_teeth_jaws_code(scenario)
-    except Exception as e:
-        print(f"Error in activate_developmental_disorders: {str(e)}")
-        return ""
-
+development_disorders_service = DevelopmentDisordersServices()
 # Example usage
 if __name__ == "__main__":
-    scenario = "Patient presents with multiple supernumerary teeth in the maxillary arch."
-    result = activate_developmental_disorders(scenario)
-    print(result)
+    scenario = input("Enter a development disorders of teeth and jaws scenario: ")
+    development_disorders_service.run_analysis(scenario)
