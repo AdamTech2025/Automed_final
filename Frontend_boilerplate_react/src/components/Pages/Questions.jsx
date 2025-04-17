@@ -1,6 +1,6 @@
-import { useState,useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { FaTooth, FaPlusCircle, FaMinusCircle, FaPaperPlane, FaRobot, FaCopy, FaSpinner, FaExclamationTriangle, FaStop } from 'react-icons/fa';
-import { analyzeDentalScenario, analyzeBatchScenarios, submitQuestionAnswers } from '../../interceptors/services.js';
+import { analyzeDentalScenario, analyzeBatchScenarios } from '../../interceptors/services.js';
 import { useTheme } from '../../context/ThemeContext';
 import Questioner from './Questioner';
 
@@ -10,12 +10,69 @@ const Questions = () => {
   const [nextId, setNextId] = useState(2);
   const [batchLoading, setBatchLoading] = useState(false);
   const [globalError, setGlobalError] = useState(null);
-  const abortControllerRef = useRef(null);
+  const abortControllerRef = useRef({});
+  
+  // Keep track of active processing requests
+  const [activeRequests, setActiveRequests] = useState(0);
 
   // State for Questioner Modal
   const [isQuestionerVisible, setIsQuestionerVisible] = useState(false);
   const [currentQuestionerData, setCurrentQuestionerData] = useState(null);
   const [currentRecordId, setCurrentRecordId] = useState(null);
+  const [questionPendingQueue, setQuestionPendingQueue] = useState([]);
+  
+  // Check if there are questions that need answering in any of the results
+  useEffect(() => {
+    // Only check if the questioner isn't already visible
+    if (!isQuestionerVisible) {
+      // Look through all questions for questioner_data
+      const questionWithQuestioner = questions.find(q => 
+        q.result?.data?.questioner_data?.has_questions &&
+        !q.processedQuestioner // Track if we've already processed this questioner
+      );
+      
+      if (questionWithQuestioner) {
+        console.log(`Found questions needing answers for question ID ${questionWithQuestioner.id}`);
+        setCurrentQuestionerData(questionWithQuestioner.result.data.questioner_data);
+        setCurrentRecordId(questionWithQuestioner.result.data.record_id);
+        setIsQuestionerVisible(true);
+        
+        // Mark this question as having its questioner processed
+        setQuestions(prevQuestions => prevQuestions.map(q => 
+          q.id === questionWithQuestioner.id 
+            ? { ...q, processedQuestioner: true } 
+            : q
+        ));
+      } else if (questionPendingQueue.length > 0) {
+        // Process the next item in the queue
+        const nextInQueue = questionPendingQueue[0];
+        console.log(`Processing next questioner from queue for record ID: ${nextInQueue.recordId}`);
+        
+        setCurrentQuestionerData(nextInQueue.questionerData);
+        setCurrentRecordId(nextInQueue.recordId);
+        setIsQuestionerVisible(true);
+        
+        // Remove this item from the queue
+        setQuestionPendingQueue(prevQueue => prevQueue.slice(1));
+      }
+    }
+  }, [questions, isQuestionerVisible, questionPendingQueue]);
+  
+  // Clean up abort controllers when component unmounts
+  useEffect(() => {
+    return () => {
+      // Cancel all pending requests on unmount
+      Object.values(abortControllerRef.current).forEach(controller => {
+        if (controller) {
+          try {
+            controller.abort();
+          } catch (e) {
+            console.error('Error aborting controller:', e);
+          }
+        }
+      });
+    };
+  }, []);
 
   const handleQuestionChange = (id, value) => {
     setQuestions(questions.map(q => 
@@ -30,64 +87,107 @@ const Questions = () => {
 
   const removeQuestion = (id) => {
     if (questions.length > 1) {
+      // Cancel any pending request for this question
+      if (abortControllerRef.current[id]) {
+        try {
+          abortControllerRef.current[id].abort();
+          delete abortControllerRef.current[id];
+        } catch (e) {
+          console.error('Error aborting controller for question:', id, e);
+        }
+      }
       setQuestions(questions.filter(q => q.id !== id));
     }
   };
 
   // Cancel the current batch processing
   const cancelProcessing = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-      
-      // Reset loading states
-      setBatchLoading(false);
-      setQuestions(questions.map(q => ({
-        ...q,
-        loading: false
-      })));
-      
-      setGlobalError("Processing was cancelled");
-    }
+    // Abort all controllers
+    Object.values(abortControllerRef.current).forEach(controller => {
+      if (controller) {
+        try {
+          controller.abort();
+        } catch (e) {
+          console.error('Error aborting controller:', e);
+        }
+      }
+    });
+    
+    // Clear all controllers
+    abortControllerRef.current = {};
+    
+    // Reset loading states
+    setBatchLoading(false);
+    setQuestions(questions.map(q => ({
+      ...q,
+      loading: false
+    })));
+    
+    setActiveRequests(0);
+    setGlobalError("Processing was cancelled");
   };
 
-  // Individual question analysis
+  // Individual question analysis - made to support true parallelism
   const analyzeQuestion = async (id) => {
     const question = questions.find(q => q.id === id);
-    if (!question.text.trim()) return;
+    if (!question || !question.text.trim()) return;
 
-    setQuestions(questions.map(q => 
-      q.id === id ? { ...q, loading: true, error: null } : q
-    ));
+    // Set loading state immediately to give visual feedback
+    setQuestions(prevQuestions => 
+      prevQuestions.map(q => 
+        q.id === id ? { ...q, loading: true, error: null } : q
+      )
+    );
     
     setGlobalError(null);
+    setActiveRequests(prev => prev + 1);
 
     try {
-      // Create a new AbortController for this request
+      // Create a new AbortController for this specific request
       const abortController = new AbortController();
-      abortControllerRef.current = abortController;
+      abortControllerRef.current[id] = abortController;
+      
+      console.log(`Starting analysis for question ${id}...`);
       
       const response = await analyzeDentalScenario({ 
         scenario: question.text 
       }, abortController.signal);
       
-      abortControllerRef.current = null;
+      // Remove the controller after completion
+      delete abortControllerRef.current[id];
       
+      console.log(`Completed analysis for question ${id}`);
+
       // Process successful response
       if (response?.status === 'success' && response?.data) {
         setQuestions(prevQuestions => prevQuestions.map(q => 
           q.id === id ? { ...q, result: response, loading: false } : q
         ));
 
-        // Check for questions and show modal if needed
+        // Check for questions and add to queue or show immediately
         if (response.data.questioner_data?.has_questions) {
           console.log("Questions found for record:", response.data.record_id);
-          setCurrentQuestionerData(response.data.questioner_data);
-          setCurrentRecordId(response.data.record_id);
-          setIsQuestionerVisible(true);
+          
+          if (isQuestionerVisible) {
+            // If questioner is already visible, add to queue
+            console.log(`Questioner already visible, adding record ${response.data.record_id} to queue`);
+            setQuestionPendingQueue(prevQueue => [
+              ...prevQueue, 
+              { recordId: response.data.record_id, questionerData: response.data.questioner_data }
+            ]);
+          } else {
+            // If questioner isn't visible, show immediately
+            setCurrentQuestionerData(response.data.questioner_data);
+            setCurrentRecordId(response.data.record_id);
+            setIsQuestionerVisible(true);
+            
+            // Mark this question as having its questioner processed
+            setQuestions(prevQuestions => prevQuestions.map(q => 
+              q.id === id ? { ...q, processedQuestioner: true } : q
+            ));
+          }
         } else {
           console.log("No questions needed for record:", response.data.record_id);
-          // Potentially trigger inspectors directly if no questions (optional)
         }
       } else {
         // Handle non-success status within the response
@@ -96,7 +196,7 @@ const Questions = () => {
     } catch (err) {
       // Check if request was aborted
       if (err.name === 'AbortError') {
-        console.log('Request was cancelled');
+        console.log(`Request for question ${id} was cancelled`);
         return;
       }
       
@@ -106,7 +206,7 @@ const Questions = () => {
                          errorMessage.includes('quota') || 
                          errorMessage.includes('429');
       
-      setQuestions(questions.map(q => 
+      setQuestions(prevQuestions => prevQuestions.map(q => 
         q.id === id ? { 
           ...q, 
           error: isRateLimit 
@@ -115,27 +215,66 @@ const Questions = () => {
           loading: false 
         } : q
       ));
+      
+      console.error(`Error analyzing question ${id}:`, err);
+    } finally {
+      setActiveRequests(prev => prev - 1);
     }
   };
 
-  // Batch analyze all non-empty questions
+  // Enhanced batch analysis to improve parallelism
   const analyzeAllQuestions = async () => {
     // Filter questions that have text
     const questionsToProcess = questions.filter(q => q.text.trim() !== '');
     if (questionsToProcess.length === 0) return;
 
+    // Option 1: Use the batch API endpoint (controlled parallelism)
+    // Comment out this if statement and uncomment the code below for individual parallel requests
+    if (questionsToProcess.length > 1) {
+      // Use the batch API
+      processBatch(questionsToProcess);
+    } else {
+      // For a single question, just use the regular analyze
+      const questionId = questionsToProcess[0].id;
+      analyzeQuestion(questionId);
+    }
+    
+    // Option 2: Use individual requests for maximum parallelism
+    // Uncomment this section and comment out the if-statement above to use this approach
+    /*
+    // Set loading states
+    setQuestions(prevQuestions => 
+      prevQuestions.map(q => 
+        q.text.trim() !== '' ? { ...q, loading: true, error: null } : q
+      )
+    );
+    
+    // Fire off all requests in parallel
+    questionsToProcess.forEach(question => {
+      // Don't await here - let them all run in parallel
+      analyzeQuestion(question.id);
+    });
+    */
+  };
+  
+  // Process using the batch API endpoint
+  const processBatch = async (questionsToProcess) => {
     // Set loading state for all questions being processed
     setBatchLoading(true);
-    setQuestions(questions.map(q => 
-      q.text.trim() !== '' ? { ...q, loading: true, error: null } : q
-    ));
+    setQuestions(prevQuestions => 
+      prevQuestions.map(q => 
+        q.text.trim() !== '' ? { ...q, loading: true, error: null } : q
+      )
+    );
     
     setGlobalError(null);
+    setActiveRequests(prev => prev + questionsToProcess.length);
 
     try {
       // Create a new AbortController for this batch request
+      const batchId = 'batch-' + Date.now();
       const abortController = new AbortController();
-      abortControllerRef.current = abortController;
+      abortControllerRef.current[batchId] = abortController;
       
       // Extract just the text values for the batch API
       const scenariosArray = questionsToProcess.map(q => q.text);
@@ -144,7 +283,8 @@ const Questions = () => {
         abortController.signal
       );
       
-      abortControllerRef.current = null;
+      // Remove the controller after completion
+      delete abortControllerRef.current[batchId];
       
       if (response.status === 'success' && response.batch_results) {
         // Update each question with its corresponding result
@@ -165,17 +305,12 @@ const Questions = () => {
 
               // Check for questions from batch result
               if (result.data.questioner_data?.has_questions) {
-                 // Prioritize showing the first questioner found in the batch
-                 if (!isQuestionerVisible) { 
-                    console.log("Questions found in batch for record:", result.data.record_id);
-                    setCurrentQuestionerData(result.data.questioner_data);
-                    setCurrentRecordId(result.data.record_id);
-                    setIsQuestionerVisible(true);
-                 } else {
-                    console.log("Another questioner pending from batch for record:", result.data.record_id);
-                    // Handle case where multiple questions in a batch need answers (e.g., queue them?)
-                    // For now, we only show the first one.
-                 }
+                 // Add to queue for processing one by one
+                 setQuestionPendingQueue(prevQueue => [
+                   ...prevQueue,
+                   { recordId: result.data.record_id, questionerData: result.data.questioner_data }
+                 ]);
+                 console.log(`Added record ${result.data.record_id} from batch to questioner queue`);
               } else {
                  console.log("No questions needed for batch record:", result.data.record_id);
               }
@@ -213,29 +348,15 @@ const Questions = () => {
       setGlobalError(displayError);
       
       // Set error for all questions being processed
-      setQuestions(questions.map(q => 
-        q.text.trim() !== '' ? { ...q, error: displayError, loading: false } : q
-      ));
+      setQuestions(prevQuestions => 
+        prevQuestions.map(q => 
+          q.text.trim() !== '' ? { ...q, error: displayError, loading: false } : q
+        )
+      );
     } finally {
       setBatchLoading(false);
-      abortControllerRef.current = null;
+      setActiveRequests(prev => prev - questionsToProcess.length);
     }
-  };
-
-  const handleCopyResults = (id) => {
-    const question = questions.find(q => q.id === id);
-    if (!question?.result?.data?.inspector_results) return;
-    
-    const cdtCodes = question.result.data.inspector_results.cdt?.codes || [];
-    const icdCodes = question.result.data.inspector_results.icd?.codes || [];
-    
-    let textToCopy = `Question: ${question.text}\n\nCDT Codes: ${cdtCodes.join(', ')}\nICD Codes: ${icdCodes.join(', ')}`;
-    
-    navigator.clipboard.writeText(textToCopy).then(() => {
-      alert('Results copied to clipboard!');
-    }).catch(err => {
-      console.error('Failed to copy results: ', err);
-    });
   };
 
   // Handle successful submission of answers from Questioner modal
@@ -262,10 +383,27 @@ const Questions = () => {
       console.error("Failed to update results after questioner submission:", response);
       // Optionally show an error message to the user
     }
+    
     // Reset questioner state regardless of success/failure of update
     setIsQuestionerVisible(false);
     setCurrentQuestionerData(null);
     setCurrentRecordId(null);
+  };
+
+  const handleCopyResults = (id) => {
+    const question = questions.find(q => q.id === id);
+    if (!question?.result?.data?.inspector_results) return;
+    
+    const cdtCodes = question.result.data.inspector_results.cdt?.codes || [];
+    const icdCodes = question.result.data.inspector_results.icd?.codes || [];
+    
+    let textToCopy = `Question: ${question.text}\n\nCDT Codes: ${cdtCodes.join(', ')}\nICD Codes: ${icdCodes.join(', ')}`;
+    
+    navigator.clipboard.writeText(textToCopy).then(() => {
+      alert('Results copied to clipboard!');
+    }).catch(err => {
+      console.error('Failed to copy results: ', err);
+    });
   };
 
   const renderResults = (question) => {
@@ -328,6 +466,14 @@ const Questions = () => {
           </div>
           <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'} mt-2`}>{icdExplanation}</p>
         </div>
+        
+        {question.result?.data?.questioner_data?.has_questions && (
+          <div className={`mt-2 p-2 ${isDark ? 'bg-yellow-800/30' : 'bg-yellow-100'} rounded-lg border border-yellow-400`}>
+            <p className={`text-sm ${isDark ? 'text-yellow-200' : 'text-yellow-800'}`}>
+              This scenario required additional questions that were processed{question.processedQuestioner ? '' : ' or are pending'}.
+            </p>
+          </div>
+        )}
       </div>
     );
   };
@@ -337,12 +483,27 @@ const Questions = () => {
     return questions.filter(q => q.text.trim() !== '').length;
   };
 
+  // Count pending questioners (in queue plus visible ones)
+  const getPendingQuestionersCount = () => {
+    return questionPendingQueue.length + (isQuestionerVisible ? 1 : 0);
+  };
+
   return (
     <div className="flex-grow flex justify-center p-4">
       <div className={`w-full max-w-4xl ${isDark ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg p-6 transition-colors`}>
         <div className={`${isDark ? 'bg-blue-900' : 'bg-blue-500'} text-white p-4 rounded-lg mb-6 flex justify-between items-center`}>
           <h2 className="text-xl md:text-2xl font-semibold flex items-center">
             <FaTooth className="mr-2" /> Multiple Dental Scenarios
+            {activeRequests > 0 && (
+              <span className="ml-2 text-sm bg-green-500 px-2 py-1 rounded-full">
+                {activeRequests} Active {activeRequests === 1 ? 'Request' : 'Requests'}
+              </span>
+            )}
+            {getPendingQuestionersCount() > 0 && (
+              <span className="ml-2 text-sm bg-yellow-500 px-2 py-1 rounded-full">
+                {getPendingQuestionersCount()} Pending {getPendingQuestionersCount() === 1 ? 'Questioner' : 'Questioners'}
+              </span>
+            )}
           </h2>
           <div className="flex space-x-2">
             {batchLoading ? (
@@ -410,6 +571,13 @@ const Questions = () => {
               <div className="flex justify-between items-center mb-3">
                 <h3 className={`font-semibold ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
                   Question {question.id}
+                  {question.result?.data?.questioner_data?.has_questions && (
+                    <span className={`ml-2 text-xs px-2 py-1 rounded-full ${
+                      isDark ? 'bg-yellow-800/60 text-yellow-200' : 'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      Has Questions
+                    </span>
+                  )}
                 </h3>
                 {questions.length > 1 && (
                   <button 
@@ -478,13 +646,23 @@ const Questions = () => {
           <Questioner 
             isVisible={isQuestionerVisible}
             onClose={() => {
+              console.log("Questioner closed by user");
               setIsQuestionerVisible(false); 
               setCurrentQuestionerData(null); 
               setCurrentRecordId(null);
             }}
-            questions={currentQuestionerData} // Pass the specific questioner data
-            recordId={currentRecordId} // Pass the specific record ID
-            onSubmitSuccess={handleQuestionerSubmitSuccess} // Pass the handler function
+            questions={{
+              cdt_questions: (currentQuestionerData.cdt_questions?.questions || []).map(q => ({
+                ...q,
+                id: q.id || `cdt-${Math.random().toString(36).substr(2, 9)}` // Ensure every question has an id
+              })),
+              icd_questions: (currentQuestionerData.icd_questions?.questions || []).map(q => ({
+                ...q,
+                id: q.id || `icd-${Math.random().toString(36).substr(2, 9)}` // Ensure every question has an id
+              }))
+            }}
+            recordId={currentRecordId}
+            onSubmitSuccess={handleQuestionerSubmitSuccess}
           />
         )}
 
