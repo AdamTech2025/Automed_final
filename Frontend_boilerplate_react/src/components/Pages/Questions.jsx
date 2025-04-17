@@ -227,16 +227,16 @@ const Questions = () => {
     
     // Clear all controllers
     abortControllerRef.current = {};
-    
-    // Reset loading states
-    setBatchLoading(false);
-    setQuestions(questions.map(q => ({
-      ...q,
-      loading: false
-    })));
-    
+      
+      // Reset loading states
+      setBatchLoading(false);
+      setQuestions(questions.map(q => ({
+        ...q,
+        loading: false
+      })));
+      
     setActiveRequests(0);
-    setGlobalError("Processing was cancelled");
+      setGlobalError("Processing was cancelled");
   };
 
   // Individual question analysis - made to support true parallelism
@@ -267,8 +267,8 @@ const Questions = () => {
       
       console.log(`Starting analysis for question ${id}...`);
       
-      const response = await analyzeDentalScenario({
-        scenario: question.text
+      const response = await analyzeDentalScenario({ 
+        scenario: question.text 
       }, abortController.signal);
       
       // Remove the controller after completion
@@ -279,8 +279,8 @@ const Questions = () => {
       // Process successful response
       if (response?.status === 'success' && response?.data) {
         setQuestions(prevQuestions => prevQuestions.map(q =>
-          q.id === id ? { ...q, result: response, loading: false } : q
-        ));
+        q.id === id ? { ...q, result: response, loading: false } : q
+      ));
 
         // Initialize selected codes based on inspector results (if any)
         const inspectorCodes = response.data.inspector_results?.cdt?.codes || [];
@@ -311,17 +311,17 @@ const Questions = () => {
       
       // Handle rate limit errors
       const errorMessage = err.message || 'Failed to analyze';
-      const isRateLimit = errorMessage.includes('rate limit') ||
-                         errorMessage.includes('quota') ||
+      const isRateLimit = errorMessage.includes('rate limit') || 
+                         errorMessage.includes('quota') || 
                          errorMessage.includes('429');
       
       setQuestions(prevQuestions => prevQuestions.map(q =>
-        q.id === id ? {
-          ...q,
-          error: isRateLimit
-            ? "API rate limit reached. Please try again in a few moments."
+        q.id === id ? { 
+          ...q, 
+          error: isRateLimit 
+            ? "API rate limit reached. Please try again in a few moments." 
             : errorMessage,
-          loading: false
+          loading: false 
         } : q
       ));
       
@@ -392,7 +392,7 @@ const Questions = () => {
       if (response.status === 'success' && response.batch_results) {
         // Update each question with its corresponding result
         const updatedQuestions = [...questions];
-
+        
         questionsToProcess.forEach((processedQuestion, index) => {
           const resultIndex = updatedQuestions.findIndex(q => q.id === processedQuestion.id);
           if (resultIndex !== -1 && response.batch_results[index]) {
@@ -400,7 +400,7 @@ const Questions = () => {
             const questionId = processedQuestion.id;
 
             updatedQuestions[resultIndex].loading = false; // Set loading false for this question
-
+            
             // Check if this individual result has an error
             if (resultData.status === 'error') {
               updatedQuestions[resultIndex].error = resultData.message || 'Failed in batch';
@@ -444,12 +444,12 @@ const Questions = () => {
       
       // Handle rate limit errors
       const errorMessage = err.message || 'Failed to analyze in batch';
-      const isRateLimit = errorMessage.includes('rate limit') ||
-                         errorMessage.includes('quota') ||
+      const isRateLimit = errorMessage.includes('rate limit') || 
+                         errorMessage.includes('quota') || 
                          errorMessage.includes('429');
       
-      const displayError = isRateLimit
-        ? "API rate limit reached. Please try fewer questions at a time or wait a moment before trying again."
+      const displayError = isRateLimit 
+        ? "API rate limit reached. Please try fewer questions at a time or wait a moment before trying again." 
         : errorMessage;
       
       setGlobalError(displayError);
@@ -690,7 +690,7 @@ const Questions = () => {
     const question = questions.find(q => q.id === id);
     
     let textToCopy = `Question: ${question?.text || 'N/A'}
-
+    
 Accepted CDT Codes: ${accepted.join(', ')}`;
     // Optionally add accepted ICD codes if managed similarly
     
@@ -714,6 +714,14 @@ Accepted CDT Codes: ${accepted.join(', ')}`;
 
     const currentSelected = selectedCodes[questionId] || { accepted: [], denied: [] };
 
+    // --- Count CDT Code Occurrences ---
+    const codeCounts = cdtCodes.reduce((acc, code) => {
+      acc[code] = (acc[code] || 0) + 1;
+      return acc;
+    }, {});
+    const uniqueCdtCodes = Object.keys(codeCounts);
+    // --- End Counting ---
+
     return (
       <div className={`mt-4 p-4 ${isDark ? 'bg-blue-900/30 border-blue-700' : 'bg-blue-50 border-blue-200'} rounded-lg border relative`}>
         {/* Header and Copy Button */}
@@ -735,10 +743,12 @@ Accepted CDT Codes: ${accepted.join(', ')}`;
         <div className="mb-4">
           <h4 className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'} mb-2`}>CDT Codes:</h4>
           <div className="flex flex-wrap gap-2">
-            {cdtCodes.length > 0 ? cdtCodes.map((code, index) => {
+            {uniqueCdtCodes.length > 0 ? uniqueCdtCodes.map((code, index) => { // Iterate over unique codes
+              const count = codeCounts[code];
+              const displayCode = count > 1 ? `${code} (${count} times)` : code; // Create display string
               const isAccepted = currentSelected.accepted.includes(code);
               const isDenied = currentSelected.denied.includes(code);
-              
+
               return (
                 <div
                   key={`cdt-code-${questionId}-${index}-${code}`}
@@ -748,21 +758,21 @@ Accepted CDT Codes: ${accepted.join(', ')}`;
                       : isDenied
                         ? (isDark ? 'bg-red-900/60 text-red-200 border-red-700' : 'bg-red-100 text-red-800 border-red-300')
                         : (isDark ? 'bg-blue-800/60 text-blue-200 border-blue-700' : 'bg-blue-100 text-blue-800 border-blue-300')
-                  }`}
-                >
-                  {code}
+                }`}
+              >
+                {displayCode} {/* Use displayCode for rendering */}
                   {/* Hover Icons */}
                   <div className="absolute inset-0 flex items-center justify-center space-x-1 bg-black bg-opacity-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                     <button
                       title="Accept"
-                      onClick={(e) => { e.stopPropagation(); handleCodeSelection(questionId, code, 'accept'); }}
+                      onClick={(e) => { e.stopPropagation(); handleCodeSelection(questionId, code, 'accept'); }} // Use original 'code' for logic
                       className={`p-1 rounded-full ${isAccepted ? 'bg-green-500' : 'bg-gray-600 hover:bg-green-500'} text-white text-xs`}
                     >
                       <FaCheck />
                     </button>
                     <button
                       title="Reject"
-                      onClick={(e) => { e.stopPropagation(); handleCodeSelection(questionId, code, 'deny'); }}
+                      onClick={(e) => { e.stopPropagation(); handleCodeSelection(questionId, code, 'deny'); }} // Use original 'code' for logic
                        className={`p-1 rounded-full ${isDenied ? 'bg-red-500' : 'bg-gray-600 hover:bg-red-500'} text-white text-xs`}
                     >
                       <FaTimes />
@@ -782,7 +792,7 @@ Accepted CDT Codes: ${accepted.join(', ')}`;
           <h4 className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'} mb-2`}>ICD Codes:</h4>
           <div className="flex flex-wrap gap-2">
             {icdCodes.length > 0 ? icdCodes.map((code, index) => (
-              <span
+              <span 
                 key={`icd-code-${questionId}-${index}-${code}`}
                 className={`px-3 py-1 rounded-full text-sm ${
                   isDark ? 'bg-purple-900/60 text-purple-200' : 'bg-purple-100 text-purple-800'
@@ -847,7 +857,7 @@ Accepted CDT Codes: ${accepted.join(', ')}`;
            <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'} mt-1`}>
              Add a custom CDT code to check its applicability.
            </p>
-         </div>
+        </div>
       </div>
     );
   };
@@ -886,9 +896,9 @@ Accepted CDT Codes: ${accepted.join(', ')}`;
           <div className="flex space-x-2">
              {/* Cancel Button */}
             {(batchLoading || activeRequests > 0) && (
-              <button
+              <button 
                 onClick={cancelProcessing}
-                className={`${isDark ? 'bg-red-700 hover:bg-red-600' : 'bg-red-600 hover:bg-red-500'}
+                className={`${isDark ? 'bg-red-700 hover:bg-red-600' : 'bg-red-600 hover:bg-red-500'} 
                 text-white px-3 py-2 rounded-lg transition-colors flex items-center text-sm`}
                 title="Cancel all ongoing analyses"
               >
@@ -897,31 +907,31 @@ Accepted CDT Codes: ${accepted.join(', ')}`;
               </button>
             )}
              {/* Analyze All Button */}
-            <button
-              onClick={analyzeAllQuestions}
-              className={`${
+              <button 
+                onClick={analyzeAllQuestions}
+                className={`${
                 batchLoading || activeRequests > 0 || getValidQuestionsCount() === 0
                   ? (isDark ? 'bg-gray-700 text-gray-400' : 'bg-gray-400 text-gray-700')
-                  : (isDark ? 'bg-green-700 hover:bg-green-600' : 'bg-green-600 hover:bg-green-500')
+                    : (isDark ? 'bg-green-700 hover:bg-green-600' : 'bg-green-600 hover:bg-green-500')
               } text-white px-3 py-2 rounded-lg transition-colors flex items-center text-sm`}
               disabled={batchLoading || activeRequests > 0 || getValidQuestionsCount() === 0}
-            >
-              {batchLoading ? (
-                <>
-                  <FaSpinner className="inline mr-1 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <FaPaperPlane className="inline mr-1" />
+              >
+                {batchLoading ? (
+                  <>
+                    <FaSpinner className="inline mr-1 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <FaPaperPlane className="inline mr-1" />
                   Analyze All ({getValidQuestionsCount()})
-                </>
-              )}
-            </button>
+                  </>
+                )}
+              </button>
              {/* Add Question Button */}
-            <button
+            <button 
               onClick={addQuestion}
-              className={`${isDark ? 'bg-blue-700 hover:bg-blue-600' : 'bg-blue-600 hover:bg-blue-500'}
+              className={`${isDark ? 'bg-blue-700 hover:bg-blue-600' : 'bg-blue-600 hover:bg-blue-500'} 
                 text-white p-2 rounded-full transition-colors flex items-center`}
               disabled={batchLoading || activeRequests > 0}
               title="Add another question input"
@@ -947,8 +957,8 @@ Accepted CDT Codes: ${accepted.join(', ')}`;
         {/* Questions List */}
         <div className="space-y-6">
           {questions.map((question) => (
-            <div
-              key={question.id}
+            <div 
+              key={question.id} 
               className={`p-4 rounded-lg border ${
                 isDark ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'
               }`}
@@ -965,9 +975,9 @@ Accepted CDT Codes: ${accepted.join(', ')}`;
                   )}
                 </h3>
                 {questions.length > 1 && (
-                  <button
+                  <button 
                     onClick={() => removeQuestion(question.id)}
-                    className={`${isDark ? 'text-red-400 hover:text-red-300' : 'text-red-500 hover:text-red-600'}
+                    className={`${isDark ? 'text-red-400 hover:text-red-300' : 'text-red-500 hover:text-red-600'} 
                       transition-colors`}
                     disabled={batchLoading || question.loading || activeRequests > 0} // Disable if any activity
                     title="Remove this question"
@@ -1001,20 +1011,20 @@ Accepted CDT Codes: ${accepted.join(', ')}`;
               
               {/* Individual Analyze Button (Hidden if batch processing) */}
               {!batchLoading && activeRequests === 0 && (
-                  <div className="flex justify-end">
-                    <button
-                      onClick={() => analyzeQuestion(question.id)}
+              <div className="flex justify-end">
+                <button
+                  onClick={() => analyzeQuestion(question.id)}
                       disabled={!question.text.trim()}
-                      className={`${
+                  className={`${
                         !question.text.trim()
                           ? (isDark ? 'bg-gray-600 text-gray-400' : 'bg-gray-400 text-gray-700')
-                          : (isDark ? 'bg-blue-700 hover:bg-blue-600' : 'bg-blue-600 hover:bg-blue-700')
+                      : (isDark ? 'bg-blue-700 hover:bg-blue-600' : 'bg-blue-600 hover:bg-blue-700')
                       } text-white px-4 py-2 rounded-lg shadow-md transition-all duration-300 flex items-center text-sm`}
                     >
                       <FaPaperPlane className="inline mr-2" />
                       Analyze This
-                    </button>
-                  </div>
+                </button>
+              </div>
               )}
               
               {/* Individual Error */}

@@ -98,39 +98,72 @@ ICD_EXPLANATION: [Briefly explain why these ICD questions are necessary or why n
         icd_explanation = ""
         
         current_section = None
-        for line in response.strip().split('\n'):
-            if line.startswith("CDT_QUESTIONS:"):
-                current_section = "cdt_questions"
-                continue
-            elif line.startswith("CDT_EXPLANATION:"):
-                current_section = "cdt_explanation"
-                continue
-            elif line.startswith("ICD_QUESTIONS:"):
-                current_section = "icd_questions"
-                continue
-            elif line.startswith("ICD_EXPLANATION:"):
-                current_section = "icd_explanation"
+        current_explanation = ""
+        for line in response.strip().split('\\n'):
+            stripped_line = line.strip()
+            if not stripped_line: 
                 continue
             
-            if line.strip():
-                if current_section == "cdt_questions" and line.strip().lower() != "none":
-                    cdt_questions.append(line.strip())
-                elif current_section == "cdt_explanation":
-                    cdt_explanation = line.strip()
-                elif current_section == "icd_questions" and line.strip().lower() != "none":
-                    icd_questions.append(line.strip())
-                elif current_section == "icd_explanation":
-                    icd_explanation = line.strip()
+            if stripped_line.startswith('"explanation":'):
+                # This indicates the start of the JSON-like structure, ignore it
+                continue
+
+            upper_line = stripped_line.upper()
+            if upper_line.startswith("CDT_QUESTIONS:"):
+                current_section = "cdt"
+                if ":" in stripped_line:
+                    potential_explanation = stripped_line.split(":", 1)[1].strip()
+                    if potential_explanation and not potential_explanation.lower().startswith("none"):
+                        # If explanation is on the same line
+                         cdt_explanation = potential_explanation
+                continue # Move to the next line to read questions
+            elif upper_line.startswith("ICD_QUESTIONS:"):
+                current_section = "icd"
+                if ":" in stripped_line:
+                    potential_explanation = stripped_line.split(":", 1)[1].strip()
+                    if potential_explanation and not potential_explanation.lower().startswith("none"):
+                        # If explanation is on the same line
+                         icd_explanation = potential_explanation
+                continue # Move to the next line to read questions
+            elif upper_line.startswith("EXPLANATION:"):
+                 current_explanation = stripped_line[len("EXPLANATION:"):].strip()
+                 # Decide where to put this explanation based on the current section context
+                 if current_section == "cdt" and not cdt_explanation:
+                     cdt_explanation = current_explanation
+                 elif current_section == "icd" and not icd_explanation:
+                     icd_explanation = current_explanation
+                 # If section is None or already has explanation, this might be a general explanation (or misplaced)
+                 # For now, we just store it; consider where it fits best if needed.
+                 continue # Move to the next line
+
+            # Add line to the correct list if it's not a marker or empty
+            # CRITICAL FIX: Check if the line is literally "None" (case-insensitive)
+            if stripped_line.lower() == '"none"' or stripped_line.lower() == 'none':
+                continue # Skip adding "None" as a question
+
+            if current_section == "cdt":
+                cdt_questions.append(stripped_line.strip('"-, '))
+            elif current_section == "icd":
+                icd_questions.append(stripped_line.strip('"-, '))
+            elif current_explanation: # If we captured an explanation before finding a section marker
+                 # Assign explanation based on which question list gets populated first (heuristic)
+                 if not cdt_explanation and not icd_explanation:
+                      # Check if the line looks like a potential question
+                     if stripped_line: # Add more checks if needed
+                         # Assume it belongs to CDT if it appears first
+                         cdt_explanation = current_explanation
+                         cdt_questions.append(stripped_line.strip('"-, '))
+                         current_section = "cdt" # Set section now
 
         return {
             "cdt_questions": {
                 "questions": cdt_questions,
-                "explanation": cdt_explanation,
+                "explanation": cdt_explanation.strip(),
                 "has_questions": len(cdt_questions) > 0
             },
             "icd_questions": {
                 "questions": icd_questions,
-                "explanation": icd_explanation,
+                "explanation": icd_explanation.strip(),
                 "has_questions": len(icd_questions) > 0
             },
             "has_questions": len(cdt_questions) > 0 or len(icd_questions) > 0

@@ -78,8 +78,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "https://dentalcoder.vercel.app", 
-        "https://automed.adamtechnologies.in", 
+        "https://dentalcoder.vercel.app",
+        "https://automed.adamtechnologies.in",
         "http://automed.adamtechnologies.in",
         os.getenv("FRONTEND_URL", "")  # Get from environment variable
     ],
@@ -96,10 +96,10 @@ def map_to_cdt_category(specific_code: str) -> str:
         base_code = specific_code.split("-")[0]
     else:
         base_code = specific_code
-    
+
     # Get the first 2 characters
     category_prefix = base_code[:2]
-    
+
     # Map to the corresponding category
     if category_prefix == "D0":
         return "D0100-D0999"
@@ -293,7 +293,6 @@ async def save_initial_data(scenario_data: dict) -> dict:
             scenario_data.get("topic_activation_result", {}).get("status") == "error"):
             raise ValueError("Cannot save data due to errors in previous steps.")
 
-
         # Prepare CDT data
         formatted_cdt_results = []
         cdt_classifier_results = scenario_data.get("cdt_result", {}).get("formatted_results", [])
@@ -311,7 +310,7 @@ async def save_initial_data(scenario_data: dict) -> dict:
         complete_cdt_data = {
             "cdt_classification": {
                 "CDT_classifier": formatted_cdt_results,
-                 "range_codes_string": scenario_data.get("cdt_result", {}).get("range_codes_string", "")
+                "range_codes_string": scenario_data.get("cdt_result", {}).get("range_codes_string", "")
             },
             "topics_results": {
                 "topic_result": db_topic_result,
@@ -352,7 +351,6 @@ async def save_initial_data(scenario_data: dict) -> dict:
                 if "doubts" in icd_result and icd_result["doubts"]:
                     primary_doubt = icd_result["doubts"][0]
 
-
             complete_icd_data = {
                 "simplified": {
                     "code": primary_icd_code,
@@ -364,7 +362,7 @@ async def save_initial_data(scenario_data: dict) -> dict:
             }
         else:
             # Store error information if ICD classification failed
-             complete_icd_data = {"error": icd_result.get("error", "ICD data unavailable")}
+            complete_icd_data = {"error": icd_result.get("error", "ICD data unavailable")}
 
 
         cdt_json = json.dumps(complete_cdt_data)
@@ -413,17 +411,16 @@ async def generate_questions_for_scenario(record_id: str, processed_scenario: st
             "code_ranges": cdt_data.get("cdt_classification", {}).get("range_codes_string", ""),
             "activated_subtopics": cdt_data.get("topics_results", {}).get("activated_subtopics", []),
             "subtopics": ", ".join(list(cdt_data.get("topics_results", {}).get("subtopic_data", {}).keys())) if cdt_data.get("topics_results", {}).get("subtopic_data") else "None",
-             "formatted_cdt_results": [
-                 f"{res.get('code_range')}: {res.get('explanation')}"
-                 for res in cdt_data.get("cdt_classification", {}).get("CDT_classifier", [])
-             ]
+            "formatted_cdt_results": [
+                f"{res.get('code_range')}: {res.get('explanation')}"
+                for res in cdt_data.get("cdt_classification", {}).get("CDT_classifier", [])
+            ]
         }
         simplified_icd_data = icd_data.get("simplified", {"code": "", "explanation": "", "doubt": ""})
 
         # Ensure ICD data passed is not the error structure
         if "error" in simplified_icd_data:
              simplified_icd_data = {"code": "", "explanation": f"ICD Error: {simplified_icd_data['error']}", "doubt": ""}
-
 
         questioner_result = questioner.process(
             processed_scenario,
@@ -478,7 +475,7 @@ async def run_inspectors_for_scenario(record_id: str) -> dict:
     try:
         # Use the refactored function
         inspector_run_result = await run_inspectors(record_id)
-
+        
         # Get complete record data for response (similar to submit_question_answers)
         complete_data = db.get_complete_analysis(record_id)
         if not complete_data:
@@ -580,7 +577,7 @@ async def analyze_web(request: ScenarioRequest):
 
         record_id = save_result["record_id"]
         complete_cdt_data = save_result["cdt_data"] # Get the formatted data back
-        complete_icd_data = save_result["icd_data"] # Get the formatted data back
+        complete_icd_data = save_result["icd_data"]
 
         # Step 4b: Generate Questions
         question_gen_result = await generate_questions_for_scenario(
@@ -588,7 +585,7 @@ async def analyze_web(request: ScenarioRequest):
         )
         questioner_result = question_gen_result["questioner_result"]
         if question_gen_result["status"] == "error":
-             print(f"⚠️ Question generation failed for {record_id}: {question_gen_result['message']}")
+             print(f"⚠️ Question generation failed for {record_id}: {question_gen_result.get('message')}")
              # Don't raise error, but store the questioner result containing the error info
 
         # Step 5: Run Inspectors (Conditionally)
@@ -610,7 +607,7 @@ async def analyze_web(request: ScenarioRequest):
             "cdt_classification": complete_cdt_data.get("cdt_classification", {}),
             "topics_results": complete_cdt_data.get("topics_results", {}),
             "icd_classification": complete_icd_data.get("simplified", {}),
-            "questioner_data": questioner_result,
+            "questioner_data": questioner_result,          
             "inspector_results": inspector_results.get("inspector_results") if isinstance(inspector_results, dict) and inspector_results.get("status") == "success" else inspector_results # Handle different shapes of inspector_results
         }
 
@@ -656,14 +653,16 @@ async def submit_question_answers(record_id: str, request: QuestionAnswersReques
         analysis = db.get_complete_analysis(record_id)
         if not analysis:
             return {"status": "error", "message": f"No analysis found with ID: {record_id}"}
-
+        
         # Parse the answers JSON string safely
+        answers = {}
         try:
             answers = json.loads(request.answers)
         except json.JSONDecodeError:
              return {"status": "error", "message": "Invalid JSON format for answers"}
-
+        
         # Parse existing questioner data safely
+        questioner_data = {}
         try:
             questioner_data = json.loads(analysis.get("questioner_data", "{}"))
             if not isinstance(questioner_data, dict): # Basic check
@@ -671,24 +670,24 @@ async def submit_question_answers(record_id: str, request: QuestionAnswersReques
         except (json.JSONDecodeError, ValueError) as e:
             print(f"Error parsing existing questioner data for {record_id}: {e}")
             return {"status": "error", "message": "Invalid or missing questioner data found for this analysis"}
-
+        
         # Add the answers to the questioner data
         questioner_data["answers"] = answers
         questioner_data["answered"] = True
         questioner_data["has_answers"] = True # Mark that answers are present
-
+        
         # Update the database
         db.update_questioner_data(record_id, json.dumps(questioner_data))
         print(f"✅ Updated questioner data with answers for record ID: {record_id}")
-
+        
         # Proceed to inspector step after answers are saved
         inspector_run_result = await run_inspectors_for_scenario(record_id)
-
+        
         # Get the complete updated record data for response
         complete_data = db.get_complete_analysis(record_id)
         if not complete_data:
              return {"status": "error", "message": f"Failed to retrieve complete analysis for record ID: {record_id} after update"}
-
+        
         # Parse all the necessary JSON data
         cdt_result = {}
         icd_result = {}
@@ -739,7 +738,7 @@ async def trigger_inspectors(record_id: str):
     try:
         # Use the refactored function
         inspector_run_result = await run_inspectors_for_scenario(record_id)
-
+        
         # Get complete record data for response (similar to submit_question_answers)
         complete_data = db.get_complete_analysis(record_id)
         if not complete_data:
@@ -798,7 +797,7 @@ async def run_inspectors(record_id: str):
     """Core logic to run CDT and ICD inspectors in parallel for a given record."""
     print(f"\n*************************** RUNNING INSPECTORS (Core Logic) FOR RECORD {record_id} ***************************")
     inspector_results = {} # Initialize structure for results
-
+    
     try:
         # Get the required data from the database
         analysis = db.get_complete_analysis(record_id)
@@ -811,9 +810,9 @@ async def run_inspectors(record_id: str):
         icd_data_from_db = {}
 
         try:
-             questioner_data = json.loads(analysis.get("questioner_data", "{}"))
-             cdt_data_from_db = json.loads(analysis.get("cdt_result", "{}"))
-             icd_data_from_db = json.loads(analysis.get("icd_result", "{}"))
+            questioner_data = json.loads(analysis.get("questioner_data", "{}"))
+            cdt_data_from_db = json.loads(analysis.get("cdt_result", "{}"))
+            icd_data_from_db = json.loads(analysis.get("icd_result", "{}"))
         except json.JSONDecodeError as e:
              raise ValueError(f"Failed to parse stored JSON data for record {record_id}: {e}")
 
@@ -928,10 +927,10 @@ async def run_inspectors(record_id: str):
         error_details = traceback.format_exc()
         # Structure the error response
         error_result = {
-                "cdt": {"error": str(e), "codes": [], "rejected_codes": [], "explanation": f"Core Inspector Error: {str(e)}"},
-                "icd": {"error": str(e), "codes": [], "explanation": f"Core Inspector Error: {str(e)}"},
-                "timestamp": str(datetime.datetime.now())
-            }
+            "cdt": {"error": str(e), "codes": [], "rejected_codes": [], "explanation": f"Core Inspector Error: {str(e)}"},
+            "icd": {"error": str(e), "codes": [], "explanation": f"Core Inspector Error: {str(e)}"},
+            "timestamp": str(datetime.datetime.now())
+        }
         # Try to save error state to DB
         try:
              db.update_inspector_results(record_id, json.dumps({"error": str(e), "details": error_details, **error_result}))
@@ -961,7 +960,7 @@ async def add_custom_code(request: CustomCodeRequest):
                 "status": "error",
                 "message": f"No analysis found with ID: {request.record_id}"
             }
-            
+        
         # Parse the analysis result to extract components
         explanation = ""
         doubt = "None"
@@ -975,7 +974,7 @@ async def add_custom_code(request: CustomCodeRequest):
                 doubt = parts[1].strip()
         else:
             explanation = analysis_result
-            
+        
         # Check if the code is likely applicable based on the analysis result
         is_applicable = "Applicable? Yes" in analysis_result
         
@@ -993,12 +992,12 @@ async def add_custom_code(request: CustomCodeRequest):
             "data": {
                 "code_data": code_data,
                 "inspector_results": {
-                    "cdt": {
+                "cdt": {
                         "codes": [request.code] if is_applicable else [],
                         "rejected_codes": [] if is_applicable else [request.code],
                         "explanation": explanation
-                    },
-                    "icd": {
+                },
+                "icd": {
                         "codes": [],
                         "explanation": ""
                     }
@@ -1023,17 +1022,17 @@ async def store_code_status(request: CodeStatusRequest):
         print(f"Selected ICD codes: {request.icd_codes}")
         print(f"Rejected CDT codes: {request.rejected_cdt_codes}")
         print(f"Rejected ICD codes: {request.rejected_icd_codes}") # Assuming frontend sends this
-
+        
         # Get the existing analysis from the database
         analysis = db.get_complete_analysis(request.record_id)
         if not analysis:
             return {"status": "error", "message": f"No analysis found with ID: {request.record_id}"}
-
+        
         # Get the inspector results or create new structure
         inspector_results = {}
         try:
              if analysis.get("inspector_results"):
-                  inspector_results = json.loads(analysis["inspector_results"])
+                inspector_results = json.loads(analysis["inspector_results"])
         except json.JSONDecodeError:
               print(f"Warning: Could not parse existing inspector results for {request.record_id} during status store. Overwriting.")
               inspector_results = {} # Start fresh if parsing failed
@@ -1041,7 +1040,7 @@ async def store_code_status(request: CodeStatusRequest):
         # Ensure base structure exists
         if "cdt" not in inspector_results: inspector_results["cdt"] = {}
         if "icd" not in inspector_results: inspector_results["icd"] = {}
-
+        
         # Update the inspector results with user selections
         inspector_results["cdt"]["codes"] = request.cdt_codes
         inspector_results["cdt"]["rejected_codes"] = request.rejected_cdt_codes
@@ -1049,14 +1048,14 @@ async def store_code_status(request: CodeStatusRequest):
         inspector_results["icd"]["codes"] = request.icd_codes
         # Add rejected ICD if provided by request model
         inspector_results["icd"]["rejected_codes"] = request.rejected_icd_codes
-
+        
         # Add a timestamp and source indicator
         inspector_results["timestamp"] = str(datetime.datetime.now())
         inspector_results["updated_by"] = "user_selection"
-
+        
         # Update the database
         db.update_inspector_results(request.record_id, json.dumps(inspector_results))
-
+        
         # Update the CDT and ICD results for backward compatibility (Optional - can remove later)
         # try:
         #     cdt_result = json.loads(analysis.get("cdt_result", "{}"))
@@ -1066,15 +1065,15 @@ async def store_code_status(request: CodeStatusRequest):
         #     db.update_analysis_results(request.record_id, json.dumps(cdt_result), json.dumps(icd_result))
         # except Exception as legacy_e:
         #      print(f"Warning: Failed to update legacy CDT/ICD results for {request.record_id}: {legacy_e}")
-
+        
         print(f"✅ Code status updated in the database")
-
+        
         return {
             "status": "success",
             "message": "Code status updated successfully",
             "inspector_results": inspector_results # Return the final structure
         }
-
+        
     except Exception as e:
         error_details = traceback.format_exc()
         print(f"❌ ERROR storing code status: {str(e)}")
@@ -1169,17 +1168,27 @@ async def analyze_batch(request: BatchScenarioRequest):
 
             # --- Step 5: Run Inspectors (Conditionally and Immediately) ---
             inspector_run_result_data = {"status": "not_run"} # Default state
+            # Check if inspectors should run and no critical error occurred before this step
             if current_result.get("should_run_inspectors_immediately") and current_result.get("final_status") != "error":
                  print(f"Batch [{index+1}] Running Inspectors Immediately...")
                  async with semaphore: # Inspectors call external APIs
-                     inspector_run_result_data = await run_inspectors_for_scenario(record_id)
-                 current_result["inspector_run_result"] = inspector_run_result_data # Store the raw result from the run
-                 if inspector_run_result_data.get("status") != "success":
-                      print(f"Batch [{index+1}] WARN (Inspectors failed: {inspector_run_result_data.get('message')})")
-                      # Error details might be within inspector_results structure inside inspector_run_result_data
+                     # Pass record_id directly to run_inspectors_for_scenario
+                     inspector_response = await run_inspectors_for_scenario(record_id)
 
-            # Store the actual inspector results payload (or error state)
-            current_result["inspector_results"] = inspector_run_result_data.get("inspector_results") if isinstance(inspector_run_result_data, dict) else inspector_run_result_data
+                 # Store the entire response from run_inspectors_for_scenario
+                 current_result["inspector_run_result"] = inspector_response
+
+                 # Extract the nested inspector_results if the call was successful
+                 if inspector_response.get("status") == "success" and isinstance(inspector_response.get("data"), dict):
+                     inspector_run_result_data = inspector_response['data'].get('inspector_results', {"status": "success_run_no_results"}) # Store actual results payload
+                 elif inspector_response.get("status") != "success":
+                     print(f"Batch [{index+1}] WARN (Inspectors failed: {inspector_response.get('message')})")
+                     inspector_run_result_data = {"status": "error", "message": inspector_response.get('message'), "details": inspector_response.get("details")} # Store error state
+                 else:
+                      inspector_run_result_data = {"status": "unexpected_inspector_response_structure"} # Handle unexpected structure
+
+            # Store the actual inspector results payload (or error state) for the final response
+            current_result["inspector_results"] = inspector_run_result_data
 
 
             # --- Mark as Success (if no errors encountered during critical steps) ---
@@ -1189,7 +1198,6 @@ async def analyze_batch(request: BatchScenarioRequest):
             else:
                  # Ensure final_status reflects the error if one occurred
                  print(f"Batch [{index+1}/{num_scenarios}] END FAIL ({time.time() - step_start_time:.2f}s)")
-
 
         except Exception as e:
             print(f"Batch [{index+1}] FAIL (Unhandled Exception: {str(e)})")
@@ -1257,7 +1265,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
     host = os.getenv("HOST", "0.0.0.0")
-
+        
     print("\n*************************** STARTING SERVER ***************************")
     print(f"🚀 SERVER RUNNING at {host}:{port}")
     # Consider disabling reload=True in production environments

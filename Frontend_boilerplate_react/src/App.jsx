@@ -6,10 +6,12 @@ import Navbar from './components/Main/Navbar';
 import { ThemeProvider } from './context/ThemeContext';
 
 function App() {
+  console.log("App.jsx loaded");
   return (
     <ThemeProvider>
       <Router>
         <div className="min-h-screen flex flex-col">
+
           <Navbar />
           <div className="flex-grow">
             <Routes>
