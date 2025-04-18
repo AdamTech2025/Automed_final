@@ -176,6 +176,46 @@ class MedicalCodingDB:
             print(f"❌ Error updating inspector results: {str(e)}")
             return False
 
+    def save_code_selections(self, record_id, accepted_cdt, rejected_cdt, accepted_icd, rejected_icd):
+        """Insert or update code selections in the code_selections table."""
+        self.ensure_connection()
+        try:
+            selection_data = {
+                "analysis_record_id": record_id,
+                "accepted_cdt_codes": accepted_cdt,
+                "rejected_cdt_codes": rejected_cdt,
+                "accepted_icd_codes": accepted_icd,
+                "rejected_icd_codes": rejected_icd,
+                # selection_timestamp will be set by default in the DB
+            }
+            
+            # Upsert based on the analysis_record_id to handle resubmissions
+            result = self.supabase.table("code_selections").upsert(
+                selection_data,
+                on_conflict="analysis_record_id" 
+            ).execute()
+            
+            if result.data:
+                print(f"✅ Code selections saved/updated successfully for analysis record ID: {record_id}")
+                return result.data[0] # Return the saved/updated record
+            else:
+                 # Handle potential case where upsert might not return data as expected (check Supabase docs/behavior)
+                 print(f"⚠️ Code selections upsert executed for {record_id}, but no data returned in response.")
+                 # We might assume success if no exception was raised.
+                 return { # Return the input data as confirmation
+                     "analysis_record_id": record_id,
+                     "accepted_cdt_codes": accepted_cdt,
+                     "rejected_cdt_codes": rejected_cdt,
+                     "accepted_icd_codes": accepted_icd,
+                     "rejected_icd_codes": rejected_icd
+                 }
+
+        except Exception as e:
+            print(f"❌ Error saving code selections: {str(e)}")
+            # Consider re-raising or returning a specific error indicator
+            # raise e 
+            return None
+
     def export_analysis_results(self, record_id, export_dir=None):
         """Export CDT and ICD results for a given record to JSON files."""
         try:

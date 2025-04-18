@@ -599,44 +599,25 @@ async def store_code_status(request: CodeStatusRequest):
         logger.info(f"Selected ICD: {request.icd_codes}")
         logger.info(f"Rejected ICD: {request.rejected_icd_codes}")
         
-        # Get the existing inspector results from the database
-        # Assuming db.get_inspector_results(record_id) exists or adapt db.get_complete_analysis
-        analysis = db.get_complete_analysis(request.record_id) # Fetch full record to get inspector data
-        if not analysis:
-            logger.error(f"Analysis record not found for ID: {request.record_id}")
-            return {"status": "error", "message": f"No analysis found with ID: {request.record_id}"}
-        
-        inspector_results = {}
-        try:
-             if analysis.get("inspector_results"):
-                inspector_results = json.loads(analysis["inspector_results"])
-             # Ensure base structure exists even if previous results were empty/malformed
-             if not isinstance(inspector_results, dict): inspector_results = {}
-             if "cdt" not in inspector_results: inspector_results["cdt"] = {}
-             if "icd" not in inspector_results: inspector_results["icd"] = {}
-        except json.JSONDecodeError:
-              logger.warning(f"Could not parse existing inspector results for {request.record_id}. Overwriting structure.")
-              inspector_results = {"cdt": {}, "icd": {}} # Start fresh
+        # Call the new function to save selections to the dedicated table
+        saved_selection = db.save_code_selections(
+            record_id=request.record_id,
+            accepted_cdt=request.cdt_codes,
+            rejected_cdt=request.rejected_cdt_codes,
+            accepted_icd=request.icd_codes,
+            rejected_icd=request.rejected_icd_codes
+        )
 
-        # Update the inspector results with user selections
-        inspector_results["cdt"]["codes"] = request.cdt_codes
-        inspector_results["cdt"]["rejected_codes"] = request.rejected_cdt_codes
-        
-        inspector_results["icd"]["codes"] = request.icd_codes
-        inspector_results["icd"]["rejected_codes"] = request.rejected_icd_codes # Add rejected ICD
-        
-        # Add a timestamp and source indicator
-        inspector_results["timestamp"] = str(datetime.datetime.now(datetime.timezone.utc)) # Use timezone aware UTC
-        inspector_results["updated_by"] = "user_selection"
-        
-        # Update the database
-        db.update_inspector_results(request.record_id, json.dumps(inspector_results))
+        if not saved_selection:
+            logger.error(f"Failed to save code selections for record ID: {request.record_id}")
+            raise HTTPException(status_code=500, detail="Failed to save code selections to database.")
+
         logger.info(f"Code status updated in the database for {request.record_id}")
         
         return {
             "status": "success",
             "message": "Code status updated successfully",
-            "inspector_results": inspector_results # Return the final structure
+            "saved_selection": saved_selection # Return the data saved to the new table
         }
         
     except Exception as e:
