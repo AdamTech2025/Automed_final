@@ -1,9 +1,13 @@
 import { Link } from 'react-router-dom';
-import { FaTooth, FaSun, FaMoon, FaQuestion } from 'react-icons/fa';
+import { FaTooth, FaSun, FaMoon, FaQuestion, FaPlus } from 'react-icons/fa';
 import { useTheme } from '../../context/ThemeContext';
 
 const Navbar = () => {
   const { isDark, toggleTheme } = useTheme();
+
+  const openNewTab = () => {
+    window.open(window.location.href, '_blank');
+  };
 
   return (
     <nav className="w-full p-4 shadow-md flex flex-col sm:flex-row items-center justify-between transition-colors">
@@ -15,6 +19,14 @@ const Navbar = () => {
       </div>
       
       <div className="flex items-center space-x-4">
+        <button
+          onClick={openNewTab}
+          className={`${isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'} 
+            flex items-center transition-colors`}
+          aria-label="Open in new tab"
+        >
+          <FaPlus className="text-xl" />
+        </button>
         <Link 
           to="/questions" 
           className={`${isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'} 

@@ -127,8 +127,11 @@ const Home = () => {
   const handleCopyCodes = () => {
     if (!result?.data?.inspector_results) return;
     
-    const cdtCodes = result.data.inspector_results.cdt?.codes || [];
-    const icdCodes = result.data.inspector_results.icd?.codes || [];
+    // Get the actual inspector results object, which could be nested in different structures
+    const inspectorData = result.data.inspector_results.data?.inspector_results || result.data.inspector_results;
+    
+    const cdtCodes = inspectorData.cdt?.codes || [];
+    const icdCodes = inspectorData.icd?.codes || [];
     
     let textToCopy = `CDT Codes: ${cdtCodes.join(', ')}\nICD Codes: ${icdCodes.join(', ')}`;
     
@@ -334,10 +337,13 @@ const Home = () => {
   const renderInspectorResults = () => {
     if (!result?.data?.inspector_results) return null;
 
-    const cdtCodes = result.data.inspector_results.cdt?.codes || [];
-    const icdCodes = result.data.inspector_results.icd?.codes || [];
-    const cdtExplanation = result.data.inspector_results.cdt?.explanation || '';
-    const icdExplanation = result.data.inspector_results.icd?.explanation || '';
+    // Get the actual inspector results object, which could be nested in different structures
+    const inspectorData = result.data.inspector_results.data?.inspector_results || result.data.inspector_results;
+
+    const cdtCodes = inspectorData.cdt?.codes || [];
+    const icdCodes = inspectorData.icd?.codes || [];
+    const cdtExplanation = inspectorData.cdt?.explanation || '';
+    const icdExplanation = inspectorData.icd?.explanation || '';
 
     return (
       <div className={`mt-8 p-4 ${isDark ? 'bg-blue-900/30 border-blue-700' : 'bg-blue-50 border-blue-200'} rounded-lg border ai-final-analysis-content relative`}>
@@ -405,7 +411,10 @@ const Home = () => {
   const areAllCodesSelected = () => {
     if (!result?.data?.inspector_results) return false;
     
-    const cdtCodes = result.data.inspector_results.cdt?.codes || [];
+    // Get the actual inspector results object, which could be nested in different structures
+    const inspectorData = result.data.inspector_results.data?.inspector_results || result.data.inspector_results;
+    
+    const cdtCodes = inspectorData.cdt?.codes || [];
     
     // Check if all codes have been accepted
     return cdtCodes.length > 0 && cdtCodes.every(code => selectedCodes.accepted.includes(code));
@@ -415,7 +424,10 @@ const Home = () => {
   const getRemainingCodeCount = () => {
     if (!result?.data?.inspector_results) return 0;
     
-    const cdtCodes = result.data.inspector_results.cdt?.codes || [];
+    // Get the actual inspector results object, which could be nested in different structures
+    const inspectorData = result.data.inspector_results.data?.inspector_results || result.data.inspector_results;
+    
+    const cdtCodes = inspectorData.cdt?.codes || [];
     const acceptedCount = cdtCodes.filter(code => selectedCodes.accepted.includes(code)).length;
     
     return cdtCodes.length - acceptedCount;
@@ -526,10 +538,13 @@ const Home = () => {
         
         // If there are inspector results, add the code there too if applicable
         if (updatedResult.data.inspector_results) {
-          if (isApplicable && updatedResult.data.inspector_results.cdt) {
+          // Get the actual inspector results object, which could be nested in different structures
+          const inspectorData = updatedResult.data.inspector_results.data?.inspector_results || updatedResult.data.inspector_results;
+          
+          if (isApplicable && inspectorData.cdt) {
             // Add to accepted codes if applicable
-            if (!updatedResult.data.inspector_results.cdt.codes.includes(codeData.code)) {
-              updatedResult.data.inspector_results.cdt.codes.push(codeData.code);
+            if (!inspectorData.cdt.codes.includes(codeData.code)) {
+              inspectorData.cdt.codes.push(codeData.code);
             }
           }
         }
