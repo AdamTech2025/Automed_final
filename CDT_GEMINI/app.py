@@ -509,7 +509,7 @@ async def run_inspectors_for_scenario(record_id: str) -> dict:
             "topics_results": topics_results,
             "icd_classification": icd_classification,
             "questioner_data": questioner_data,
-            "inspector_results": final_inspector_results # From DB or the run result
+            "inspector_results": final_inspector_results if isinstance(final_inspector_results, dict) else None
         }
 
         # Check the status from the inspector run itself as well
@@ -605,8 +605,9 @@ async def analyze_web(request: ScenarioRequest):
             "cdt_classification": complete_cdt_data.get("cdt_classification", {}),
             "topics_results": complete_cdt_data.get("topics_results", {}),
             "icd_classification": complete_icd_data.get("simplified", {}),
-            "questioner_data": questioner_result,          
-            "inspector_results": inspector_results.get("inspector_results") if isinstance(inspector_results, dict) and inspector_results.get("status") == "success" else inspector_results # Handle different shapes of inspector_results
+            "questioner_data": questioner_result,
+            # Properly handle inspector results from the database
+            "inspector_results": inspector_results if isinstance(inspector_results, dict) else None
         }
 
     except ValueError as ve: # Catch specific ValueErrors raised in steps
@@ -717,7 +718,7 @@ async def submit_question_answers(record_id: str, request: QuestionAnswersReques
             "topics_results": topics_results,
             "icd_classification": icd_classification,
             "questioner_data": updated_questioner_data,
-            "inspector_results": final_inspector_results
+            "inspector_results": final_inspector_results if isinstance(final_inspector_results, dict) else None
         }
 
         return {"status": "success", "data": response_data}
@@ -772,7 +773,7 @@ async def trigger_inspectors(record_id: str):
             "topics_results": topics_results,
             "icd_classification": icd_classification,
             "questioner_data": questioner_data,
-            "inspector_results": final_inspector_results # From DB or the run result
+            "inspector_results": final_inspector_results if isinstance(final_inspector_results, dict) else None
         }
 
         # Check the status from the inspector run itself as well
@@ -913,12 +914,20 @@ async def run_inspectors(record_id: str):
         db.update_inspector_results(record_id, json.dumps(inspector_results))
         print(f"✅ Saved combined inspector results to database for record ID: {record_id}")
 
-        # For backward compatibility, also update the existing fields if needed (can be removed later)
-        # cdt_data_from_db["inspector_results"] = cdt_inspector_result
-        # icd_data_from_db["inspector_results"] = icd_inspector_result
-        # db.update_analysis_results(record_id, json.dumps(cdt_data_from_db), json.dumps(icd_data_from_db))
+        # Get the complete updated analysis to ensure we return exactly what's in the database
+        updated_analysis = db.get_complete_analysis(record_id)
+        final_inspector_results = None
+        if updated_analysis and updated_analysis.get('inspector_results'):
+            try:
+                final_inspector_results = json.loads(updated_analysis.get('inspector_results'))
+            except json.JSONDecodeError:
+                print(f"⚠️ Error parsing inspector results from database for {record_id}")
+                final_inspector_results = inspector_results  # Use the local results as fallback
 
-        return {"status": "success", "inspector_results": inspector_results}
+        return {
+            "status": "success", 
+            "inspector_results": final_inspector_results if isinstance(final_inspector_results, dict) else inspector_results
+        }
 
     except Exception as e:
         print(f"❌ Error inside core run_inspectors for record {record_id}: {str(e)}")
@@ -990,15 +999,16 @@ async def add_custom_code(request: CustomCodeRequest):
             "data": {
                 "code_data": code_data,
                 "inspector_results": {
-                "cdt": {
+                    "cdt": {
                         "codes": [request.code] if is_applicable else [],
                         "rejected_codes": [] if is_applicable else [request.code],
                         "explanation": explanation
-                },
-                "icd": {
+                    },
+                    "icd": {
                         "codes": [],
                         "explanation": ""
-                    }
+                    },
+                    "timestamp": str(datetime.datetime.now())
                 }
             }
         }
