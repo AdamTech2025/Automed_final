@@ -109,38 +109,28 @@ List them in order of relevance, with the most relevant first.
             print(f"Error in analyze_diagnostic: {str(e)}")
             return ""
     
-    async def activate_diagnostic(self, scenario: str) -> dict:
-        """Activate relevant subtopics in parallel and return detailed results."""
+    async def activate_diagnostic(self, scenario: str) -> str:
+        """Analyze the scenario and return the raw LLM result string."""
         try:
             # Get the code range from the analysis
-            diagnostic_result = self.analyze_diagnostic(scenario)
-            if not diagnostic_result:
-                print("No diagnostic result returned")
-                return {}
+            diagnostic_result_str = self.analyze_diagnostic(scenario)
+            if not diagnostic_result_str:
+                print("No diagnostic result returned from analyze_diagnostic")
+                return ""
             
-            print(f"Diagnostic Result in activate_diagnostic: {diagnostic_result}")
-            
-            # Activate subtopics in parallel using the registry
-            result = await self.registry.activate_all(scenario, diagnostic_result)
-            
-            # Return a dictionary with the required fields
-            return {
-                "code_range": diagnostic_result,
-                "activated_subtopics": result["activated_subtopics"],
-                "codes": result["topic_result"]
-            }
+            # Return the raw string result directly
+            return diagnostic_result_str
+
         except Exception as e:
             print(f"Error in diagnostic analysis: {str(e)}")
-            return {}
+            return f"Error: {str(e)}"
     
     async def run_analysis(self, scenario: str) -> None:
         """Run the analysis and print results."""
         print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
         result = await self.activate_diagnostic(scenario)
         print(f"\n=== DIAGNOSTIC ANALYSIS RESULT ===")
-        print(f"CODE RANGE: {result.get('code_range', 'None')}")
-        print(f"ACTIVATED SUBTOPICS: {', '.join(result.get('activated_subtopics', []))}")
-        print(f"SPECIFIC CODES: {', '.join(result.get('codes', []))}")
+        print(f"CODE RANGE: {result}")
 
 diagnostic_service = DiagnosticServices()
 # Example usage

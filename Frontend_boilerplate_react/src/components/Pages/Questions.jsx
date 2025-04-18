@@ -24,6 +24,7 @@ const Questions = () => {
   const [selectedCodes, setSelectedCodes] = useState({});
   const [newCodeInputs, setNewCodeInputs] = useState({});
   const [customCodeLoading, setCustomCodeLoading] = useState({});
+  const [customCodeResults, setCustomCodeResults] = useState({});
 
   // Check if there are questions that need answering in any of the results
   useEffect(() => {
@@ -191,6 +192,7 @@ const Questions = () => {
     setSelectedCodes(prev => ({ ...prev, [newQuestionId]: { accepted: [], denied: [] } }));
     setNewCodeInputs(prev => ({ ...prev, [newQuestionId]: '' }));
     setCustomCodeLoading(prev => ({ ...prev, [newQuestionId]: false }));
+    setCustomCodeResults(prev => { const newState = { ...prev }; delete newState[newQuestionId]; return newState; });
   };
 
   const removeQuestion = (id) => {
@@ -209,6 +211,7 @@ const Questions = () => {
       setSelectedCodes(prev => { const newState = { ...prev }; delete newState[id]; return newState; });
       setNewCodeInputs(prev => { const newState = { ...prev }; delete newState[id]; return newState; });
       setCustomCodeLoading(prev => { const newState = { ...prev }; delete newState[id]; return newState; });
+      setCustomCodeResults(prev => { const newState = { ...prev }; delete newState[id]; return newState; });
     }
   };
 
@@ -248,11 +251,12 @@ const Questions = () => {
     setSelectedCodes(prev => ({ ...prev, [id]: { accepted: [], denied: [] } }));
     setNewCodeInputs(prev => ({ ...prev, [id]: '' }));
     setCustomCodeLoading(prev => ({ ...prev, [id]: false }));
+    setCustomCodeResults(prev => { const newState = { ...prev }; delete newState[id]; return newState; });
 
     // Set loading state immediately to give visual feedback
     setQuestions(prevQuestions =>
       prevQuestions.map(q =>
-        q.id === id ? { ...q, loading: true, error: null, result: null, processedQuestioner: false } : q // Reset result and processed flag
+        q.id === id ? { ...q, loading: true, error: null, result: null, processedQuestioner: false, customResult: null } : q // Reset result, processed flag, and custom result
       )
     );
     
@@ -350,6 +354,7 @@ const Questions = () => {
        setSelectedCodes(prev => ({ ...prev, [q.id]: { accepted: [], denied: [] } }));
        setNewCodeInputs(prev => ({ ...prev, [q.id]: '' }));
        setCustomCodeLoading(prev => ({ ...prev, [q.id]: false }));
+       setCustomCodeResults(prev => { const newState = { ...prev }; delete newState[q.id]; return newState; });
     });
 
     // Use the batch API endpoint (controlled parallelism)
@@ -533,28 +538,34 @@ const Questions = () => {
 
     setCustomCodeLoading(prev => ({ ...prev, [questionId]: true }));
     setGlobalError(null); // Clear global error
+    setCustomCodeResults(prev => { const newState = { ...prev }; delete newState[questionId]; return newState; });
 
     try {
       const response = await addCustomCode(newCode, scenarioText, recordId);
       console.log(`Custom code response for question ${questionId}:`, response);
       
-      if (response.status === 'success' && response.inspector_results) {
-        // Update the result state for this specific question
+      if (response.status === 'success' && response.data?.inspector_results && response.data?.code_data) {
+        
+        // Store the custom code analysis result
+        setCustomCodeResults(prev => ({ ...prev, [questionId]: response.data.code_data }));
+        
+        // Update the main result state with the potentially modified inspector results
         setQuestions(prevQuestions => prevQuestions.map(q => {
           if (q.id === questionId) {
             // Create a deep copy to avoid mutation issues
             const updatedResult = JSON.parse(JSON.stringify(q.result));
             // Update the inspector_results within the result object
             if (updatedResult.data) {
-               updatedResult.data.inspector_results = response.inspector_results;
+               // Use the inspector results returned by the addCustomCode endpoint
+               updatedResult.data.inspector_results = response.data.inspector_results; 
             }
             return { ...q, result: updatedResult };
           }
           return q;
         }));
         
-        // Auto-select based on applicability
-        if (response.is_applicable) {
+        // Auto-select based on applicability from code_data
+        if (response.data.code_data.isApplicable) {
           handleCodeSelection(questionId, newCode, 'accept');
         } else {
            handleCodeSelection(questionId, newCode, 'deny'); // Deny if not applicable
@@ -703,28 +714,24 @@ Accepted CDT Codes: ${accepted.join(', ')}`;
 
   // Render results section for a single question, including selection controls
   const renderResults = (question) => {
-    const questionId = question.id; // ID for state access
-    if (!question.result?.data?.inspector_results) return null;
-
-    const inspectorData = question.result.data.inspector_results;
-    const cdtCodes = inspectorData.cdt?.codes || [];
-    const icdCodes = inspectorData.icd?.codes || []; // Keep displaying ICD for context
-    const cdtExplanation = inspectorData.cdt?.explanation || '';
-    const icdExplanation = inspectorData.icd?.explanation || ''; // Keep displaying ICD explanation
-
+    const questionId = question.id;
+    const customResult = customCodeResults[questionId];
+    const inspectorData = question.result?.data?.inspector_results;
+    if (!inspectorData && !customResult) return null;
+    const cdtCodes = inspectorData?.cdt?.codes || [];
+    const icdCodes = inspectorData?.icd?.codes || []; 
+    const cdtExplanation = inspectorData?.cdt?.explanation || '';
+    const icdExplanation = inspectorData?.icd?.explanation || ''; 
     const currentSelected = selectedCodes[questionId] || { accepted: [], denied: [] };
-
-    // --- Count CDT Code Occurrences ---
     const codeCounts = cdtCodes.reduce((acc, code) => {
       acc[code] = (acc[code] || 0) + 1;
       return acc;
     }, {});
     const uniqueCdtCodes = Object.keys(codeCounts);
-    // --- End Counting ---
 
     return (
       <div className={`mt-4 p-4 ${isDark ? 'bg-blue-900/30 border-blue-700' : 'bg-blue-50 border-blue-200'} rounded-lg border relative`}>
-        {/* Header and Copy Button */}
+        {/* Header and Copy Button */} 
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center">
             <FaRobot className={`${isDark ? 'text-blue-400' : 'text-blue-500'} mr-2`} />
@@ -738,56 +745,64 @@ Accepted CDT Codes: ${accepted.join(', ')}`;
             <FaCopy className="inline mr-1" /> Copy Accepted
           </button>
         </div>
-        
-        {/* CDT Codes Section */}
-        <div className="mb-4">
-          <h4 className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'} mb-2`}>CDT Codes:</h4>
-          <div className="flex flex-wrap gap-2">
-            {uniqueCdtCodes.length > 0 ? uniqueCdtCodes.map((code, index) => { // Iterate over unique codes
-              const count = codeCounts[code];
-              const displayCode = count > 1 ? `${code} (${count} times)` : code; // Create display string
-              const isAccepted = currentSelected.accepted.includes(code);
-              const isDenied = currentSelected.denied.includes(code);
 
-              return (
-                <div
-                  key={`cdt-code-${questionId}-${index}-${code}`}
-                  className={`relative group px-3 py-1 rounded-full text-sm transition-all duration-200 cursor-pointer border ${
-                    isAccepted
-                      ? (isDark ? 'bg-green-900/60 text-green-200 border-green-700' : 'bg-green-100 text-green-800 border-green-300')
-                      : isDenied
-                        ? (isDark ? 'bg-red-900/60 text-red-200 border-red-700' : 'bg-red-100 text-red-800 border-red-300')
-                        : (isDark ? 'bg-blue-800/60 text-blue-200 border-blue-700' : 'bg-blue-100 text-blue-800 border-blue-300')
-                }`}
-              >
-                {displayCode} {/* Use displayCode for rendering */}
-                  {/* Hover Icons */}
-                  <div className="absolute inset-0 flex items-center justify-center space-x-1 bg-black bg-opacity-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                    <button
-                      title="Accept"
-                      onClick={(e) => { e.stopPropagation(); handleCodeSelection(questionId, code, 'accept'); }} // Use original 'code' for logic
-                      className={`p-1 rounded-full ${isAccepted ? 'bg-green-500' : 'bg-gray-600 hover:bg-green-500'} text-white text-xs`}
-                    >
-                      <FaCheck />
-                    </button>
-                    <button
-                      title="Reject"
-                      onClick={(e) => { e.stopPropagation(); handleCodeSelection(questionId, code, 'deny'); }} // Use original 'code' for logic
-                       className={`p-1 rounded-full ${isDenied ? 'bg-red-500' : 'bg-gray-600 hover:bg-red-500'} text-white text-xs`}
-                    >
-                      <FaTimes />
-                    </button>
-                  </div>
-                </div>
-              );
-            }) : (
-              <span className="text-sm text-gray-500">No CDT codes found</span>
-            )}
-          </div>
+        {/* CDT Codes Section */} 
+        <div className="mb-4">
+          <h4 className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'} mb-2`}>Suggested CDT Codes:</h4> {/* Changed heading */} 
+          {cdtCodes.length === 0 && !customResult && ( // Show 'no codes' only if inspector is empty AND no custom code was added
+               <span className="text-sm text-gray-500">No CDT codes found by initial analysis.</span>
+          )}
+          {cdtCodes.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {uniqueCdtCodes.map((code, index) => { 
+                  // Check if this code matches the analyzed custom code
+                  if (customResult && code === customResult.code) {
+                    return null; // Don't render the custom code again in this list
+                  }
+                  
+                  const count = codeCounts[code];
+                  const displayCode = count > 1 ? `${code} (${count} times)` : code;
+                  const isAccepted = currentSelected.accepted.includes(code);
+                  const isDenied = currentSelected.denied.includes(code);
+
+                  return (
+                    <div
+                      key={`cdt-code-${questionId}-${index}-${code}`}
+                      className={`relative group px-3 py-1 rounded-full text-sm transition-all duration-200 cursor-pointer border ${
+                        isAccepted
+                          ? (isDark ? 'bg-green-900/60 text-green-200 border-green-700' : 'bg-green-100 text-green-800 border-green-300')
+                          : isDenied
+                            ? (isDark ? 'bg-red-900/60 text-red-200 border-red-700' : 'bg-red-100 text-red-800 border-red-300')
+                            : (isDark ? 'bg-blue-800/60 text-blue-200 border-blue-700' : 'bg-blue-100 text-blue-800 border-blue-300')
+                    }`}
+                  >
+                    {displayCode} 
+                      {/* Hover Icons */} 
+                      <div className="absolute inset-0 flex items-center justify-center space-x-1 bg-black bg-opacity-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <button
+                          title="Accept"
+                          onClick={(e) => { e.stopPropagation(); handleCodeSelection(questionId, code, 'accept'); }} 
+                          className={`p-1 rounded-full ${isAccepted ? 'bg-green-500' : 'bg-gray-600 hover:bg-green-500'} text-white text-xs`}
+                        >
+                          <FaCheck />
+                        </button>
+                        <button
+                          title="Reject"
+                          onClick={(e) => { e.stopPropagation(); handleCodeSelection(questionId, code, 'deny'); }} 
+                          className={`p-1 rounded-full ${isDenied ? 'bg-red-500' : 'bg-gray-600 hover:bg-red-500'} text-white text-xs`}
+                        >
+                          <FaTimes />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+          )}
           {cdtExplanation && <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'} mt-2 whitespace-pre-wrap`}>{cdtExplanation}</p>}
         </div>
 
-        {/* ICD Codes Section (Display only, no selection) */}
+        {/* ICD Codes Section (Display only, no selection) */} 
         <div className="mb-2">
           <h4 className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'} mb-2`}>ICD Codes:</h4>
           <div className="flex flex-wrap gap-2">
@@ -857,7 +872,27 @@ Accepted CDT Codes: ${accepted.join(', ')}`;
            <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'} mt-1`}>
              Add a custom CDT code to check its applicability.
            </p>
-        </div>
+        
+            {/* --- MOVED Custom Code Result Display HERE --- */} 
+            {customResult && (
+              <div className={`mt-4 p-3 rounded-lg border ${customResult.isApplicable ? (isDark ? 'border-green-600 bg-green-900/20' : 'border-green-300 bg-green-50') : (isDark ? 'border-red-600 bg-red-900/20' : 'border-red-300 bg-red-50') }`}>
+                <h4 className={`font-semibold ${isDark ? 'text-gray-200' : 'text-gray-700'} mb-1`}>
+                  Custom Code Analyzed: {customResult.code}
+                  <span className={`ml-2 px-2 py-0.5 rounded text-xs font-bold ${customResult.isApplicable ? (isDark ? 'bg-green-700 text-green-100' : 'bg-green-200 text-green-800') : (isDark ? 'bg-red-700 text-red-100' : 'bg-red-200 text-red-800')}`}>
+                    {customResult.isApplicable ? 'Applicable' : 'Not Applicable'}
+                  </span>
+                </h4>
+                <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'} mt-1 whitespace-pre-wrap`}>
+                  {customResult.explanation || 'No explanation provided.'}
+                </p>
+                 {customResult.doubt && customResult.doubt.toLowerCase() !== 'none' && (
+                   <p className={`text-sm italic ${isDark ? 'text-yellow-300' : 'text-yellow-700'} mt-1`}>Doubt: {customResult.doubt}</p>
+                 )}
+              </div>
+            )}
+            {/* --- End Custom Code Result Display --- */}
+         </div> 
+
       </div>
     );
   };

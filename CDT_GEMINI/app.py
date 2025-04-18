@@ -78,8 +78,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "https://dentalcoder.vercel.app",
-        "https://automed.adamtechnologies.in",
+        "https://dentalcoder.vercel.app", 
+        "https://automed.adamtechnologies.in", 
         "http://automed.adamtechnologies.in",
         os.getenv("FRONTEND_URL", "")  # Get from environment variable
     ],
@@ -96,10 +96,10 @@ def map_to_cdt_category(specific_code: str) -> str:
         base_code = specific_code.split("-")[0]
     else:
         base_code = specific_code
-
+    
     # Get the first 2 characters
     category_prefix = base_code[:2]
-
+    
     # Map to the corresponding category
     if category_prefix == "D0":
         return "D0100-D0999"
@@ -192,13 +192,13 @@ async def classify_scenario(processed_scenario: str) -> Tuple[dict, dict]:
     try:
         async def run_cdt_classification():
             return cdt_classifier.process(processed_scenario)
-
+            
         async def run_icd_classification():
             return icd_classifier.process(processed_scenario)
-
+        
         cdt_task = asyncio.create_task(run_cdt_classification())
         icd_task = asyncio.create_task(run_icd_classification())
-
+        
         cdt_result, icd_result = await asyncio.gather(cdt_task, icd_task)
         print(f"✅ Classified Scenario in {time.time() - start_time:.2f}s")
         # Add status to results
@@ -226,7 +226,7 @@ async def activate_topics_for_scenario(processed_scenario: str, cdt_result: dict
             if category:
                 category_ranges.add(category)
         category_ranges_str = ",".join(category_ranges)
-
+        
         topic_results_data = await topic_registry.activate_all(processed_scenario, category_ranges_str)
 
         activated_subtopics = topic_results_data.get('activated_subtopics', [])
@@ -240,7 +240,7 @@ async def activate_topics_for_scenario(processed_scenario: str, cdt_result: dict
                     subtopic_name = subtopic_code.get("topic", "Unknown Subtopic")
                     code_range = subtopic_code.get("code_range", "")
                     subtopic_key = f"{subtopic_name} ({code_range})"
-
+                    
                     if "codes" in subtopic_code:
                         codes_list = []
                         for code_entry in subtopic_code["codes"]:
@@ -251,11 +251,11 @@ async def activate_topics_for_scenario(processed_scenario: str, cdt_result: dict
                             explanation = code_entry.get("explanation", "")
                             doubt = code_entry.get("doubt", "")
                             codes_list.append({"code": code, "explanation": explanation, "doubt": doubt})
-
+                        
                         if subtopic_key not in subtopic_data:
                             subtopic_data[subtopic_key] = []
                         subtopic_data[subtopic_key].extend(codes_list)
-
+        
         # Remove codes arrays from topic_result to avoid duplication in main structure
         cleaned_topic_result = []
         for topic_item in topic_result_list:
@@ -265,7 +265,7 @@ async def activate_topics_for_scenario(processed_scenario: str, cdt_result: dict
                 "activated_subtopics": topic_item.get("activated_subtopics", []) # Keep this for context if needed
             }
             cleaned_topic_result.append(cleaned_item)
-
+        
         print(f"✅ Topics Activated in {time.time() - start_time:.2f}s")
         return {
             "activated_subtopics": activated_subtopics,
@@ -313,19 +313,19 @@ async def save_initial_data(scenario_data: dict) -> dict:
                 "range_codes_string": scenario_data.get("cdt_result", {}).get("range_codes_string", "")
             },
             "topics_results": {
-                "topic_result": db_topic_result,
+                "topic_result": db_topic_result, 
                 "subtopic_data": topic_activation_result.get("subtopic_data", {}),
                 "activated_subtopics": topic_activation_result.get("activated_subtopics", [])
             }
         }
-
+            
         # Prepare ICD data
         complete_icd_data = {}
         icd_result = scenario_data.get("icd_result", {})
         primary_icd_code = ""
         primary_explanation = ""
         primary_doubt = ""
-
+                
         if icd_result and icd_result.get("status") == "success":
             # Simplified logic for primary ICD code extraction (can be enhanced)
             # Attempt extraction from parsed topic result first
@@ -341,7 +341,7 @@ async def save_initial_data(scenario_data: dict) -> dict:
                                 primary_icd_code = parsed.get("code", "")
                                 primary_explanation = parsed.get("explanation", "")
                                 primary_doubt = parsed.get("doubt", "")
-
+                
             # Fallback to direct classification result if topic result didn't yield code
             if not primary_icd_code:
                 if "icd_codes" in icd_result and icd_result["icd_codes"]:
@@ -351,24 +351,22 @@ async def save_initial_data(scenario_data: dict) -> dict:
                 if "doubts" in icd_result and icd_result["doubts"]:
                     primary_doubt = icd_result["doubts"][0]
 
-            complete_icd_data = {
-                "simplified": {
-                    "code": primary_icd_code,
-                    "explanation": primary_explanation,
-                    "doubt": primary_doubt
-                },
-                # Store full result if needed later, but keep simplified for consistency
-                # "full_result": icd_result # Optional: Store the raw result too
-            }
-        else:
-            # Store error information if ICD classification failed
-            complete_icd_data = {"error": icd_result.get("error", "ICD data unavailable")}
+                complete_icd_data = {
+                    "simplified": {
+                        "code": primary_icd_code,
+                        "explanation": primary_explanation,
+                        "doubt": primary_doubt
+                    }
+                }
+            else:
+                # Store error information if ICD classification failed
+                complete_icd_data = {"error": icd_result.get("error", "ICD data unavailable")}
+            
 
-
-        cdt_json = json.dumps(complete_cdt_data)
-        icd_json = json.dumps(complete_icd_data)
-
-        db_data = {
+            cdt_json = json.dumps(complete_cdt_data)
+            icd_json = json.dumps(complete_icd_data)
+            
+            db_data = {
             "user_question": scenario_data.get("original_scenario", "Missing original scenario"),
             "processed_clean_data": scenario_data.get("processed_scenario", "Missing processed scenario"),
             "cdt_result": cdt_json,
@@ -420,7 +418,7 @@ async def generate_questions_for_scenario(record_id: str, processed_scenario: st
 
         # Ensure ICD data passed is not the error structure
         if "error" in simplified_icd_data:
-             simplified_icd_data = {"code": "", "explanation": f"ICD Error: {simplified_icd_data['error']}", "doubt": ""}
+            simplified_icd_data = {"code": "", "explanation": f"ICD Error: {simplified_icd_data['error']}", "doubt": ""}
 
         questioner_result = questioner.process(
             processed_scenario,
@@ -440,7 +438,7 @@ async def generate_questions_for_scenario(record_id: str, processed_scenario: st
             "questioner_result": questioner_result,
             "status": "success",
             "should_run_inspectors_immediately": should_run_inspectors
-         }
+        }
 
     except Exception as e:
         print(f"❌ Error in questioner processing for record {record_id}: {str(e)}")
@@ -659,14 +657,14 @@ async def submit_question_answers(record_id: str, request: QuestionAnswersReques
         try:
             answers = json.loads(request.answers)
         except json.JSONDecodeError:
-             return {"status": "error", "message": "Invalid JSON format for answers"}
+            return {"status": "error", "message": "Invalid JSON format for answers"}
         
         # Parse existing questioner data safely
         questioner_data = {}
         try:
             questioner_data = json.loads(analysis.get("questioner_data", "{}"))
             if not isinstance(questioner_data, dict): # Basic check
-                 raise ValueError("Questioner data is not a valid dictionary")
+                raise ValueError("Questioner data is not a valid dictionary")
         except (json.JSONDecodeError, ValueError) as e:
             print(f"Error parsing existing questioner data for {record_id}: {e}")
             return {"status": "error", "message": "Invalid or missing questioner data found for this analysis"}
@@ -694,15 +692,15 @@ async def submit_question_answers(record_id: str, request: QuestionAnswersReques
         updated_questioner_data = {}
         final_inspector_results = {}
         try:
-             cdt_result = json.loads(complete_data.get("cdt_result", "{}"))
-             icd_result = json.loads(complete_data.get("icd_result", "{}"))
-             updated_questioner_data = json.loads(complete_data.get("questioner_data", "{}")) # Re-fetch updated data
-             # Get inspector results from dedicated column first
-             if complete_data.get('inspector_results'):
-                 final_inspector_results = json.loads(complete_data['inspector_results'])
-             # Fallback to result from the run if DB column is empty (e.g., if update failed or race condition)
-             elif inspector_run_result.get('status') == 'success':
-                  final_inspector_results = inspector_run_result
+            cdt_result = json.loads(complete_data.get("cdt_result", "{}"))
+            icd_result = json.loads(complete_data.get("icd_result", "{}"))
+            updated_questioner_data = json.loads(complete_data.get("questioner_data", "{}")) # Re-fetch updated data
+            # Get inspector results from dedicated column first
+            if complete_data.get('inspector_results'):
+                final_inspector_results = json.loads(complete_data['inspector_results'])
+            # Fallback to result from the run if DB column is empty (e.g., if update failed or race condition)
+            elif inspector_run_result.get('status') == 'success':
+                 final_inspector_results = inspector_run_result
         except json.JSONDecodeError as e:
              print(f"❌ Error decoding JSON from DB after answering questions for {record_id}: {e}")
              # Handle error - perhaps return error or partial data
@@ -750,14 +748,14 @@ async def trigger_inspectors(record_id: str):
         questioner_data = {}
         final_inspector_results = {}
         try:
-             cdt_result = json.loads(complete_data.get("cdt_result", "{}"))
-             icd_result = json.loads(complete_data.get("icd_result", "{}"))
-             questioner_data = json.loads(complete_data.get("questioner_data", "{}"))
-             # Get inspector results from dedicated column first
-             if complete_data.get('inspector_results'):
-                 final_inspector_results = json.loads(complete_data['inspector_results'])
-             elif inspector_run_result.get('status') == 'success': # Fallback
-                  final_inspector_results = inspector_run_result
+            cdt_result = json.loads(complete_data.get("cdt_result", "{}"))
+            icd_result = json.loads(complete_data.get("icd_result", "{}"))
+            questioner_data = json.loads(complete_data.get("questioner_data", "{}"))
+            # Get inspector results from dedicated column first
+            if complete_data.get('inspector_results'):
+                final_inspector_results = json.loads(complete_data['inspector_results'])
+            elif inspector_run_result.get('status') == 'success': # Fallback
+                 final_inspector_results = inspector_run_result
         except json.JSONDecodeError as e:
              print(f"❌ Error decoding JSON from DB on trigger_inspectors for {record_id}: {e}")
              # Handle error appropriately
@@ -814,7 +812,7 @@ async def run_inspectors(record_id: str):
             cdt_data_from_db = json.loads(analysis.get("cdt_result", "{}"))
             icd_data_from_db = json.loads(analysis.get("icd_result", "{}"))
         except json.JSONDecodeError as e:
-             raise ValueError(f"Failed to parse stored JSON data for record {record_id}: {e}")
+            raise ValueError(f"Failed to parse stored JSON data for record {record_id}: {e}")
 
         # Check if we need to proceed with inspectors
         # Use 'has_answers' flag if available, otherwise assume answered if not 'has_questions'
@@ -870,7 +868,7 @@ async def run_inspectors(record_id: str):
                     "parsed_result": simplified # Pass the dictionary directly
                 }
             else:
-                 print(f"⚠️ Skipping ICD inspection for {record_id} due to ICD classification error.")
+                print(f"⚠️ Skipping ICD inspection for {record_id} due to ICD classification error.")
 
 
         # Define async functions for parallel execution
