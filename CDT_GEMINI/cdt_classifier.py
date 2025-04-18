@@ -207,61 +207,53 @@ Repeat this exact format for each relevant code range. Do not add additional tex
         return self.PROMPT_TEMPLATE.format(scenario=scenario)
 
     def parse_response(self, response: str) -> Dict[str, Any]:
-        """Parse the LLM response into structured format"""
-        range_codes = []
-        explanations = []
-        doubts = []
+        """Parse the LLM response into structured format using regex."""
+        formatted_results = []
+        range_codes_set = set() # Use a set to avoid duplicates if regex matches multiple times
+
+        # Regex to capture each CODE_RANGE block and its contents
+        # It looks for CODE_RANGE:, captures the range, and then everything until the next CODE_RANGE: or end of string
+        pattern = re.compile(r"CODE_RANGE:\s*(D\d{4}-D\d{4})\s*-\s*.*?\n(.*?)(?=CODE_RANGE:|$)", re.DOTALL | re.IGNORECASE)
         
-        sections = [s for s in response.split("CODE_RANGE:") if s.strip()]
+        matches = pattern.findall(response)
         
-        for section in sections:
-            lines = section.strip().split('\n')
-            if not lines:
-                continue
-                
-            code_range_line = lines[0].strip()
-            if " - " in code_range_line:
-                code_parts = code_range_line.split(" - ")
-                if code_parts and code_parts[0].strip().startswith("D"):
-                    range_code = code_parts[0].strip()
-                    explanation = ""
-                    doubt = ""
-                    current_section = None
-                    
-                    for line in lines[1:]:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        
-                        if line == "EXPLANATION:":
-                            current_section = "explanation"
-                        elif line == "DOUBT:":
-                            current_section = "doubt"
-                        elif current_section == "explanation":
-                            explanation = (explanation + "\n" + line) if explanation else line
-                        elif current_section == "doubt":
-                            doubt = (doubt + "\n" + line) if doubt else line
-                    
-                    range_codes.append(range_code)
-                    explanations.append(explanation)
-                    doubts.append(doubt)
-        
-        formatted_results = [
-            {
-                "code_range": code,
-                "explanation": expl,
+        for match in matches:
+            code_range = match[0].strip()
+            content = match[1].strip()
+            
+            explanation = None
+            doubt = None
+
+            # Regex to find EXPLANATION within the content block
+            exp_match = re.search(r"EXPLANATION:\s*(.*?)(?=DOUBT:|$)", content, re.DOTALL | re.IGNORECASE)
+            if exp_match:
+                explanation = exp_match.group(1).strip()
+
+            # Regex to find DOUBT within the content block
+            doubt_match = re.search(r"DOUBT:\s*(.*)", content, re.DOTALL | re.IGNORECASE)
+            if doubt_match:
+                doubt = doubt_match.group(1).strip()
+
+            # Clean up potential "none" strings
+            if explanation and explanation.lower() == 'none':
+                explanation = None
+            if doubt and doubt.lower() == 'none':
+                doubt = None
+
+            # Add the parsed result
+            formatted_results.append({
+                "code_range": code_range,
+                "explanation": explanation,
                 "doubt": doubt
-            }
-            for code, expl, doubt in zip(range_codes, explanations, doubts)
-        ]
+            })
+            range_codes_set.add(code_range)
+            
+        self.logger.info(f"Parsed {len(formatted_results)} code ranges using regex.")
         
-        # At this point, we're not using the scenario parameter
-        # This is causing an error when _ensure_all_code_ranges tries to use it
-        
-        self.logger.info(f"Parsed {len(formatted_results)} code ranges")
+        # Return the results and the unique range codes string
         return {
             "formatted_results": formatted_results,
-            "range_codes_string": ",".join(range_codes)
+            "range_codes_string": ",".join(sorted(list(range_codes_set)))
         }
         
     def _ensure_all_code_ranges(self, formatted_results: list, scenario: str) -> None:
@@ -315,26 +307,27 @@ Repeat this exact format for each relevant code range. Do not add additional tex
             })
 
     def process(self, scenario: str) -> Dict[str, Any]:
-        """Process a dental scenario and return CDT classifications"""
+        """Process a dental scenario to get CDT classification"""
+        raw_response = "" # Initialize raw_response
         try:
-            self.logger.info("Processing dental scenario")
+            self.logger.info("Starting CDT Classification")
             formatted_prompt = self.format_prompt(scenario)
-            response = generate_response(formatted_prompt)
-            result = self.parse_response(response)
-            
-            # Check for missing important code ranges based on scenario keywords
-            self._ensure_all_code_ranges(result["formatted_results"], scenario)
-            
-            # Update the range_codes_string after potentially adding new codes
-            result["range_codes_string"] = ",".join([item["code_range"] for item in result["formatted_results"]])
-            
-            self.logger.info("Successfully processed dental scenario")
-            return result
+            raw_response = generate_response(formatted_prompt) # Store raw response
+            parsed_response = self.parse_response(raw_response)
+            self._ensure_all_code_ranges(parsed_response["formatted_results"], scenario) # Ensure all ranges considered
+
+            self.logger.info("CDT Classification Completed")
+            # Add raw_data to the final response dictionary
+            parsed_response['raw_data'] = raw_response 
+            return parsed_response
+
         except Exception as e:
-            self.logger.error(f"Error processing scenario: {str(e)}")
+            self.logger.error(f"Error in CDT process: {str(e)}")
+            # Include raw_data in the error response
             return {
                 "formatted_results": [],
-                "range_codes_string": "",
+                "range_codes_string": None,
+                "raw_data": raw_response,
                 "error": str(e)
             }
 

@@ -143,7 +143,7 @@ List them in order of relevance, with the most relevant first.
             # Store analysis results
             final_result["explanation"] = topic_analysis_result.get("explanation")
             final_result["doubt"] = topic_analysis_result.get("doubt")
-            final_result["code_range"] = topic_analysis_result.get("code_range") # This is the string of ranges
+            final_result["code_range"] = "D8000-D8999" # Main range for this topic
             
             code_range_string = topic_analysis_result.get("code_range")
             
@@ -151,8 +151,26 @@ List them in order of relevance, with the most relevant first.
                 print(f"Orthodontic activate using code ranges: {code_range_string}")
                 # Activate subtopics in parallel using the registry with the parsed code range string
                 subtopic_results = await self.registry.activate_all(scenario, code_range_string)
-                final_result["activated_subtopics"] = subtopic_results.get("activated_subtopics", [])
-                final_result["codes"] = subtopic_results.get("topic_result", []) # Assuming 'topic_result' holds the list of codes
+
+                # Aggregate codes from the subtopic results
+                aggregated_codes = []
+                activated_subtopic_names = set() # Collect names of subtopics that returned codes
+
+                subtopic_results_list = subtopic_results.get("topic_result", [])
+                for sub_result in subtopic_results_list:
+                    if isinstance(sub_result, dict) and not sub_result.get("error"):
+                        codes_from_sub = sub_result.get("codes", [])
+                        if codes_from_sub:
+                            aggregated_codes.extend(codes_from_sub)
+                            # Try to get a cleaner subtopic name
+                            subtopic_name_match = re.match(r"^(.*?)\s*\(", sub_result.get("topic", ""))
+                            if subtopic_name_match:
+                                activated_subtopic_names.add(subtopic_name_match.group(1).strip())
+                            else:
+                                activated_subtopic_names.add(sub_result.get("topic", "Unknown Subtopic"))
+
+                final_result["activated_subtopics"] = sorted(list(activated_subtopic_names))
+                final_result["codes"] = aggregated_codes # Assign the flattened list of code dicts
             else:
                 print("No applicable code ranges found in orthodontic analysis.")
                 

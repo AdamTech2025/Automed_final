@@ -94,23 +94,26 @@ DOUBT: [Any uncertainties or doubts about the category selection]
              return {
                 "category_number": category_number,
                 "explanation": explanation,
-                "doubt": doubt
+                "doubt": doubt,
+                "raw_data": response # Include raw response here
             }
         else:
              self.logger.warning(f"Could not parse valid category number from response: {response}")
              return { # Return structure indicating parsing failure
                 "category_number": None,
                 "explanation": "Failed to parse category number from LLM response.",
-                "doubt": response # Include raw response in doubt for debugging
+                "doubt": response, # Include raw response in doubt for debugging
+                "raw_data": response # Include raw response here too
             }
 
     def process(self, scenario: str) -> Dict[str, Any]: # Return type is now Dict
         """Process a dental scenario to get the initial ICD category classification."""
+        raw_response = ""
         try:
             self.logger.info("Starting Initial ICD Category Classification")
             formatted_prompt = self.format_prompt(scenario)
-            response = generate_response(formatted_prompt)
-            parsed_response = self._parse_initial_classification(response)
+            raw_response = generate_response(formatted_prompt) # Store raw response
+            parsed_response = self._parse_initial_classification(raw_response)
             
             self.logger.info("Initial ICD Category Classification Completed")
             # Return the dictionary directly
@@ -118,11 +121,12 @@ DOUBT: [Any uncertainties or doubts about the category selection]
 
         except Exception as e:
             self.logger.error(f"Error in Initial ICD process: {str(e)}")
-            # Return error structure
+            # Return error structure including raw response if available
             return {
                 "category_number": None,
                 "explanation": f"An error occurred during initial ICD classification: {str(e)}",
                 "doubt": "Processing could not be completed.",
+                "raw_data": raw_response, # Include raw response in error case
                 "error": str(e)
             }
 

@@ -266,7 +266,7 @@ List them in order of relevance, with the most relevant first.
             # Store analysis results
             final_result["explanation"] = topic_analysis_result.get("explanation")
             final_result["doubt"] = topic_analysis_result.get("doubt")
-            final_result["code_range"] = topic_analysis_result.get("code_range") # This is the string of ranges
+            final_result["code_range"] = "D7000-D7999" # Main range for this topic
             
             code_range_string = topic_analysis_result.get("code_range")
             
@@ -274,41 +274,28 @@ List them in order of relevance, with the most relevant first.
                 print(f"Oral & Maxillofacial Surgery activate using code ranges: {code_range_string}")
                 # Activate subtopics in parallel using the registry with the parsed code range string
                 subtopic_results = await self.registry.activate_all(scenario, code_range_string)
-                final_result["activated_subtopics"] = subtopic_results.get("activated_subtopics", [])
-                final_result["codes"] = subtopic_results.get("topic_result", []) # Assuming 'topic_result' holds the list of codes
+                
+                # Aggregate codes from the subtopic results
+                aggregated_codes = []
+                activated_subtopic_names = set() # Collect names of subtopics that returned codes
+
+                subtopic_results_list = subtopic_results.get("topic_result", [])
+                for sub_result in subtopic_results_list:
+                    if isinstance(sub_result, dict) and not sub_result.get("error"):
+                        codes_from_sub = sub_result.get("codes", [])
+                        if codes_from_sub:
+                            aggregated_codes.extend(codes_from_sub)
+                            # Try to get a cleaner subtopic name
+                            subtopic_name_match = re.match(r"^(.*?)\s*\(", sub_result.get("topic", ""))
+                            if subtopic_name_match:
+                                activated_subtopic_names.add(subtopic_name_match.group(1).strip())
+                            else:
+                                activated_subtopic_names.add(sub_result.get("topic", "Unknown Subtopic"))
+
+                final_result["activated_subtopics"] = sorted(list(activated_subtopic_names))
+                final_result["codes"] = aggregated_codes # Assign the flattened list of code dicts
             else:
                 print("No applicable code ranges found in oral surgery analysis.")
-
-            # Special case for sialoliths - append if found and relevant subtopic not already activated by range
-            # This logic might need refinement depending on how activate_all handles specific codes vs ranges
-            if "sialolith" in scenario.lower() and "Other Surgical Procedures (D7260-D7297)" not in final_result["activated_subtopics"]:
-                print("Checking special case: Sialolithotomy")
-                try:
-                    # Explicitly call the subtopic activation function
-                    sialolith_code_result = other_surgical_procedures_service.activate_other_surgical_procedures(scenario)
-                    if sialolith_code_result and sialolith_code_result.get("codes"): # Check if it returned actual codes
-                         # Find or create the entry for this subtopic in the results
-                         found = False
-                         for item in final_result["codes"]:
-                             if item.get("topic") == "Other Surgical Procedures (D7260-D7297)":
-                                 # Merge codes if subtopic already exists but wasn't activated by range
-                                 existing_codes = item.get("codes", [])
-                                 new_codes = sialolith_code_result.get("codes", [])
-                                 # Avoid duplicates if necessary (simple check here)
-                                 for nc in new_codes:
-                                     if nc not in existing_codes:
-                                         existing_codes.append(nc)
-                                 item["codes"] = existing_codes
-                                 found = True
-                                 break
-                         if not found:
-                             final_result["codes"].append(sialolith_code_result) # Add the full result dict
-                         # Ensure the subtopic name is in activated_subtopics
-                         if "Other Surgical Procedures (D7260-D7297)" not in final_result["activated_subtopics"]:
-                              final_result["activated_subtopics"].append("Other Surgical Procedures (D7260-D7297)")
-                         print("Added/merged Sialolithotomy results.")
-                except Exception as sial_e:
-                    print(f"Error during special case sialolith activation: {sial_e}")
 
             return final_result
             
