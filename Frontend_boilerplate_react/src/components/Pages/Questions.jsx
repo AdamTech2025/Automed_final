@@ -730,7 +730,7 @@ Accepted CDT Codes: ${accepted.join(', ')}`;
     const uniqueCdtCodes = Object.keys(codeCounts);
 
     return (
-      <div className={`mt-4 p-4 ${isDark ? 'bg-blue-900/30 border-blue-700' : 'bg-blue-50 border-blue-200'} rounded-lg border relative`}>
+      <div className={`mt-4 p-4 ${isDark ? 'bg-blue-900/30 border-blue-700' : 'bg-blue-50 border-blue-200'} rounded-lg border `}>
         {/* Header and Copy Button */} 
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center">
