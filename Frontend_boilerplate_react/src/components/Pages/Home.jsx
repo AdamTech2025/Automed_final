@@ -1,4 +1,4 @@
-import { FaTooth, FaCogs, FaCheck, FaTimes, FaPaperPlane, FaRobot, FaCopy } from 'react-icons/fa';
+import { FaTooth, FaCogs, FaCheck, FaTimes, FaPaperPlane, FaRobot, FaCopy, FaSpinner } from 'react-icons/fa';
 import { analyzeDentalScenario, submitSelectedCodes, addCustomCode } from '../../interceptors/services.js';
 import { useState, useEffect, useMemo } from 'react';
 import Questioner from './Questioner.jsx';
@@ -660,11 +660,20 @@ const Home = () => {
                     isDark ? 'bg-blue-700 hover:bg-blue-600' : 'bg-blue-600 hover:bg-blue-700'
                   } text-white px-4 py-2 md:px-6 md:py-2 rounded-lg shadow-md disabled:${
                     isDark ? 'bg-gray-700' : 'bg-gray-400'
-                  } text-sm md:text-base transition-all duration-300`}
+                  } text-sm md:text-base transition-all duration-300 flex items-center justify-center`}
                   disabled={loading}
                 >
-                  <FaCogs className="inline mr-2" />
-                  {loading ? 'Analyzing...' : 'Analyze'}
+                  {loading ? (
+                    <>
+                      <FaSpinner className="animate-spin mr-2" />
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <FaCogs className="inline mr-2" />
+                      Analyze
+                    </>
+                  )}
                 </button>
               </div>
             </form>

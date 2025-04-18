@@ -212,8 +212,6 @@ async def analyze_scenario(payload: ScenarioInput):
         # Step 3: Activate relevant CDT and ICD topics CONCURRENTLY
         logger.info("*********💡 step 3: Activating Topics Concurrently:*********************")
         
-        tasks = []
-        topic_keys = [] # To map results back
         cdt_topic_activation_results = [] # Store final CDT results
         icd_topic_details = None # Store final single ICD result
         cdt_code_ranges_to_activate = set()
@@ -226,9 +224,6 @@ async def analyze_scenario(payload: ScenarioInput):
                 code_range = code_range.strip()
                 if code_range in CDT_TOPIC_MAPPING:
                     cdt_code_ranges_to_activate.add(code_range)
-                    topic_info = CDT_TOPIC_MAPPING[code_range]
-                    topic_keys.append({"type": "cdt", "key": code_range, "name": topic_info['name']}) 
-                    tasks.append(asyncio.create_task(topic_info["func"](cleaned_scenario_text)))                 
                 else:
                     logger.warning(f"CDT code range {code_range} from classifier not found in CDT_TOPIC_MAPPING.")
         else:
@@ -240,23 +235,21 @@ async def analyze_scenario(payload: ScenarioInput):
             icd_category_str = str(icd_category_number)
             if icd_category_str in ICD_TOPIC_MAPPING:
                 icd_category_to_activate = icd_category_str
-                topic_info = ICD_TOPIC_MAPPING[icd_category_str]
-                if asyncio.iscoroutinefunction(topic_info["func"]):
-                    topic_keys.append({"type": "icd", "key": icd_category_str, "name": topic_info['name']}) 
-                    tasks.append(asyncio.create_task(topic_info["func"](cleaned_scenario_text)))
-                else:
-                    logger.warning(f"Function for ICD topic {topic_info['name']} is NOT async. Skipping.")
             else:
                  logger.warning(f"ICD category number {icd_category_str} not found in ICD_TOPIC_MAPPING.")
         else:
              logger.warning("Skipping ICD topic activation task due to missing/invalid classification.")
 
-        # Run all topic activation tasks concurrently
-        if tasks:
-            logger.info(f"Running {len(tasks)} topic activation tasks concurrently...")
+        # Combine keys and run all activations via the registry
+        keys_to_activate_list = list(cdt_code_ranges_to_activate) + ([icd_category_to_activate] if icd_category_to_activate else [])
+        if keys_to_activate_list:
+            keys_to_activate_str = ",".join(keys_to_activate_list)
+            logger.info(f"Running topic activations via SubtopicRegistry for keys: {keys_to_activate_str}")
+
+            logger.info(f"Running {len(keys_to_activate_list)} topic activation tasks concurrently...")
             # Use the SubtopicRegistry's activate_all method, passing the relevant keys
             # Combine CDT ranges and the single ICD key into one string for the registry
-            keys_to_activate_str = ",".join(list(cdt_code_ranges_to_activate) + ([icd_category_to_activate] if icd_category_to_activate else []))
+            keys_to_activate_str = ",".join(keys_to_activate_list)
             logger.info(f"Keys passed to activate_all: {keys_to_activate_str}")
             
             # The registry now handles running and parsing
