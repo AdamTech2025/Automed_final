@@ -1,876 +1,382 @@
-﻿from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+﻿from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
-import os
-import asyncio
-from typing import Dict, Any, List
-import json
-import datetime
+import uvicorn
+import logging
+import asyncio # Add asyncio import
+import os # Add os import for getenv
+from fastapi.middleware.cors import CORSMiddleware # Import CORS Middleware
+from data_cleaner import DentalScenarioProcessor # Import the processor
+from cdt_classifier import CDTClassifier       # Import CDT Classifier
+from icd_classifier import ICDClassifier       # Import ICD Classifier
 
-# Import the data cleaner and cdt classifier
-from data_cleaner import DentalScenarioProcessor
-from cdt_classifier import CDTClassifier
-from icd_classifier import ICDClassifier
+# Import Topic Activation components (from backup reference)
 from sub_topic_registry import SubtopicRegistry
-from questioner import Questioner
-from inspector import DentalInspector
-from icd_inspector import ICDInspector
-# Import database
-from database import MedicalCodingDB
-
-# Import topic functions
+# CDT Topics
 from topics.diagnostics import diagnostic_service
 from topics.preventive import preventive_service
 from topics.restorative import restorative_service
 from topics.endodontics import endodontic_service
 from topics.periodontics import periodontic_service
-from topics.prosthodonticsremovable import prosthodontics_service
+from topics.prosthodonticsremovable import prosthodontics_service as prostho_remov_service # Alias needed
 from topics.maxillofacialprosthetics import maxillofacial_service
 from topics.implantservices import implant_service
-from topics.prosthodonticsfixed import prosthodontics_service
+from topics.prosthodonticsfixed import prosthodontics_service as prostho_fixed_service # Alias needed
 from topics.oralandmaxillofacialsurgery import oral_surgery_service
 from topics.orthodontics import orthodontic_service
 from topics.adjunctivegeneralservices import adjunctive_general_services_service
+# ICD Topics
+from icdtopics.dentalencounters import dental_encounters_service
+from icdtopics.dentalcaries import dental_caries_service
+from icdtopics.disordersofteeth import teeth_disorders_service
+from icdtopics.disordersofpulpandperiapicaltissues import pulp_periapical_service
+from icdtopics.diseasesandconditionsoftheperiodontium import periodontium_diseases_service
+from icdtopics.alveolarridgedisorders import alveolar_ridge_disorders_service
+from icdtopics.findingsofbostteeth import lost_teeth_service # Corrected name? Assuming findingsoflostteeth
+from icdtopics.developmentdisordersofteethandjaws import development_disorders_service
+from icdtopics.treatmentcomplications import treatment_complications_service
+from icdtopics.inflammatoryconditionsofthmucosa import inflammatory_mucosa_service # Corrected name? Assuming inflammatoryconditionsofthemucosa
+from icdtopics.tmjdiseasesandconditions import tmj_disorders_service
+from icdtopics.breathingspeechandsleepdisorders import breathing_sleep_disorders_service
+from icdtopics.traumaandrelatedconditions import trauma_conditions_service
+from icdtopics.oralneoplasms import oral_neoplasms_service
+from icdtopics.pathologies import pathologies_service
+from icdtopics.medicalfindingsrelatedtodentaltreatment import medical_findings_service
+from icdtopics.socialdeterminants import social_determinants_service
+from icdtopics.symptomsanddisorderspertienttoorthodontiacases import orthodontia_cases_service
 
-# Initialize FastAPI app
-app = FastAPI(title="Dental Code Extractor API")
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Initialize data cleaner, classifiers and database connection
-cleaner = DentalScenarioProcessor()
+app = FastAPI(
+    title="Dental Scenario Analysis API",
+    description="API for analyzing dental scenarios and suggesting CDT/ICD codes.",
+    version="0.1.0"
+)
+
+# Add CORS middleware (Using specific origins from backup)
+origins = [
+    "http://localhost:5173",
+    "https://dentalcoder.vercel.app",
+    "https://automed.adamtechnologies.in",
+    "http://automed.adamtechnologies.in",
+    os.getenv("FRONTEND_URL", "")  # Get from environment variable
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"], # Allows all methods (GET, POST, OPTIONS, etc.)
+    allow_headers=["*"], # Allows all headers
+)
+
+# Initialize processors/classifiers
+scenario_processor = DentalScenarioProcessor()
 cdt_classifier = CDTClassifier()
 icd_classifier = ICDClassifier()
-questioner = Questioner()
-cdt_inspector = DentalInspector()
-icd_inspector = ICDInspector()
-# Initialize database connection
-db = MedicalCodingDB()
 
-# Create TopicRegistry for parallel activation
+# Initialize Topic Registry (Combined CDT & ICD)
 topic_registry = SubtopicRegistry()
 
-# Map CDT code ranges to topic functions
+# --- CDT Topic Mapping and Registration ---
 CDT_TOPIC_MAPPING = {
     "D0100-D0999": {"func": diagnostic_service.activate_diagnostic, "name": "Diagnostic"},
     "D1000-D1999": {"func": preventive_service.activate_preventive, "name": "Preventive"},
     "D2000-D2999": {"func": restorative_service.activate_restorative, "name": "Restorative"},
     "D3000-D3999": {"func": endodontic_service.activate_endodontic, "name": "Endodontics"},
     "D4000-D4999": {"func": periodontic_service.activate_periodontic, "name": "Periodontics"},
-    "D5000-D5899": {"func": prosthodontics_service.activate_prosthodontics_fixed, "name": "Prosthodontics Removable"},
+    "D5000-D5899": {"func": prostho_remov_service.activate_prosthodontics_removable, "name": "Prosthodontics Removable"},
     "D5900-D5999": {"func": maxillofacial_service.activate_maxillofacial_prosthetics, "name": "Maxillofacial Prosthetics"},
     "D6000-D6199": {"func": implant_service.activate_implant_services, "name": "Implant Services"},
-    "D6200-D6999": {"func": prosthodontics_service.activate_prosthodontics_fixed, "name": "Prosthodontics Fixed"},
+    "D6200-D6999": {"func": prostho_fixed_service.activate_prosthodontics_fixed, "name": "Prosthodontics Fixed"},
     "D7000-D7999": {"func": oral_surgery_service.activate_oral_maxillofacial_surgery, "name": "Oral and Maxillofacial Surgery"},
     "D8000-D8999": {"func": orthodontic_service.activate_orthodontic, "name": "Orthodontics"},
     "D9000-D9999": {"func": adjunctive_general_services_service.activate_adjunctive_general_services, "name": "Adjunctive General Services"}
 }
-
-# Register all topics with the registry
 for code_range, topic_info in CDT_TOPIC_MAPPING.items():
     topic_registry.register(code_range, topic_info["func"], topic_info["name"])
 
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "https://dentalcoder.vercel.app", 
-        "https://automed.adamtechnologies.in", 
-        "http://automed.adamtechnologies.in",
-        os.getenv("FRONTEND_URL", "")  # Get from environment variable
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# --- ICD Topic Mapping and Registration ---
+ICD_CATEGORY_NAMES = {
+    "1": "Dental Encounters", "2": "Dental Caries", "3": "Disorders of Teeth",
+    "4": "Disorders of Pulp and Periapical Tissues", "5": "Diseases and Conditions of the Periodontium",
+    "6": "Alveolar Ridge Disorders", "7": "Findings of Lost Teeth",
+    "8": "Developmental Disorders of Teeth and Jaws", "9": "Treatment Complications",
+    "10": "Inflammatory Conditions of the Mucosa", "11": "TMJ Diseases and Conditions",
+    "12": "Breathing, Speech, and Sleep Disorders", "13": "Trauma and Related Conditions",
+    "14": "Oral Neoplasms", "15": "Pathologies", "16": "Medical Findings Related to Dental Treatment",
+    "17": "Social Determinants", "18": "Symptoms and Disorders Pertinent to Orthodontia Cases"
+}
 
-# Helper function to map specific CDT codes to their broader category
-def map_to_cdt_category(specific_code: str) -> str:
-    """Maps a specific CDT code or range to its broader category."""
-    # Extract the base code without the range
-    if "-" in specific_code:
-        base_code = specific_code.split("-")[0]
-    else:
-        base_code = specific_code
-    
-    # Get the first 2 characters
-    category_prefix = base_code[:2]
-    
-    # Map to the corresponding category
-    if category_prefix == "D0":
-        return "D0100-D0999"
-    elif category_prefix == "D1":
-        return "D1000-D1999"
-    elif category_prefix == "D2":
-        return "D2000-D2999"
-    elif category_prefix == "D3":
-        return "D3000-D3999"
-    elif category_prefix == "D4":
-        return "D4000-D4999"
-    elif category_prefix == "D5":
-        # Check if it's in the range D5000-D5899 or D5900-D5999
-        if base_code[2:4] < "90":
-            return "D5000-D5899"
-        else:
-            return "D5900-D5999"
-    elif category_prefix == "D6":
-        # Check if it's in the range D6000-D6199 or D6200-D6999
-        if base_code[2:4] < "20":
-            return "D6000-D6199"
-        else:
-            return "D6200-D6999"
-    elif category_prefix == "D7":
-        return "D7000-D7999"
-    elif category_prefix == "D8":
-        return "D8000-D8999"
-    elif category_prefix == "D9":
-        return "D9000-D9999"
-    else:
-        return None
+ICD_TOPIC_MAPPING = {
+    "1": {"func": dental_encounters_service.activate_dental_encounters, "name": ICD_CATEGORY_NAMES["1"]},
+    "2": {"func": dental_caries_service.activate_dental_caries, "name": ICD_CATEGORY_NAMES["2"]},
+    "3": {"func": teeth_disorders_service.activate_disorders_of_teeth, "name": ICD_CATEGORY_NAMES["3"]},
+    "4": {"func": pulp_periapical_service.activate_pulp_periapical_disorders, "name": ICD_CATEGORY_NAMES["4"]},
+    "5": {"func": periodontium_diseases_service.activate_periodontium_disorders, "name": ICD_CATEGORY_NAMES["5"]},
+    "6": {"func": alveolar_ridge_disorders_service.activate_alveolar_ridge_disorders, "name": ICD_CATEGORY_NAMES["6"]},
+    "7": {"func": lost_teeth_service.activate_lost_teeth, "name": ICD_CATEGORY_NAMES["7"]},
+    "8": {"func": development_disorders_service.activate_development_disorders, "name": ICD_CATEGORY_NAMES["8"]},
+    "9": {"func": treatment_complications_service.activate_treatment_complications, "name": ICD_CATEGORY_NAMES["9"]},
+    "10": {"func": inflammatory_mucosa_service.activate_inflammatory_mucosa, "name": ICD_CATEGORY_NAMES["10"]},
+    "11": {"func": tmj_disorders_service.activate_tmj_disorders, "name": ICD_CATEGORY_NAMES["11"]},
+    "12": {"func": breathing_sleep_disorders_service.activate_breathing_sleep_disorders, "name": ICD_CATEGORY_NAMES["12"]},
+    "13": {"func": trauma_conditions_service.activate_trauma_conditions, "name": ICD_CATEGORY_NAMES["13"]},
+    "14": {"func": oral_neoplasms_service.activate_oral_neoplasms, "name": ICD_CATEGORY_NAMES["14"]},
+    "15": {"func": pathologies_service.activate_pathologies, "name": ICD_CATEGORY_NAMES["15"]},
+    "16": {"func": medical_findings_service.activate_medical_findings, "name": ICD_CATEGORY_NAMES["16"]},
+    "17": {"func": social_determinants_service.activate_social_determinants, "name": ICD_CATEGORY_NAMES["17"]},
+    "18": {"func": orthodontia_cases_service.activate_orthodontia_cases, "name": ICD_CATEGORY_NAMES["18"]}
+}
 
-# Request model
-class ScenarioRequest(BaseModel):
+# Register ICD topics using category number as the key
+for category_num, topic_info in ICD_TOPIC_MAPPING.items():
+    topic_registry.register(category_num, topic_info["func"], topic_info["name"])
+
+class ScenarioInput(BaseModel):
     scenario: str
 
-class QuestionAnswersRequest(BaseModel):
-    answers: str
+# Use a more detailed output model similar to the reference structure
+class DetailedAnalysisOutput(BaseModel):
+    standardized_scenario: str
+    cdt_classification_results: dict # Original CDT classification results
+    icd_classification_results: dict # Original ICD classification results
+    cdt_topic_results: dict # Processed CDT topics/subtopics
+    icd_topic_results: dict # Processed (simplified) ICD topic result
 
-# API endpoint to process user input
-@app.post("/api/analyze")
-async def analyze_web(request: ScenarioRequest):
-    """Process the dental scenario through the data cleaner, CDT classifier, and topic activators."""
+# Helper function to parse activation results (similar to reference)
+def _parse_activation_result(result_text: str) -> dict:
+    parsed = {"code": None, "explanation": None, "doubt": None}
+    if not isinstance(result_text, str):
+        return parsed
+        
+    current_key = None
+    current_value = ""
+
+    for line in result_text.split('\n'): # Handle escaped newlines if present
+        line = line.strip()
+        if not line: continue
+
+        # More robust key detection
+        if line.upper().startswith("CODE:"):
+            if current_key: # Save previous key-value
+                 parsed[current_key] = current_value.strip()
+            current_key = "code"
+            current_value = line.split(":", 1)[1].strip().strip('*')
+        elif line.upper().startswith("EXPLANATION:"):
+            if current_key: # Save previous key-value
+                 parsed[current_key] = current_value.strip()
+            current_key = "explanation"
+            current_value = line.split(":", 1)[1].strip().strip('*')
+        elif line.upper().startswith("DOUBT:"):
+            if current_key: # Save previous key-value
+                 parsed[current_key] = current_value.strip()
+            current_key = "doubt"
+            current_value = line.split(":", 1)[1].strip().strip('*')
+        elif current_key: # Append to current value if a key is active
+            current_value += " " + line # Add space for multi-line values
+            
+    if current_key: # Save the last key-value pair
+        parsed[current_key] = current_value.strip()
+
+    # Clean up potential "none" strings
+    for key in parsed:
+        if isinstance(parsed[key], str) and parsed[key].lower() == 'none':
+            parsed[key] = None
+            
+    return parsed
+
+@app.post("/api/analyze", response_model=DetailedAnalysisOutput) # Use updated model
+async def analyze_scenario(payload: ScenarioInput):
+    """
+    Receives a dental scenario, cleans it, classifies CDT/ICD, 
+    activates relevant CDT/ICD topics, and returns results.
+    """
+    logger.info(f"Received scenario for analysis: {payload.scenario[:75]}...")
+
     try:
-        # Step 1: Process the input through data_cleaner
-        print("\n*************************** STEP 1: DATA CLEANING ***************************")
-        print(f"🔍 INPUT SCENARIO: {request.scenario}")
-        processed_result = cleaner.process(request.scenario)
-        processed_scenario = processed_result["standardized_scenario"]
-        print(f"✅ PROCESSED SCENARIO: {processed_scenario}")
+        # Step 1: Clean the scenario using DentalScenarioProcessor
+        logger.info("*********🔍 step 1 :Cleaning Scenario:*********************")
+        cleaned_data = scenario_processor.process(payload.scenario)
+        logger.info("Scenario cleaned successfully.")
+        cleaned_scenario_text = cleaned_data["standardized_scenario"]
+
+        # Step 2: Run CDT Classifier and Initial ICD Classifier concurrently
+        logger.info("*********🚀 step 2: Starting Concurrent CDT & Initial ICD Classification:*********************")
+        cdt_task = asyncio.to_thread(cdt_classifier.process, cleaned_scenario_text)
+        icd_initial_task = asyncio.to_thread(icd_classifier.process, cleaned_scenario_text) # Initial ICD classification
+
+        cdt_classification_results, icd_classification_results = await asyncio.gather(cdt_task, icd_initial_task)
+
+        logger.info("CDT & Initial ICD classification completed.")
+
+        # --- Step 3: Activate relevant CDT and ICD topics CONCURRENTLY --- 
+        logger.info("*********💡 step 3: Activating Topics Concurrently:*********************")
         
-        # Step 2: Process the cleaned scenario with CDT and ICD classifiers in parallel
-        print("\n*************************** STEP 2: PARALLEL CLASSIFICATION ***************************")
-        print(f"⏳ RUNNING CDT & ICD CLASSIFICATION IN PARALLEL...")
-        
-        # Create async tasks for parallel execution
-        async def run_cdt_classification():
-            return cdt_classifier.process(processed_scenario)
-            
-        async def run_icd_classification():
-            return icd_classifier.process(processed_scenario)
-        
-        # Run both classifications in parallel
-        cdt_task = asyncio.create_task(run_cdt_classification())
-        icd_task = asyncio.create_task(run_icd_classification())
-        
-        # Await both results
-        cdt_result, icd_result = await asyncio.gather(cdt_task, icd_task)
-        
-        # Log CDT results
-        print(f"🏆 CDT CLASSIFICATION COMPLETE with {len(cdt_result.get('formatted_results', []))} code ranges")
-        
-        # Log ICD results
-        if "error" in icd_result and icd_result["error"]:
-            print(f"❌ ICD CLASSIFICATION ERROR: {icd_result['error']}")
+        tasks = []
+        topic_keys = [] # To map results back
+
+        # Prepare CDT topic activation tasks
+        if cdt_classification_results and cdt_classification_results.get("range_codes_string"):
+            cdt_range_codes_str = cdt_classification_results["range_codes_string"]
+            # Split the ranges and find corresponding functions
+            for code_range in cdt_range_codes_str.split(','):
+                code_range = code_range.strip()
+                if code_range in CDT_TOPIC_MAPPING:
+                    topic_info = CDT_TOPIC_MAPPING[code_range]
+                    logger.info(f"Creating task for CDT Topic: {topic_info['name']}")
+                    tasks.append(asyncio.create_task(topic_info["func"](cleaned_scenario_text)))
+                    topic_keys.append({"type": "cdt", "key": code_range, "name": topic_info['name']})
+                else:
+                    logger.warning(f"CDT code range {code_range} from classifier not found in CDT_TOPIC_MAPPING.")
         else:
-            print(f"🏆 ICD CLASSIFICATION COMPLETE with {len(icd_result.get('categories', []))} categories")
-            if icd_result.get("icd_codes"):
-                print(f"📋 ICD CODES IDENTIFIED: {', '.join(icd_result.get('icd_codes', []))}")
-        
-        # Step 3: Activate topics in parallel based on code ranges
-        print("\n*************************** STEP 3: TOPIC ACTIVATION ***************************")
-        print(f"⚡ ACTIVATING TOPICS IN PARALLEL...")
-        range_codes = cdt_result["range_codes_string"].split(",")
-        
-        # Process code ranges to get the standardized categories
-        category_ranges = set()
-        for range_code in range_codes:
-            category = map_to_cdt_category(range_code.strip())
-            if category:
-                category_ranges.add(category)
-        
-        # Convert to comma-separated string for the registry
-        category_ranges_str = ",".join(category_ranges)
-        
-        # Run all relevant topics in parallel
-        topic_results = await topic_registry.activate_all(processed_scenario, category_ranges_str)
-        
-        # Make sure we have valid data structures
-        activated_subtopics = topic_results.get('activated_subtopics', [])
-        topic_result = topic_results.get('topic_result', [])
-        print(f"🎯 TOPICS ACTIVATED: {activated_subtopics}")
-        print(f"📋 SPECIFIC CODES IDENTIFIED: {len(topic_result)}")
-        
-        # Step 4: Process results for response
-        print("\n*************************** STEP 4: PROCESSING RESULTS ***************************")
-        
-        # Process the CDT classification data for better structure
-        formatted_cdt_results = []
-        for result in cdt_result.get("formatted_results", []):
-            formatted_result = {
-                "code_range": result.get("code_range", ""),
-                "explanation": result.get("explanation", ""),
-                "doubt": result.get("doubt", "")
-            }
-            formatted_cdt_results.append(formatted_result)
-        
-        # Process topic_result to extract codes by subtopic for the response
-        subtopic_data = {}
-        for topic_item in topic_result:
-            topic_name = topic_item.get("topic", "Unknown")
-            if "codes" in topic_item:
-                for subtopic_code in topic_item["codes"]:
-                    subtopic_name = subtopic_code.get("topic", "Unknown Subtopic")
-                    code_range = subtopic_code.get("code_range", "")
-                    subtopic_key = f"{subtopic_name} ({code_range})"
-                    
-                    if "codes" in subtopic_code:
-                        codes_list = []
-                        for code_entry in subtopic_code["codes"]:
-                            code = code_entry.get("code", "Unknown")
-                            # Clean up code value
-                            if isinstance(code, str):
-                                if " - " in code:
-                                    code = code.split(" - ")[0].strip()
-                            
-                            explanation = code_entry.get("explanation", "")
-                            doubt = code_entry.get("doubt", "")
-                            
-                            codes_list.append({
-                                "code": code,
-                                "explanation": explanation,
-                                "doubt": doubt
-                            })
-                        
-                        if subtopic_key not in subtopic_data:
-                            subtopic_data[subtopic_key] = []
-                        subtopic_data[subtopic_key].extend(codes_list)
-        
-        # Remove codes arrays from topic_result to avoid duplication
-        cleaned_topic_result = []
-        for topic_item in topic_result:
-            # Create a copy without the codes array
-            cleaned_item = {
-                "topic": topic_item.get("topic", "Unknown"),
-                "code_range": topic_item.get("code_range", ""),
-                "activated_subtopics": topic_item.get("activated_subtopics", [])
-            }
-            cleaned_topic_result.append(cleaned_item)
-        
-        # Format the topics data for response
-        topics_data = {}
-        for code_range in category_ranges:
-            if code_range in CDT_TOPIC_MAPPING:
-                topic_name = CDT_TOPIC_MAPPING[code_range]["name"]
-                topics_data[code_range] = {
-                    "name": topic_name,
-                    "activated": topic_name in activated_subtopics
-                }
-        
-        # Save data to database
-        print("\n*************************** SAVING TO DATABASE ***************************")
-        try:
-            # Filter out activated_subtopics from topic_result for database
-            db_topic_result = []
-            for topic_item in cleaned_topic_result:
-                # Create a copy without the activated_subtopics
-                filtered_item = {
-                    "topic": topic_item.get("topic", "Unknown"),
-                    "code_range": topic_item.get("code_range", "")
-                    # Removed activated_subtopics
-                }
-                db_topic_result.append(filtered_item)
-            
-            # Prepare the complete CDT result data with all components
-            complete_cdt_data = {
-                "cdt_classification": {
-                    "CDT_classifier": formatted_cdt_results,
-                },
-                "topics_results": {
-                    "topic_result": db_topic_result, 
-                    "subtopic_data": subtopic_data
-                }
-            }
-            
-            # Prepare the complete ICD result data - ensuring all keys exist and have valid values
-            complete_icd_data = {}
-            
-            # Check if icd_result exists and is not None
-            if icd_result is not None:
-                # Get primary category and topic result for simplified version
-                primary_icd_code = ""
-                primary_explanation = ""
-                primary_doubt = ""
-                
-                # Extract from topics_results if available
-                if "icd_topics_results" in icd_result and icd_result["icd_topics_results"]:
-                    if "category_numbers_string" in icd_result and icd_result["category_numbers_string"]:
-                        primary_category = icd_result["category_numbers_string"].split(",")[0]
-                        if primary_category in icd_result["icd_topics_results"]:
-                            topic_data = icd_result["icd_topics_results"][primary_category]
-                            if "parsed_result" in topic_data:
-                                parsed = topic_data["parsed_result"]
-                                primary_icd_code = parsed.get("code", "")
-                                primary_explanation = parsed.get("explanation", "")
-                                primary_doubt = parsed.get("doubt", "")
-                
-                # If still no data, try categories
-                if not primary_icd_code and "categories" in icd_result and icd_result["categories"]:
-                    category_index = 0
-                    if "icd_codes" in icd_result and len(icd_result["icd_codes"]) > category_index:
-                        primary_icd_code = icd_result["icd_codes"][category_index]
-                    if "explanations" in icd_result and len(icd_result["explanations"]) > category_index:
-                        primary_explanation = icd_result["explanations"][category_index]
-                    if "doubts" in icd_result and len(icd_result["doubts"]) > category_index:
-                        primary_doubt = icd_result["doubts"][category_index]
-                
-                # Store both the full data and a simplified version
-                complete_icd_data = {
-                    "simplified": {
-                        "code": primary_icd_code,
-                        "explanation": primary_explanation,
-                        "doubt": primary_doubt
-                    }
-                }
-                
-                print(f"⏳ Prepared ICD data for storage with primary code: {primary_icd_code}")
+            logger.warning("Skipping CDT topic activation tasks due to missing/invalid classification.")
+
+        # Prepare ICD topic activation task
+        icd_category_number = icd_classification_results.get("category_number")
+        if icd_category_number:
+            icd_category_str = str(icd_category_number)
+            if icd_category_str in ICD_TOPIC_MAPPING:
+                topic_info = ICD_TOPIC_MAPPING[icd_category_str]
+                logger.info(f"Creating task for ICD Topic: {topic_info['name']}")
+                tasks.append(asyncio.create_task(topic_info["func"](cleaned_scenario_text)))
+                topic_keys.append({"type": "icd", "key": icd_category_str, "name": topic_info['name']})
             else:
-                print("⚠️ No ICD result data available to save")
-                complete_icd_data = {"error": "No ICD data available"}
-            
-            # Check data sizes
-            cdt_json = json.dumps(complete_cdt_data)
-            icd_json = json.dumps(complete_icd_data)
-            print(f"💾 CDT data size: {len(cdt_json)} bytes")
-            print(f"💾 ICD data size: {len(icd_json)} bytes")
-            
-            # Prepare data for database storage
-            db_data = {
-                "user_question": request.scenario,  # Original user question
-                "processed_clean_data": processed_scenario,  # Cleaned data
-                "cdt_result": cdt_json,  # Complete CDT result data
-                "icd_result": icd_json   # Complete ICD result data
-            }
-            
-            # Save to database
-            db_result = db.create_analysis_record(db_data)
-            record_id = None
-            if db_result:
-                record_id = db_result[0]["id"]
-                print(f"✅ Data saved to database successfully with ID: {record_id}")
-                print(f"  - CDT data size: {len(db_data['cdt_result'])} bytes")
-                print(f"  - ICD data size: {len(db_data['icd_result'])} bytes")
-            else:
-                print("❌ Failed to save data to database")
-            
-            # Step 5: Generate questions with the Questioner module
-            print("\n*************************** STEP 5: QUESTIONER ANALYSIS ***************************")
-            questioner_result = None
-            if record_id:
-                try:
-                    # Format simplified data for the questioner
-                    simplified_cdt_data = {
-                        "code_ranges": cdt_result.get("range_codes_string", ""),
-                        "activated_subtopics": activated_subtopics,
-                        "subtopics": ", ".join(list(subtopic_data.keys())) if subtopic_data else "None",
-                        "formatted_cdt_results": [
-                            f"{res.get('code_range')}: {res.get('explanation')}" 
-                            for res in formatted_cdt_results
-                        ]
-                    }
-                    
-                    # Format ICD data for questioner
-                    primary_icd = complete_icd_data.get("simplified", {})
-                    simplified_icd_data = {
-                        "code": primary_icd.get("code", ""),
-                        "explanation": primary_icd.get("explanation", ""),
-                        "doubt": primary_icd.get("doubt", "")
-                    }
-                    
-                    # Generate questions using the questioner module
-                    print("⏳ Generating questions for the scenario...")
-                    questioner_result = questioner.process(
-                        processed_scenario, 
-                        simplified_cdt_data, 
-                        simplified_icd_data
-                    )
-                    
-                    # Log the results
-                    if questioner_result["has_questions"]:
-                        print(f"✅ Generated {len(questioner_result['cdt_questions']['questions'])} CDT questions and {len(questioner_result['icd_questions']['questions'])} ICD questions")
+                 logger.warning(f"ICD category number {icd_category_str} not found in ICD_TOPIC_MAPPING.")
+        else:
+             logger.warning("Skipping ICD topic activation task due to missing/invalid classification.")
+
+        # Run all topic activation tasks concurrently
+        cdt_topic_results = {} # Initialize final structures
+        processed_icd_topic_results = {}
+        
+        if tasks:
+            logger.info(f"Running {len(tasks)} topic activation tasks concurrently...")
+            topic_results_raw = await asyncio.gather(*tasks, return_exceptions=True)
+            logger.info("Concurrent topic activation completed.")
+
+            # Process the results
+            cdt_topic_list_for_response = [] # Store individual topic results for CDT
+            for i, result in enumerate(topic_results_raw):
+                key_info = topic_keys[i]
+                topic_type = key_info["type"]
+                topic_key = key_info["key"]
+                topic_name = key_info["name"]
+
+                if isinstance(result, Exception):
+                    logger.error(f"Error activating topic {topic_name} ({topic_key}): {result}")
+                    error_result = {"error": f"Activation failed for {topic_name}: {str(result)}"}
+                    if topic_type == "cdt":
+                        # Add error entry specific to this topic
+                        cdt_topic_list_for_response.append({
+                            "topic": topic_name,
+                            "code_range": topic_key,
+                            **error_result
+                        })
+                    elif topic_type == "icd":
+                        processed_icd_topic_results = error_result
+                elif isinstance(result, dict):
+                    logger.info(f"Successfully activated topic: {topic_name}")
+                    if topic_type == "cdt":
+                        # Add the structured result from the topic activation function
+                        result['topic'] = topic_name # Ensure topic name is present
+                        cdt_topic_list_for_response.append(result)
+                    elif topic_type == "icd":
+                        # For ICD, we want the simplified structure
+                        # The ICD topic activation function should ideally return the standard dict 
+                        # with explanation, doubt, code_range, activated_subtopics, codes.
+                        # We parse the *subtopic* result here for the final format.
+                        icd_subtopic_codes = result.get("codes", [])
+                        parsed_icd_code = None
+                        parsed_icd_explanation = None
+                        parsed_icd_doubt = None
                         
-                        # Save questioner data to the database
-                        questioner_json = json.dumps(questioner_result)
-                        db.update_questioner_data(record_id, questioner_json)
-                        print(f"✅ Saved questioner data to database for record ID: {record_id}")
-                    else:
-                        print("✅ No questions needed for this scenario")
-                        
-                        # Save empty questioner data to the database
-                        db.update_questioner_data(record_id, json.dumps(questioner_result))
-                        print(f"✅ Saved empty questioner data to database for record ID: {record_id}")
-                        
-                        # Since no questions are needed, proceed directly to inspectors
-                        print("✅ Proceeding directly to inspector step...")
-                        inspector_result = await run_inspectors(record_id)
-                        print(f"✅ Inspector step complete without questions")
-                    
-                except Exception as e:
-                    import traceback
-                    error_details = traceback.format_exc()
-                    print(f"❌ Error in questioner processing: {str(e)}")
-                    print(f"STACK TRACE: {error_details}")
-                    questioner_result = {
-                        "cdt_questions": {"questions": [], "explanation": f"Error occurred: {str(e)}", "has_questions": False},
-                        "icd_questions": {"questions": [], "explanation": f"Error occurred: {str(e)}", "has_questions": False},
-                        "has_questions": False
-                    }
-            else:
-                print("⚠️ Skipping questioner step - no record ID available")
-                questioner_result = {
-                    "cdt_questions": {"questions": [], "explanation": "No record ID", "has_questions": False},
-                    "icd_questions": {"questions": [], "explanation": "No record ID", "has_questions": False},
-                    "has_questions": False
-                }
-        except Exception as e:
-            import traceback
-            error_details = traceback.format_exc()
-            print(f"❌ Database error: {str(e)}")
-            print(f"STACK TRACE: {error_details}")
-            # Continue with API response even if database save fails
-        
-        # Step 6: Prepare final response
-        print("\n*************************** STEP 6: PREPARING RESPONSE ***************************")
-        
-        # Extract ICD data with a more robust approach - using only code, explanation, and doubt
-        simplified_icd_data = {
-            "code": "",
-            "explanation": "",
-            "doubt": ""
-        }
-        
-        # First, try to get data from icd_topics_results if available
-        if icd_result and "icd_topics_results" in icd_result and icd_result["icd_topics_results"]:
-            # Get the first category
-            if "category_numbers_string" in icd_result and icd_result["category_numbers_string"]:
-                categories = icd_result["category_numbers_string"].split(",")
-                if categories and categories[0] in icd_result["icd_topics_results"]:
-                    category_data = icd_result["icd_topics_results"][categories[0]]
-                    if "parsed_result" in category_data:
-                        parsed = category_data["parsed_result"]
-                        if "code" in parsed:
-                            simplified_icd_data["code"] = parsed["code"]
-                        if "explanation" in parsed:
-                            simplified_icd_data["explanation"] = parsed["explanation"]
-                        if "doubt" in parsed:
-                            simplified_icd_data["doubt"] = parsed["doubt"]
-        
-        # If no data found yet, try categories
-        if not simplified_icd_data["code"] and "categories" in icd_result and icd_result["categories"]:
-            category_index = 0
-            simplified_icd_data["code"] = (
-                icd_result["icd_codes"][category_index] if "icd_codes" in icd_result and len(icd_result["icd_codes"]) > category_index else ""
-            )
-            simplified_icd_data["explanation"] = (
-                icd_result["explanations"][category_index] if "explanations" in icd_result and len(icd_result["explanations"]) > category_index else ""
-            )
-            simplified_icd_data["doubt"] = (
-                icd_result["doubts"][category_index] if "doubts" in icd_result and len(icd_result["doubts"]) > category_index else ""
-            )
-        
-        # Log what we're returning for debugging
-        print(f"🏥 ICD DATA - CODE: {simplified_icd_data['code']}")
-        print(f"🏥 ICD DATA - EXPLANATION: {simplified_icd_data['explanation'][:100]}...")
-        
-        # Get the most up-to-date inspector results from database
-        inspector_results = {"cdt_inspector": {}, "icd_inspector": {}}
-        if record_id:
-            try:
-                # Try to get the latest data from the database with inspector results
-                latest_analysis = db.get_complete_analysis(record_id)
-                if latest_analysis:
-                    # Check if we have dedicated inspector_results column data
-                    if 'inspector_results' in latest_analysis and latest_analysis['inspector_results']:
-                        # Parse the inspector_results JSON
-                        inspector_data = json.loads(latest_analysis['inspector_results'])
-                        inspector_results = inspector_data
-                        print(f"✅ Retrieved inspector results from dedicated column")
-                    else:
-                        # Fall back to the old method for backward compatibility
-                        latest_cdt_data = json.loads(latest_analysis.get("cdt_result", "{}"))
-                        latest_icd_data = json.loads(latest_analysis.get("icd_result", "{}"))
-                        
-                        # Extract inspector data
-                        cdt_inspector = latest_cdt_data.get("inspector_results", {})
-                        icd_inspector = latest_icd_data.get("inspector_results", {})
-                        
-                        # Format for the frontend
-                        inspector_results = {
-                            "cdt": {
-                                "codes": cdt_inspector.get("codes", []),
-                                "rejected_codes": cdt_inspector.get("rejected_codes", []),
-                                "explanation": cdt_inspector.get("explanation", "")
-                            },
-                            "icd": {
-                                "codes": icd_inspector.get("codes", []),
-                                "explanation": icd_inspector.get("explanation", "")
-                            }
+                        if icd_subtopic_codes and isinstance(icd_subtopic_codes, list) and icd_subtopic_codes[0]:
+                            # Assuming the first code entry from the subtopic activation holds the primary code
+                            # This relies on the ICD subtopic functions returning a parseable structure
+                            first_code_entry = icd_subtopic_codes[0]
+                            if isinstance(first_code_entry, dict): # Check if it's a dict
+                                raw_text_to_parse = first_code_entry.get('result', '') or first_code_entry.get('raw_text', '')
+                                if raw_text_to_parse:
+                                    parsed_data = _parse_activation_result(raw_text_to_parse) # Use helper from app.py
+                                    parsed_icd_code = parsed_data.get('code')
+                                    parsed_icd_explanation = parsed_data.get('explanation')
+                                    parsed_icd_doubt = parsed_data.get('doubt')
+                                elif 'code' in first_code_entry: # Fallback if already parsed
+                                    parsed_icd_code = first_code_entry.get('code')
+                                    parsed_icd_explanation = first_code_entry.get('explanation')
+                                    parsed_icd_doubt = first_code_entry.get('doubt')
+                                else:
+                                     logger.warning(f"Could not parse ICD subtopic result for {topic_name}. Raw subtopic result: {first_code_entry}")
+                            else:
+                                logger.warning(f"Unexpected format for ICD subtopic code entry: {first_code_entry}")
+                        else:
+                             logger.warning(f"No valid codes found in ICD topic result for {topic_name}. Raw topic result: {result}")
+                             
+                        processed_icd_topic_results = {
+                            "category": topic_name,
+                            "code": parsed_icd_code,
+                            "explanation": parsed_icd_explanation,
+                            "doubt": parsed_icd_doubt,
+                            "raw_topic_result": result # Keep raw topic result for debug if needed
                         }
-                        print(f"✅ Retrieved inspector results from CDT/ICD data (legacy method)")
-            except Exception as e:
-                print(f"⚠️ Error retrieving inspector results: {str(e)}")
-                inspector_results = {
-                    "cdt": {"codes": [], "rejected_codes": [], "explanation": ""},
-                    "icd": {"codes": [], "explanation": ""}
-                }
-        
-        # Prepare a clean response that is JSON-serializable and properly structured
-        response_data = {
-            "record_id": record_id,
-            "processed_scenario": processed_scenario,
-            "cdt_classification": {
-                "CDT_classifier": formatted_cdt_results,
-                "range_codes_string": cdt_result.get("range_codes_string", "")
-            },
-            "topics_results": {
-                "activated_subtopics": activated_subtopics,
-                "topic_result": cleaned_topic_result,
-                "subtopic_data": subtopic_data
-            },
-            "icd_classification": simplified_icd_data,
-            "questioner_data": questioner_result,          
-            "inspector_results": inspector_results
-        }
-        
-        print("\n*************************** PROCESSING COMPLETE ***************************")
-        
-        return {
-            "status": "success",
-            "data": response_data
-        }
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print("\n*************************** ERROR OCCURRED ***************************")
-        print(f"❌ ERROR: {str(e)}")
-        print(f"STACK TRACE: {error_details}")
-        return {
-            "status": "error",
-            "message": str(e),
-            "details": error_details
-        }
+                        logger.info(f"Processed ICD Topic Result: Code={processed_icd_topic_results.get('code')}")
+                else:
+                    logger.warning(f"Unexpected result type for topic {topic_name}: {type(result)}")
+                    error_result = {"error": f"Unexpected result type for {topic_name}: {type(result)}"}
+                    if topic_type == "cdt":
+                         cdt_topic_list_for_response.append({
+                            "topic": topic_name,
+                            "code_range": topic_key,
+                            **error_result
+                        })
+                    elif topic_type == "icd":
+                        processed_icd_topic_results = error_result
 
-@app.get("/")
-def test():
-    return {"message": "Dental Code Extractor API is running"}
-
-# Endpoint for submitting answers to questions
-@app.post("/api/answer-questions/{record_id}")
-async def submit_question_answers(record_id: str, request: QuestionAnswersRequest):
-    """Process the answers to questions and update the analysis."""
-    try:
-        print(f"\n*************************** PROCESSING ANSWERS FOR RECORD {record_id} ***************************")
-        print(f"Received answers: {request.answers}")
-        
-        # Get the existing analysis from the database
-        analysis = db.get_complete_analysis(record_id)
-        if not analysis:
-            return {
-                "status": "error",
-                "message": f"No analysis found with ID: {record_id}"
-            }
-        
-        # Parse the answers JSON
-        answers = json.loads(request.answers)
-        
-        # Update the questioner data with the answers
-        questioner_data = json.loads(analysis.get("questioner_data", "{}"))
-        if not questioner_data:
-            return {
-                "status": "error",
-                "message": "No questioner data found for this analysis"
-            }
-        
-        # Add the answers to the questioner data
-        questioner_data["answers"] = answers
-        questioner_data["answered"] = True
-        questioner_data["has_answers"] = True
-        
-        # Update the database
-        db.update_questioner_data(record_id, json.dumps(questioner_data))
-        
-        print(f"✅ Updated questioner data with answers for record ID: {record_id}")
-        
-        # Proceed to inspector step after answers are saved
-        inspector_result = await run_inspectors(record_id)
-        
-        # Get the complete updated record data for response
-        complete_data = db.get_complete_analysis(record_id)
-        if complete_data:
-            # First try to get inspector results from the dedicated column
-            if 'inspector_results' in complete_data and complete_data['inspector_results']:
-                inspector_data = json.loads(complete_data['inspector_results'])
-                formatted_results = inspector_data
-                print(f"✅ Retrieved inspector results from dedicated column")
-            else:
-                # Parse JSON data for legacy method
-                cdt_data = json.loads(complete_data.get("cdt_result", "{}"))
-                icd_data = json.loads(complete_data.get("icd_result", "{}"))
-                
-                # Extract inspector data in clear format
-                cdt_inspector = cdt_data.get("inspector_results", {})
-                icd_inspector = icd_data.get("inspector_results", {})
-                
-                # Format inspector results for front-end
-                formatted_results = {
-                    "cdt": {
-                        "codes": cdt_inspector.get("codes", []),
-                        "rejected_codes": cdt_inspector.get("rejected_codes", []),
-                        "explanation": cdt_inspector.get("explanation", "")
-                    },
-                    "icd": {
-                        "codes": icd_inspector.get("codes", []),
-                        "explanation": icd_inspector.get("explanation", "")
-                    }
-                }
-                print(f"✅ Retrieved inspector results from CDT/ICD data (legacy method)")
-        else:
-            formatted_results = {
-                "cdt": {"codes": [], "rejected_codes": [], "explanation": ""},
-                "icd": {"codes": [], "explanation": ""}
-            }
-        
-        # Return success
-        return {
-            "status": "success",
-            "message": "Answers processed successfully",
-            "data": {
-                "answers_processed": True,
-                "inspector_results": formatted_results
-            }
-        }
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"❌ ERROR: {str(e)}")
-        print(f"STACK TRACE: {error_details}")
-        return {
-            "status": "error",
-            "message": str(e),
-            "details": error_details
-        }
-
-# Endpoint to run inspectors directly
-@app.get("/api/run-inspectors/{record_id}")
-async def trigger_inspectors(record_id: str):
-    """Run both CDT and ICD inspectors for a given record."""
-    try:
-        inspector_result = await run_inspectors(record_id)
-        
-        # Get complete record data for response
-        complete_data = db.get_complete_analysis(record_id)
-        if complete_data:
-            # Parse JSON data
-            questioner_data = json.loads(complete_data.get("questioner_data", "{}"))
+            # Structure the final CDT results (mimics the old raw_cdt_topic_results structure somewhat)
+            # Combine activated subtopics from all successful CDT results
+            all_activated_cdt_subtopics = set()
+            for res in cdt_topic_list_for_response:
+                if isinstance(res, dict) and not res.get("error"):
+                    all_activated_cdt_subtopics.update(res.get("activated_subtopics", []))
             
-            # First try to get inspector results from the dedicated column
-            if 'inspector_results' in complete_data and complete_data['inspector_results']:
-                inspector_data = json.loads(complete_data['inspector_results'])
-                formatted_results = inspector_data
-                print(f"✅ Retrieved inspector results from dedicated column")
-            else:
-                # Fallback to legacy method
-                cdt_data = json.loads(complete_data.get("cdt_result", "{}"))
-                icd_data = json.loads(complete_data.get("icd_result", "{}"))
-                
-                # Extract inspector data in clear format
-                cdt_inspector = cdt_data.get("inspector_results", {})
-                icd_inspector = icd_data.get("inspector_results", {})
-                
-                # Format inspector results for front-end
-                formatted_results = {
-                    "cdt": {
-                        "codes": cdt_inspector.get("codes", []),
-                        "rejected_codes": cdt_inspector.get("rejected_codes", []),
-                        "explanation": cdt_inspector.get("explanation", "")
-                    },
-                    "icd": {
-                        "codes": icd_inspector.get("codes", []),
-                        "explanation": icd_inspector.get("explanation", "")
-                    }
-                }
-                print(f"✅ Retrieved inspector results from CDT/ICD data (legacy method)")
-            
-            # Prepare complete response data
-            response_data = {
-                "record_id": record_id,
-                "inspector_results": formatted_results,
-                "questioner_data": questioner_data
+            cdt_topic_results = {
+                "topic_result": cdt_topic_list_for_response, # List of results from each activated CDT topic
+                "activated_subtopics": sorted(list(all_activated_cdt_subtopics)) # Consolidated list
             }
-        else:
-            response_data = inspector_result
-        
-        return {
-            "status": "success",
-            "data": response_data
-        }
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"❌ ERROR: {str(e)}")
-        print(f"STACK TRACE: {error_details}")
-        return {
-            "status": "error",
-            "message": str(e),
-            "details": error_details
-        }
 
-async def run_inspectors(record_id: str):
-    """Run both CDT and ICD inspectors in parallel for a given record."""
-    print(f"\n*************************** RUNNING INSPECTORS FOR RECORD {record_id} ***************************")
-    
-    # Get the required data from the database
-    analysis = db.get_complete_analysis(record_id)
-    if not analysis:
-        raise ValueError(f"No analysis found with ID: {record_id}")
-    
-    processed_scenario = analysis.get("processed_clean_data", "")
-    cdt_result = json.loads(analysis.get("cdt_result", "{}"))
-    icd_result = json.loads(analysis.get("icd_result", "{}"))
-    questioner_data = json.loads(analysis.get("questioner_data", "{}"))
-    
-    # Check if we need to proceed with inspectors
-    if questioner_data.get("has_questions", False) and not questioner_data.get("has_answers", False):
-        print("⚠️ Questions exist but have not been answered yet - skipping inspectors")
-        return {
-            "status": "pending_answers",
-            "message": "Questions need to be answered before running inspectors",
-            "cdt_inspector": None,
-            "icd_inspector": None
-        }
-    
-    # Format data for CDT inspector - proper dictionary format expected
-    cdt_topic_analysis = {}
-    if cdt_result and "topics_results" in cdt_result:
-        topic_results = cdt_result["topics_results"]
-        # Format topic data for inspector
-        if "topic_result" in topic_results and isinstance(topic_results["topic_result"], list):
-            for topic in topic_results["topic_result"]:
-                topic_name = topic.get("topic", "Unknown")
-                code_range = topic.get("code_range", "")
-                if code_range:
-                    cdt_topic_analysis[code_range] = {
-                        "name": topic_name,
-                        "result": code_range
-                    }
+        else:
+            logger.warning("No topic activation tasks were created.")
+            cdt_topic_results = {"error": "No CDT topics activated."}
+            processed_icd_topic_results = {"error": "No ICD topic activated."}
         
-        # Add subtopic data
-        if "subtopic_data" in topic_results and isinstance(topic_results["subtopic_data"], dict):
-            for subtopic_key, codes in topic_results["subtopic_data"].items():
-                if subtopic_key not in cdt_topic_analysis:
-                    cdt_topic_analysis[subtopic_key] = {
-                        "name": subtopic_key,
-                        "result": str(codes)
-                    }
-    
-    # Format data for ICD inspector
-    icd_topic_analysis = {}
-    if icd_result and "simplified" in icd_result:
-        simplified = icd_result["simplified"]
-        icd_topic_analysis["1"] = {
-            "name": "Primary ICD Code",
-            "result": f"CODE: {simplified.get('code', '')}\nEXPLANATION: {simplified.get('explanation', '')}\nDOUBT: {simplified.get('doubt', '')}",
-            "parsed_result": {
-                "code": simplified.get("code", ""),
-                "explanation": simplified.get("explanation", ""),
-                "doubt": simplified.get("doubt", "")
-            }
-        }
-    
-    # Define async functions for parallel execution
-    async def run_cdt_inspector():
-        print("⏳ Running CDT Inspector...")
-        try:
-            return cdt_inspector.process(processed_scenario, cdt_topic_analysis, questioner_data)
-        except Exception as e:
-            import traceback
-            error_details = traceback.format_exc()
-            print(f"❌ Error in CDT inspector: {str(e)}")
-            print(f"STACK TRACE: {error_details}")
-            return {
-                "error": str(e),
-                "codes": [],
-                "rejected_codes": [],
-                "explanation": f"Error occurred: {str(e)}"
-            }
-        
-    async def run_icd_inspector():
-        print("⏳ Running ICD Inspector...")
-        try:
-            return icd_inspector.process(processed_scenario, icd_topic_analysis, questioner_data)
-        except Exception as e:
-            import traceback
-            error_details = traceback.format_exc()
-            print(f"❌ Error in ICD inspector: {str(e)}")
-            print(f"STACK TRACE: {error_details}")
-            return {
-                "error": str(e),
-                "codes": [],
-                "explanation": f"Error occurred: {str(e)}"
-            }
-    
-    # Run both inspectors in parallel
-    cdt_inspector_task = asyncio.create_task(run_cdt_inspector())
-    icd_inspector_task = asyncio.create_task(run_icd_inspector())
-    
-    # Await both results
-    cdt_inspector_result, icd_inspector_result = await asyncio.gather(cdt_inspector_task, icd_inspector_task)
-    
-    # Log the results
-    cdt_codes = cdt_inspector_result.get("codes", [])
-    icd_codes = icd_inspector_result.get("codes", [])
-    
-    print(f"✅ CDT INSPECTOR COMPLETE - Found {len(cdt_codes)} validated codes")
-    print(f"✅ ICD INSPECTOR COMPLETE - Found {len(icd_codes)} validated codes")
-    
-    # Save inspector results to the database
-    inspector_results = {
-        "cdt": cdt_inspector_result,
-        "icd": icd_inspector_result,
-        "timestamp": str(datetime.datetime.now())
-    }
-    
-    # Save to the dedicated inspector_results column
-    try:
-        # Save the inspector results to the dedicated column
-        db.update_inspector_results(record_id, json.dumps(inspector_results))
-        print(f"✅ Saved inspector results to database for record ID: {record_id}")
-        
-        # For backward compatibility, also update the existing fields
-        # This can be removed later when all code is migrated to use the dedicated column
-        cdt_data = json.loads(analysis.get("cdt_result", "{}"))
-        cdt_data["inspector_results"] = cdt_inspector_result
-        
-        icd_data = json.loads(analysis.get("icd_result", "{}"))
-        icd_data["inspector_results"] = icd_inspector_result
-        
-        db.update_analysis_results(
-            record_id, 
-            json.dumps(cdt_data), 
-            json.dumps(icd_data)
+        # --- End of Concurrent Activation --- 
+
+        # Placeholder for subsequent analysis steps (e.g., Questioner, Inspector)
+
+        # Return using the new detailed model structure
+        return DetailedAnalysisOutput(
+            standardized_scenario=cleaned_scenario_text,
+            cdt_classification_results=cdt_classification_results, # Pass original classification
+            icd_classification_results=icd_classification_results, # Pass original classification
+            cdt_topic_results=cdt_topic_results, # Pass the structured CDT topic results
+            icd_topic_results=processed_icd_topic_results # Pass the processed ICD topic result
         )
-    except Exception as e:
-        print(f"❌ Error saving inspector results: {str(e)}")
-    
-    return {
-        "status": "success",
-        "inspector_results": inspector_results
-    }
 
-# Run the application
+    except Exception as e:
+        logger.error(f"Error during scenario processing: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+# Add a root endpoint for basic checks
+@app.get("/")
+async def read_root():
+    return {"message": "Welcome to the Dental Scenario Analysis API"}
+
+# --- Application Runner ---
 if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("PORT", 8000))
-    host = os.getenv("HOST", "0.0.0.0")
-        
-    print("\n*************************** STARTING SERVER ***************************")
-    print(f"🚀 SERVER RUNNING at {host}:{port}")
+    host = "0.0.0.0"
+    port = 8000
+    logger.info(f"Starting Uvicorn server on {host}:{port}")
+    # Note: reload=True is great for development but should be False in production
     uvicorn.run("app:app", host=host, port=port, reload=True)

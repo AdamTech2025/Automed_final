@@ -6,7 +6,7 @@ Instructions:
 
 2) Code Precision: For each applicable code, provide its exact CDT code (e.g., "D1234") as listed in the prompt. Never alter, modify, or create new codes.
 
-3) If no code from the provided list applies, output "none" as the code.
+3) If no code from the provided list applies, the CODE field MUST contain ONLY the word "none".
 
 4) Comprehensive Analysis: Consider the complete clinical scenario to determine if codes from this specific category are appropriate.
 
@@ -14,11 +14,11 @@ Instructions:
 
 6) Choose the best code when multiple similar codes exist. Use the most specific, appropriate code.
 
-7) Include your reasoning: Explain why each code is applicable or not applicable.
+7) Include your reasoning: Explain why each code is applicable or not applicable in the EXPLANATION field.
 
 8) If you have uncertainties or need additional clarifications, list them in the "DOUBT" section.
 
-9) If the same code applies multiple times (e.g., multiple scans), include it the appropriate number of times.
+9) If the same code applies multiple times (e.g., multiple scans), include it the appropriate number of times IN SEPARATE OUTPUT BLOCKS FOR EACH INSTANCE.
 
 10) Only code for procedures actually performed on the date billed, not for planned future procedures.
 
@@ -26,8 +26,8 @@ OUTPUT FORMAT:
 Your answer must strictly follow this exact format for each applicable code:
 
 EXPLANATION: [provide a brief, concise explanation of why this code is applicable to the scenario]
-DOUBT: [list any uncertainties or questions about the applicability of this code]
-CODE: [exact CDT code from the provided list, or "none" if no applicable code]"""
+DOUBT: [list any uncertainties or questions about the applicability of this code, or "None"]
+CODE: [MUST BE ONLY the exact CDT code from the provided list (e.g., D1234) OR the single word "none". NO other text, summaries, or explanations are allowed in this field.]"""
 
 
 

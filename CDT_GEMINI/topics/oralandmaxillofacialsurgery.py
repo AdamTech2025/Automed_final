@@ -1,6 +1,7 @@
 import os
 import sys
 import asyncio
+import re # Added for parsing
 from dotenv import load_dotenv
 from langchain.prompts import PromptTemplate
 from llm_services import LLMService, get_service, set_model, set_temperature
@@ -54,6 +55,36 @@ except ImportError as e:
     def activate_complicated_suturing(scenario): return None
     def activate_other_repair_procedures(scenario): return None
 
+# Helper function to parse LLM activation results (same as in adjunctivegeneralservices.py)
+def _parse_llm_topic_output(result_text: str) -> dict:
+    parsed = {"explanation": None, "doubt": None, "code_range": None}
+    if not isinstance(result_text, str):
+        return parsed
+
+    # Extract Explanation
+    explanation_match = re.search(r"EXPLANATION:\s*(.*?)(?=\s*DOUBT:|\s*CODE RANGE:|$)", result_text, re.DOTALL | re.IGNORECASE)
+    if explanation_match:
+        parsed["explanation"] = explanation_match.group(1).strip()
+        if parsed["explanation"].lower() == 'none': parsed["explanation"] = None
+
+    # Extract Doubt
+    doubt_match = re.search(r"DOUBT:\s*(.*?)(?=\s*CODE RANGE:|$)", result_text, re.DOTALL | re.IGNORECASE)
+    if doubt_match:
+        parsed["doubt"] = doubt_match.group(1).strip()
+        if parsed["doubt"].lower() == 'none': parsed["doubt"] = None
+
+    # Extract Code Range
+    code_range_match = re.search(r"CODE RANGE:\s*(.*)", result_text, re.IGNORECASE)
+    if code_range_match:
+        parsed["code_range"] = code_range_match.group(1).strip()
+        if parsed["code_range"].lower() == 'none': parsed["code_range"] = None
+    elif not parsed["code_range"]: # Fallback: Find Dxxxx-Dxxxx patterns if CODE RANGE: not found
+        matches = re.findall(r"(D\d{4}-D\d{4})", result_text)
+        if matches:
+            parsed["code_range"] = ", ".join(matches)
+
+    return parsed
+
 class OralMaxillofacialSurgeryServices:
     """Class to analyze and activate oral and maxillofacial surgery services based on dental scenarios."""
     
@@ -67,10 +98,12 @@ class OralMaxillofacialSurgeryServices:
     def _register_subtopics(self):
         """Register all subtopics for parallel activation."""
         try:
+            # Grouping extractions for registration clarity
             self.registry.register("D7111-D7140", extractions_service.activate_extractions, 
-                                "Extractions (D7111-D7140)")
-            self.registry.register("D7210-D7251", extractions_service.activate_extractions, 
+                                "Extractions (Simple) (D7111-D7140)")
+            self.registry.register("D7210-D7251", extractions_service.activate_extractions, # Assuming same function handles both simple/surgical
                                 "Surgical Extractions (D7210-D7251)")
+            
             self.registry.register("D7260-D7297", other_surgical_procedures_service.activate_other_surgical_procedures, 
                                 "Other Surgical Procedures (D7260-D7297)")
             self.registry.register("D7310-D7321", alveoloplasty_service.activate_alveoloplasty, 
@@ -85,15 +118,17 @@ class OralMaxillofacialSurgeryServices:
                                 "Excision of Bone Tissue (D7471-D7490)")
             self.registry.register("D7510-D7560", surgical_incision_service.activate_surgical_incision, 
                                 "Surgical Incision (D7510-D7560)")
+            # Grouping fractures
             self.registry.register("D7610-D7780", closed_fractures_service.activate_closed_fractures, 
                                 "Treatment of Closed Fractures (D7610-D7780)")
-            self.registry.register("D7610-D7780", open_fractures_service.activate_open_fractures, 
+            self.registry.register("D7610-D7780", open_fractures_service.activate_open_fractures, # Registry needs to handle duplicate range keys if logic differs
                                 "Treatment of Open Fractures (D7610-D7780)")
+            # Note: Range D7810-D7880 covers TMJ issues, not just dislocation reduction
             self.registry.register("D7810-D7880", tmj_dysfunctions_service.activate_tmj_dysfunctions, 
-                                "Reduction of Dislocation (D7810-D7880)")
+                                "TMJ Treatment (D7810-D7880)") 
             self.registry.register("D7910-D7912", traumatic_wounds_service.activate_traumatic_wounds, 
                                 "Repair of Traumatic Wounds (D7910-D7912)")
-            self.registry.register("D7911-D7912", complicated_suturing_service.activate_complicated_suturing, 
+            self.registry.register("D7911-D7912", complicated_suturing_service.activate_complicated_suturing, # Overlaps with above 
                                 "Complicated Suturing (D7911-D7912)")
             self.registry.register("D7920-D7999", other_repair_procedures_service.activate_other_repair_procedures, 
                                 "Other Repair Procedures (D7920-D7999)")
@@ -115,7 +150,7 @@ Your task is to analyze the given scenario and determine the most applicable ora
 - Multiple code ranges can and should be activated if they have any potential applicability
 - Your goal is to ensure no potentially relevant codes are missed
 
-## **Extractions (D7111-D7140)**
+## **Extractions (Simple) (D7111-D7140)**
 **Use when:** Removing teeth through simple non-surgical procedures.
 **Check:** Documentation indicates routine extraction without significant bone removal or sectioning.
 **Note:** These are straightforward procedures typically performed with elevators and forceps.
@@ -169,28 +204,28 @@ Your task is to analyze the given scenario and determine the most applicable ora
 **Note:** These procedures address acute conditions requiring immediate drainage.
 **Activation trigger:** Scenario mentions OR implies any incision and drainage, abscess treatment, swelling, infection, or foreign body removal. INCLUDE this range if there's any suggestion of creating a surgical opening for therapeutic purposes.
 
-## **Treatment of Fractures (D7610-D7780)**
+## **Treatment of Fractures (Closed/Open) (D7610-D7780)**
 **Use when:** Managing facial or jaw fractures through surgical intervention.
-**Check:** Documentation specifies fracture type, location, and fixation method.
+**Check:** Documentation specifies fracture type (closed/open), location, and fixation method.
 **Note:** These procedures restore function and proper alignment after trauma.
 **Activation trigger:** Scenario mentions OR implies any jaw fracture, facial trauma, bone plating, fixation of fragments, or fracture reduction. INCLUDE this range if there's any indication of treating broken facial or jaw bones.
 
-## **Reduction of Dislocation (D7810-D7880)**
-**Use when:** Correcting dislocated temporomandibular joint or managing TMJ dysfunction.
-**Check:** Documentation details the condition and specific intervention performed.
+## **TMJ Treatment (D7810-D7880)**
+**Use when:** Correcting dislocated temporomandibular joint or managing TMJ dysfunction surgically or non-surgically.
+**Check:** Documentation details the condition and specific intervention performed (e.g., arthrocentesis, arthroscopy, reduction).
 **Note:** These procedures address joint-related conditions affecting function.
-**Activation trigger:** Scenario mentions OR implies any TMJ disorder, jaw joint problems, clicking, locking, disc displacement, or joint manipulation. INCLUDE this range if there's any hint of temporomandibular joint issues requiring intervention.
+**Activation trigger:** Scenario mentions OR implies any TMJ disorder, jaw joint problems, clicking, locking, disc displacement, joint manipulation, arthrocentesis, or TMJ surgery. INCLUDE this range if there's any hint of temporomandibular joint issues requiring intervention.
 
 ## **Repair of Traumatic Wounds (D7910-D7912)**
 **Use when:** Suturing or otherwise closing traumatic wounds.
 **Check:** Documentation specifies wound size, complexity, and repair technique.
-**Note:** These procedures address soft tissue injuries from trauma.
+**Note:** These procedures address soft tissue injuries from trauma. D7911/D7912 are for complex wounds.
 **Activation trigger:** Scenario mentions OR implies any laceration, soft tissue injury, suturing, wound closure, or traumatic tissue damage. INCLUDE this range if there's any suggestion of repairing damaged oral tissues after injury.
 
 ## **Complicated Suturing (D7911-D7912)**
 **Use when:** Closing complex wounds requiring advanced techniques.
 **Check:** Documentation details the complexity factors and closure method.
-**Note:** These are more involved than simple suturing procedures.
+**Note:** These are more involved than simple suturing procedures. Often falls under D7910-D7912 as well.
 **Activation trigger:** Scenario mentions OR implies any complex laceration, extensive tissue damage, complicated wound closure, or wounds requiring layered repair. INCLUDE this range if there's any indication of complex wound management beyond simple suturing.
 
 ## **Other Repair Procedures (D7920-D7999)**
@@ -209,62 +244,89 @@ List them in order of relevance, with the most relevant first.
             input_variables=["scenario"]
         )
     
-    def analyze_oral_maxillofacial_surgery(self, scenario: str) -> str:
-        """Analyze the scenario to determine applicable code ranges."""
+    def analyze_oral_maxillofacial_surgery(self, scenario: str) -> dict: # Changed return type
+        """Analyze the scenario and return parsed explanation, doubt, and code range."""
         try:
             print(f"Analyzing oral and maxillofacial surgery scenario: {scenario[:100]}...")
-            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
-            code_range = result.strip()
-            print(f"Oral & Maxillofacial Surgery analyze_oral_maxillofacial_surgery result: {code_range}")
-            return code_range
+            raw_result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            parsed_result = _parse_llm_topic_output(raw_result) # Use helper
+            print(f"Oral & Maxillofacial Surgery analyze result: Exp={parsed_result['explanation']}, Doubt={parsed_result['doubt']}, Range={parsed_result['code_range']}")
+            return parsed_result # Return parsed dictionary
         except Exception as e:
             print(f"Error in analyze_oral_maxillofacial_surgery: {str(e)}")
-            return ""
+            return {"explanation": None, "doubt": None, "code_range": None, "error": str(e)}
     
-    async def activate_oral_maxillofacial_surgery(self, scenario: str) -> dict:
-        """Activate relevant subtopics in parallel and return detailed results."""
+    async def activate_oral_maxillofacial_surgery(self, scenario: str) -> dict: # Changed return type and logic
+        """Activate relevant subtopics in parallel and return detailed results including explanation and doubt."""
+        final_result = {"explanation": None, "doubt": None, "code_range": None, "activated_subtopics": [], "codes": []}
         try:
-            # Get the code range from the analysis
-            oral_surgery_result = self.analyze_oral_maxillofacial_surgery(scenario)
-            if not oral_surgery_result:
-                print("No oral and maxillofacial surgery result returned")
-                return {}
+            # Get the parsed analysis (explanation, doubt, code_range)
+            topic_analysis_result = self.analyze_oral_maxillofacial_surgery(scenario)
             
-            print(f"Oral & Maxillofacial Surgery Result in activate_oral_maxillofacial_surgery: {oral_surgery_result}")
+            # Store analysis results
+            final_result["explanation"] = topic_analysis_result.get("explanation")
+            final_result["doubt"] = topic_analysis_result.get("doubt")
+            final_result["code_range"] = topic_analysis_result.get("code_range") # This is the string of ranges
             
-            # Activate subtopics in parallel using the registry
-            result = await self.registry.activate_all(scenario, oral_surgery_result)
+            code_range_string = topic_analysis_result.get("code_range")
             
-            # Initialize lists from registry results
-            topic_result = result["topic_result"]
-            activated_subtopics = result["activated_subtopics"]
+            if code_range_string:
+                print(f"Oral & Maxillofacial Surgery activate using code ranges: {code_range_string}")
+                # Activate subtopics in parallel using the registry with the parsed code range string
+                subtopic_results = await self.registry.activate_all(scenario, code_range_string)
+                final_result["activated_subtopics"] = subtopic_results.get("activated_subtopics", [])
+                final_result["codes"] = subtopic_results.get("topic_result", []) # Assuming 'topic_result' holds the list of codes
+            else:
+                print("No applicable code ranges found in oral surgery analysis.")
+
+            # Special case for sialoliths - append if found and relevant subtopic not already activated by range
+            # This logic might need refinement depending on how activate_all handles specific codes vs ranges
+            if "sialolith" in scenario.lower() and "Other Surgical Procedures (D7260-D7297)" not in final_result["activated_subtopics"]:
+                print("Checking special case: Sialolithotomy")
+                try:
+                    # Explicitly call the subtopic activation function
+                    sialolith_code_result = other_surgical_procedures_service.activate_other_surgical_procedures(scenario)
+                    if sialolith_code_result and sialolith_code_result.get("codes"): # Check if it returned actual codes
+                         # Find or create the entry for this subtopic in the results
+                         found = False
+                         for item in final_result["codes"]:
+                             if item.get("topic") == "Other Surgical Procedures (D7260-D7297)":
+                                 # Merge codes if subtopic already exists but wasn't activated by range
+                                 existing_codes = item.get("codes", [])
+                                 new_codes = sialolith_code_result.get("codes", [])
+                                 # Avoid duplicates if necessary (simple check here)
+                                 for nc in new_codes:
+                                     if nc not in existing_codes:
+                                         existing_codes.append(nc)
+                                 item["codes"] = existing_codes
+                                 found = True
+                                 break
+                         if not found:
+                             final_result["codes"].append(sialolith_code_result) # Add the full result dict
+                         # Ensure the subtopic name is in activated_subtopics
+                         if "Other Surgical Procedures (D7260-D7297)" not in final_result["activated_subtopics"]:
+                              final_result["activated_subtopics"].append("Other Surgical Procedures (D7260-D7297)")
+                         print("Added/merged Sialolithotomy results.")
+                except Exception as sial_e:
+                    print(f"Error during special case sialolith activation: {sial_e}")
+
+            return final_result
             
-            # Special case for sialoliths
-            if "sialolith" in scenario.lower() and "D7260-D7297" not in oral_surgery_result:
-                print("Activating subtopic: Other Surgical Procedures (D7260-D7297) - Sialolithotomy")
-                code = other_surgical_procedures_service.activate_other_surgical_procedures(scenario)
-                if code:
-                    topic_result.append(code)
-                    activated_subtopics.append("Other Surgical Procedures (D7260-D7297) - Sialolithotomy")
-            
-            # Return a dictionary with the required fields
-            return {
-                "code_range": oral_surgery_result,
-                "activated_subtopics": activated_subtopics,
-                "codes": topic_result
-            }
         except Exception as e:
-            print(f"Error in oral and maxillofacial surgery analysis: {str(e)}")
-            return {}
+            print(f"Error in oral and maxillofacial surgery activation: {str(e)}")
+            final_result["error"] = str(e)
+            return final_result
     
     async def run_analysis(self, scenario: str) -> None:
         """Run the analysis and print results."""
         print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
         result = await self.activate_oral_maxillofacial_surgery(scenario)
         print(f"\n=== ORAL & MAXILLOFACIAL SURGERY ANALYSIS RESULT ===")
+        print(f"EXPLANATION: {result.get('explanation', 'N/A')}")
+        print(f"DOUBT: {result.get('doubt', 'N/A')}")
         print(f"CODE RANGE: {result.get('code_range', 'None')}")
         print(f"ACTIVATED SUBTOPICS: {', '.join(result.get('activated_subtopics', []))}")
-        print(f"SPECIFIC CODES: {', '.join(result.get('codes', []))}")
+        print(f"SPECIFIC CODES: {result.get('codes', [])}")
 
 oral_surgery_service = OralMaxillofacialSurgeryServices()
 # Example usage

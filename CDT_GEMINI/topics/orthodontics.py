@@ -1,6 +1,7 @@
 import os
 import sys
 import asyncio
+import re # Added for parsing
 from langchain.prompts import PromptTemplate
 from llm_services import LLMService, get_service, set_model, set_temperature
 
@@ -27,6 +28,36 @@ except ImportError:
     def activate_comprehensive_orthodontic_treatment(scenario): return None
     def activate_minor_treatment_harmful_habits(scenario): return None
     def activate_other_orthodontic_services(scenario): return None
+
+# Helper function to parse LLM activation results (same as in adjunctivegeneralservices.py)
+def _parse_llm_topic_output(result_text: str) -> dict:
+    parsed = {"explanation": None, "doubt": None, "code_range": None}
+    if not isinstance(result_text, str):
+        return parsed
+
+    # Extract Explanation
+    explanation_match = re.search(r"EXPLANATION:\s*(.*?)(?=\s*DOUBT:|\s*CODE RANGE:|$)", result_text, re.DOTALL | re.IGNORECASE)
+    if explanation_match:
+        parsed["explanation"] = explanation_match.group(1).strip()
+        if parsed["explanation"].lower() == 'none': parsed["explanation"] = None
+
+    # Extract Doubt
+    doubt_match = re.search(r"DOUBT:\s*(.*?)(?=\s*CODE RANGE:|$)", result_text, re.DOTALL | re.IGNORECASE)
+    if doubt_match:
+        parsed["doubt"] = doubt_match.group(1).strip()
+        if parsed["doubt"].lower() == 'none': parsed["doubt"] = None
+
+    # Extract Code Range
+    code_range_match = re.search(r"CODE RANGE:\s*(.*)", result_text, re.IGNORECASE)
+    if code_range_match:
+        parsed["code_range"] = code_range_match.group(1).strip()
+        if parsed["code_range"].lower() == 'none': parsed["code_range"] = None
+    elif not parsed["code_range"]: # Fallback: Find Dxxxx-Dxxxx patterns if CODE RANGE: not found
+        matches = re.findall(r"(D\d{4}-D\d{4})", result_text)
+        if matches:
+            parsed["code_range"] = ", ".join(matches)
+
+    return parsed
 
 class OrthodonticServices:
     """Class to analyze and activate orthodontic services based on dental scenarios."""
@@ -90,50 +121,58 @@ List them in order of relevance, with the most relevant first.
             input_variables=["scenario"]
         )
     
-    def analyze_orthodontic(self, scenario: str) -> str:
-        """Analyze the scenario to determine applicable code ranges."""
+    def analyze_orthodontic(self, scenario: str) -> dict: # Changed return type
+        """Analyze the scenario and return parsed explanation, doubt, and code range."""
         try:
             print(f"Analyzing orthodontic scenario: {scenario[:100]}...")
-            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
-            code_range = result.strip()
-            print(f"Orthodontic analyze_orthodontic result: {code_range}")
-            return code_range
+            raw_result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            parsed_result = _parse_llm_topic_output(raw_result) # Use helper
+            print(f"Orthodontic analyze result: Exp={parsed_result['explanation']}, Doubt={parsed_result['doubt']}, Range={parsed_result['code_range']}")
+            return parsed_result # Return parsed dictionary
         except Exception as e:
             print(f"Error in analyze_orthodontic: {str(e)}")
-            return ""
+            return {"explanation": None, "doubt": None, "code_range": None, "error": str(e)}
     
-    async def activate_orthodontic(self, scenario: str) -> dict:
-        """Activate relevant subtopics in parallel and return detailed results."""
+    async def activate_orthodontic(self, scenario: str) -> dict: # Changed return type and logic
+        """Activate relevant subtopics in parallel and return detailed results including explanation and doubt."""
+        final_result = {"explanation": None, "doubt": None, "code_range": None, "activated_subtopics": [], "codes": []}
         try:
-            # Get the code range from the analysis
-            orthodontic_result = self.analyze_orthodontic(scenario)
-            if not orthodontic_result:
-                print("No orthodontic result returned")
-                return {}
+            # Get the parsed analysis (explanation, doubt, code_range)
+            topic_analysis_result = self.analyze_orthodontic(scenario)
             
-            print(f"Orthodontic Result in activate_orthodontic: {orthodontic_result}")
+            # Store analysis results
+            final_result["explanation"] = topic_analysis_result.get("explanation")
+            final_result["doubt"] = topic_analysis_result.get("doubt")
+            final_result["code_range"] = topic_analysis_result.get("code_range") # This is the string of ranges
             
-            # Activate subtopics in parallel using the registry
-            result = await self.registry.activate_all(scenario, orthodontic_result)
+            code_range_string = topic_analysis_result.get("code_range")
             
-            # Return a dictionary with the required fields
-            return {
-                "code_range": orthodontic_result,
-                "activated_subtopics": result["activated_subtopics"],
-                "codes": result["topic_result"]
-            }
+            if code_range_string:
+                print(f"Orthodontic activate using code ranges: {code_range_string}")
+                # Activate subtopics in parallel using the registry with the parsed code range string
+                subtopic_results = await self.registry.activate_all(scenario, code_range_string)
+                final_result["activated_subtopics"] = subtopic_results.get("activated_subtopics", [])
+                final_result["codes"] = subtopic_results.get("topic_result", []) # Assuming 'topic_result' holds the list of codes
+            else:
+                print("No applicable code ranges found in orthodontic analysis.")
+                
+            return final_result
+            
         except Exception as e:
-            print(f"Error in orthodontic analysis: {str(e)}")
-            return {}
+            print(f"Error in orthodontic activation: {str(e)}")
+            final_result["error"] = str(e)
+            return final_result
     
     async def run_analysis(self, scenario: str) -> None:
         """Run the analysis and print results."""
         print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
         result = await self.activate_orthodontic(scenario)
         print(f"\n=== ORTHODONTIC ANALYSIS RESULT ===")
+        print(f"EXPLANATION: {result.get('explanation', 'N/A')}")
+        print(f"DOUBT: {result.get('doubt', 'N/A')}")
         print(f"CODE RANGE: {result.get('code_range', 'None')}")
         print(f"ACTIVATED SUBTOPICS: {', '.join(result.get('activated_subtopics', []))}")
-        print(f"SPECIFIC CODES: {', '.join(result.get('codes', []))}")
+        print(f"SPECIFIC CODES: {result.get('codes', [])}")
 
 orthodontic_service = OrthodonticServices()
 # Example usage

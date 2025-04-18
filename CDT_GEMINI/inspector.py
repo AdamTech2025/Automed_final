@@ -246,85 +246,75 @@ REJECTED CODES: D0140, D0220, D0230
             }
             
     def _extract_all_candidate_codes(self, topic_analysis: Any) -> list:
-        """Extract all candidate codes from the topic analysis data"""
+        """Extract all candidate CDT codes (Dxxxx format) from the topic analysis data."""
         if topic_analysis is None:
             return []
             
         all_codes = set()
         
         if isinstance(topic_analysis, dict):
-            # Extract codes from subtopics
+            # Extract codes from subtopic_data first if present
+            if "subtopic_data" in topic_analysis:
+                 # Assuming subtopic_data itself might be a dict or a string representation
+                 subtopic_data_content = topic_analysis["subtopic_data"]
+                 if isinstance(subtopic_data_content, dict):
+                     for subtopic_key, codes_list in subtopic_data_content.items():
+                         if isinstance(codes_list, list):
+                            for code_entry in codes_list:
+                                if isinstance(code_entry, dict) and "code" in code_entry:
+                                     # Use regex to find the Dxxxx pattern within the code field
+                                    code_match = re.search(r'(D\d{4})', str(code_entry["code"]))
+                                    if code_match:
+                                        all_codes.add(code_match.group(1))
+                 elif isinstance(subtopic_data_content, str):
+                     # Extract from string representation if it's not a dict
+                     codes_from_string = self._extract_codes_from_subtopic_data_string(subtopic_data_content)
+                     all_codes.update(codes_from_string)
+            
+            # Extract codes from other parts of topic_analysis
             for code_range, topic_data in topic_analysis.items():
-                result = topic_data.get("result", "")
-                
-                # Special handling for subtopic_data structure
-                if "subtopic_data" in str(result):
-                    subtopic_codes = self._extract_codes_from_subtopic_data(result)
-                    all_codes.update(subtopic_codes)
-                    continue
-                
-                # Check if it's a string representation of a list
-                if isinstance(result, str):
-                    # Use regex to find all CDT codes (D followed by 4 digits)
-                    import re
-                    code_pattern = r'D\d{4}'
-                    codes = re.findall(code_pattern, result)
-                    all_codes.update(codes)
-                    
-                    # Also look for codes with name
-                    code_with_name_pattern = r'"code":\s*"([^"]+)"'
-                    code_matches = re.findall(code_with_name_pattern, result)
-                    
-                    for code in code_matches:
-                        # Clean and filter valid codes
-                        if code and code.strip() and code.strip().lower() != 'none' and code.strip().startswith('D'):
-                            all_codes.add(code.strip())
-                
-                # If it's a more complex structure serialized as string
-                if "code" in result or "CODE:" in result:
-                    # Try to extract codes from a different format
-                    code_lines = result.split('\n')
-                    for line in code_lines:
-                        if "code" in line.lower() or "CODE:" in line:
-                            parts = line.split(':', 1)
-                            if len(parts) > 1:
-                                code_part = parts[1].strip()
-                                # Clean the code
-                                import re
-                                code_match = re.search(r'D\d{4}', code_part)
-                                if code_match:
-                                    all_codes.add(code_match.group())
-        
+                 # Skip the subtopic_data key itself if it was processed above
+                 if code_range == "subtopic_data":
+                     continue
+                     
+                 result = topic_data.get("result", "")
+                 if isinstance(result, str):
+                     # Use regex to find all Dxxxx codes directly within the result string
+                     import re
+                     code_pattern = r'(D\d{4})'
+                     codes_in_result = re.findall(code_pattern, result)
+                     all_codes.update(codes_in_result)
+                     
+                     # Additionally, specifically look for codes within quoted "code": fields
+                     quoted_code_pattern = r'"code":\s*"(D\d{4})"'
+                     quoted_codes = re.findall(quoted_code_pattern, result)
+                     all_codes.update(quoted_codes)
+
+        # Ensure codes extracted from different places are unified
         return sorted(list(all_codes))
         
-    def _extract_codes_from_subtopic_data(self, data_str: str) -> set:
-        """Extract codes specifically from the subtopic_data structure"""
+    def _extract_codes_from_subtopic_data_string(self, data_str: str) -> set:
+        """Extract Dxxxx codes from a string representation of subtopic data."""
         codes = set()
-        
+        import re
         try:
-            # Use regex to find all code entries in the format: "code": "D1234"
-            import re
-            code_pattern = r'"code":\s*"([^"]+)"'
-            code_matches = re.findall(code_pattern, data_str)
+            # Look for codes in the format "code": "Dxxxx"
+            quoted_code_pattern = r'"code":\s*"(D\d{4})"'
+            quoted_matches = re.findall(quoted_code_pattern, data_str)
+            codes.update(quoted_matches)
             
-            for code in code_matches:
-                # Clean and filter valid codes
-                clean_code = code.strip()
-                if clean_code and clean_code.lower() != 'none' and clean_code != 'Unknown':
-                    # For codes like "D0160", extract just the CDT code
-                    if clean_code.startswith('D'):
-                        # If the code has a description (like "D0160 - Description"), extract just the code
-                        if " - " in clean_code:
-                            clean_code = clean_code.split(" - ")[0].strip()
-                        codes.add(clean_code)
-            
-            # Also look for other formats like "D1234" directly in the text
-            direct_code_pattern = r'D\d{4}'
-            direct_codes = re.findall(direct_code_pattern, data_str)
-            codes.update(direct_codes)
+            # Look for codes directly like Dxxxx
+            direct_code_pattern = r'(D\d{4})'
+            direct_matches = re.findall(direct_code_pattern, data_str)
+            codes.update(direct_matches)
+
+            # Attempt to handle the malformed examples specifically if needed,
+            # but focusing on valid Dxxxx should be more robust.
+            # For example, explicitly ignore lines containing "Overall" or similar keywords
+            # if they interfere.
             
         except Exception as e:
-            self.logger.error(f"Error extracting codes from subtopic_data: {str(e)}")
+            self.logger.error(f"Error extracting codes from subtopic_data string: {str(e)}")
         
         return codes
 

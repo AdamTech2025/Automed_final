@@ -4,71 +4,19 @@ from dotenv import load_dotenv
 from llm_services import generate_response, get_service, set_model, set_temperature
 from typing import Dict, Any, Optional, List
 from llm_services import OPENROUTER_MODEL, DEFAULT_TEMP
-# Import all ICD topic services
-from icdtopics.dentalencounters import dental_encounters_service
-from icdtopics.dentalcaries import dental_caries_service
-from icdtopics.disordersofteeth import teeth_disorders_service
-from icdtopics.disordersofpulpandperiapicaltissues import pulp_periapical_service
-from icdtopics.diseasesandconditionsoftheperiodontium import periodontium_diseases_service
-from icdtopics.alveolarridgedisorders import alveolar_ridge_disorders_service
-from icdtopics.findingsofbostteeth import lost_teeth_service
-from icdtopics.developmentdisordersofteethandjaws import development_disorders_service
-from icdtopics.treatmentcomplications import treatment_complications_service
-from icdtopics.inflammatoryconditionsofthmucosa import inflammatory_mucosa_service
-from icdtopics.tmjdiseasesandconditions import tmj_disorders_service
-from icdtopics.breathingspeechandsleepdisorders import breathing_sleep_disorders_service
-from icdtopics.traumaandrelatedconditions import trauma_conditions_service
-from icdtopics.oralneoplasms import oral_neoplasms_service
-from icdtopics.pathologies import pathologies_service
-from icdtopics.medicalfindingsrelatedtodentaltreatment import medical_findings_service
-from icdtopics.socialdeterminants import social_determinants_service
-from icdtopics.symptomsanddisorderspertienttoorthodontiacases import orthodontia_cases_service
 
 load_dotenv()
 
 class ICDClassifier:
-    """Class to handle ICD code classification for dental scenarios"""
-    
-    # Map category numbers to their respective service methods
-    ICD_CATEGORY_FUNCTIONS = {
-        "1": dental_encounters_service.activate_dental_encounters,
-        "2": dental_caries_service.activate_dental_caries,
-        "3": teeth_disorders_service.activate_disorders_of_teeth,
-        "4": pulp_periapical_service.activate_pulp_periapical_disorders,
-        "5": periodontium_diseases_service.activate_periodontium_disorders,
-        "6": alveolar_ridge_disorders_service.activate_alveolar_ridge_disorders,
-        "7": lost_teeth_service.activate_lost_teeth,
-        "8": development_disorders_service.activate_development_disorders,
-        "9": treatment_complications_service.activate_treatment_complications,
-        "10": inflammatory_mucosa_service.activate_inflammatory_mucosa,
-        "11": tmj_disorders_service.activate_tmj_disorders,
-        "12": breathing_sleep_disorders_service.activate_breathing_sleep_disorders,
-        "13": trauma_conditions_service.activate_trauma_conditions,
-        "14": oral_neoplasms_service.activate_oral_neoplasms,
-        "15": pathologies_service.activate_pathologies,
-        "16": medical_findings_service.activate_medical_findings,
-        "17": social_determinants_service.activate_social_determinants,
-        "18": orthodontia_cases_service.activate_orthodontia_cases
-    }
-
-    ICD_CATEGORY_NAMES = {
-        "1": "Dental Encounters", "2": "Dental Caries", "3": "Disorders of Teeth",
-        "4": "Disorders of Pulp and Periapical Tissues", "5": "Diseases and Conditions of the Periodontium",
-        "6": "Alveolar Ridge Disorders", "7": "Findings of Lost Teeth",
-        "8": "Developmental Disorders of Teeth and Jaws", "9": "Treatment Complications",
-        "10": "Inflammatory Conditions of the Mucosa", "11": "TMJ Diseases and Conditions",
-        "12": "Breathing, Speech, and Sleep Disorders", "13": "Trauma and Related Conditions",
-        "14": "Oral Neoplasms", "15": "Pathologies", "16": "Medical Findings Related to Dental Treatment",
-        "17": "Social Determinants", "18": "Symptoms and Disorders Pertinent to Orthodontia Cases"
-    }
+    """Class to handle *initial* ICD code category classification for dental scenarios"""
 
     PROMPT_TEMPLATE = """
-You are an expert dental coding analyst specializing in ICD-10-CM coding for dental conditions. Analyze the given dental scenario and identify ONLY the most appropriate ICD-10-CM code category.
+You are an expert dental coding analyst specializing in ICD-10-CM coding for dental conditions. Analyze the given dental scenario and identify ONLY the single most appropriate ICD-10-CM code category number and provide a brief explanation.
 
 # IMPORTANT INSTRUCTIONS:
-- Focus on identifying the SINGLE most relevant category that best represents the primary clinical finding or condition
-- Do NOT list multiple categories unless absolutely necessary for complete coding
-- Prioritize specificity over breadth - choose the most detailed category that fits the scenario
+- Focus on identifying the SINGLE most relevant category number that best represents the primary clinical finding or condition.
+- Prioritize specificity over breadth - choose the most detailed category that fits the scenario.
+- ONLY output the Category Number, Explanation, and Doubt using the specified format.
 
 # ICD-10-CM CATEGORIES RELEVANT TO DENTISTRY:
 1. Dental Encounters (Z01.2x series: routine dental examinations)
@@ -93,13 +41,11 @@ You are an expert dental coding analyst specializing in ICD-10-CM coding for den
 # SCENARIO TO ANALYZE:
 {scenario}
 
-Identify only the most relevant category and provide:
-
-EXPLANATION: [Brief explanation for why this category(s) and code are the most appropriate]
-DOUBT: [Any uncertainties,doubts]
-CATEGORY: [Category Number and Name, e.g., "2. Dental Caries"]
-
-"""
+# STRICT OUTPUT FORMAT - FOLLOW EXACTLY:
+CATEGORY_NUMBER: [Provide only the single most relevant category number, e.g., 4]
+EXPLANATION: [Brief explanation for why this category number is the most appropriate]
+DOUBT: [Any uncertainties or doubts about the category selection]
+""" # Simplified prompt
 
     def __init__(self, model: str = OPENROUTER_MODEL, temperature: float = DEFAULT_TEMP):
         """Initialize the classifier with model and temperature settings"""
@@ -126,144 +72,58 @@ CATEGORY: [Category Number and Name, e.g., "2. Dental Caries"]
         """Format the prompt template with the given scenario"""
         return self.PROMPT_TEMPLATE.format(scenario=scenario)
 
-    def _parse_category_response(self, response: str) -> Dict[str, Any]:
-        """Parse the initial category classification response"""
-        categories, code_lists, explanations, doubts, category_numbers, all_icd_codes = [], [], [], [], [], []
+    def _parse_initial_classification(self, response: str) -> Dict[str, Any]:
+        """Parse the initial category classification response (category number, explanation, doubt)."""
+        category_number = None
+        explanation = None
+        doubt = None
         
-        for section in [s for s in response.split("CATEGORY:") if s.strip()]:
-            lines = section.strip().split('\n')
-            
-            category = lines[0].strip()
-            if category.startswith(tuple(f"{i}." for i in range(1, 19))):
-                category_number = category.split(".", 1)[0].strip()
-                category_numbers.append(category_number)
-                self.logger.info(f"Found ICD Category: {category_number} - {self.ICD_CATEGORY_NAMES.get(category_number, 'Unknown')}")
-            else:
-                continue
-            
-            current_section = None
-            codes, explanation, doubt = [], "", ""
-            
-            for line in lines[1:]:
-                line = line.strip()
-                if not line:
-                    continue
-                    
-                if line == "CODES:":
-                    current_section = "codes"
-                elif line == "EXPLANATION:":
-                    current_section = "explanation"
-                elif line == "DOUBT:":
-                    current_section = "doubt"
-                elif current_section == "codes":
-                    codes.append(line)
-                    if line and not line.isspace():
-                        all_icd_codes.append(line)
-                elif current_section == "explanation":
-                    explanation = explanation + "\n" + line if explanation else line
-                elif current_section == "doubt":
-                    doubt = doubt + "\n" + line if doubt else line
-            
-            categories.append(category)
-            code_lists.append(codes)
-            explanations.append(explanation)
-            doubts.append(doubt)
-            
-        return {
-            "categories": categories,
-            "code_lists": code_lists,
-            "explanations": explanations,
-            "doubts": doubts,
-            "category_numbers": category_numbers,
-            "all_icd_codes": all_icd_codes
-        }
-
-    def _activate_topic(self, category_num: str, scenario: str) -> Dict[str, Any]:
-        """Activate and process a specific ICD topic"""
-        try:
-            activation_function = self.ICD_CATEGORY_FUNCTIONS[category_num]
-            category_name = self.ICD_CATEGORY_NAMES[category_num]
-            
-            self.logger.info(f"Activating: {category_name} (Category {category_num})")
-            
-            activation_result = activation_function(scenario)
-            parsed_result = self._parse_activation_result(activation_result)
-            
-            return {
-                "name": category_name,
-                "result": activation_result,
-                "parsed_result": parsed_result
-            }
-        except Exception as e:
-            self.logger.error(f"Error activating category {category_num}: {str(e)}")
-            return {
-                "name": self.ICD_CATEGORY_NAMES.get(category_num, "Unknown"),
-                "result": f"Error: {str(e)}",
-                "parsed_result": {"error": str(e)}
-            }
-
-    def _parse_activation_result(self, result: str) -> Dict[str, Any]:
-        """Parse the activation result into structured format"""
-        parsed_result = {}
-        
-        if isinstance(result, str):
-            for line in result.split('\n'):
-                line = line.strip()
-                if not line:
-                    continue
+        lines = response.strip().split('\n')
+        for line in lines:
+            line = line.strip()
+            if line.startswith("CATEGORY_NUMBER:"):
+                category_number = line.split(":", 1)[1].strip()
+            elif line.startswith("EXPLANATION:"):
+                explanation = line.split(":", 1)[1].strip()
+            elif line.startswith("DOUBT:"):
+                doubt = line.split(":", 1)[1].strip()
                 
-                if any(line.startswith(prefix) for prefix in ["- **CODE:**", "**CODE:**", "- CODE:", "CODE:"]):
-                    parsed_result["code"] = line.split(":", 1)[1].strip().strip('*')
-                elif any(line.startswith(prefix) for prefix in ["- **EXPLANATION:**", "**EXPLANATION:**", "- EXPLANATION:", "EXPLANATION:"]):
-                    parsed_result["explanation"] = line.split(":", 1)[1].strip().strip('*')
-                elif any(line.startswith(prefix) for prefix in ["- **DOUBT:**", "**DOUBT:**", "- DOUBT:", "DOUBT:"]):
-                    parsed_result["doubt"] = line.split(":", 1)[1].strip().strip('*')
-        
-        return parsed_result
+        # Basic validation
+        if category_number and category_number.isdigit() and 1 <= int(category_number) <= 18:
+             self.logger.info(f"Parsed initial classification: Category Number={category_number}")
+             return {
+                "category_number": category_number,
+                "explanation": explanation,
+                "doubt": doubt
+            }
+        else:
+             self.logger.warning(f"Could not parse valid category number from response: {response}")
+             return { # Return structure indicating parsing failure
+                "category_number": None,
+                "explanation": "Failed to parse category number from LLM response.",
+                "doubt": response # Include raw response in doubt for debugging
+            }
 
-    def process(self, scenario: str) -> Dict[str, Any]:
-        """Process a dental scenario and return ICD classifications"""
+    def process(self, scenario: str) -> Dict[str, Any]: # Return type is now Dict
+        """Process a dental scenario to get the initial ICD category classification."""
         try:
-            self.logger.info("Starting ICD Classification")
-            
-            # Get initial classification
+            self.logger.info("Starting Initial ICD Category Classification")
             formatted_prompt = self.format_prompt(scenario)
             response = generate_response(formatted_prompt)
-            parsed_response = self._parse_category_response(response)
+            parsed_response = self._parse_initial_classification(response)
             
-            # Process the primary category
-            icd_topics_results = {}
-            if parsed_response["category_numbers"]:
-                primary_category_num = parsed_response["category_numbers"][0]
-                if primary_category_num in self.ICD_CATEGORY_FUNCTIONS:
-                    icd_topics_results[primary_category_num] = self._activate_topic(
-                        primary_category_num, scenario
-                    )
-            
-            result = {
-                "categories": parsed_response["categories"],
-                "code_lists": parsed_response["code_lists"],
-                "explanations": parsed_response["explanations"],
-                "doubts": parsed_response["doubts"],
-                "category_numbers_string": ",".join(parsed_response["category_numbers"]),
-                "icd_topics_results": icd_topics_results,
-                "icd_codes": parsed_response["all_icd_codes"]
-            }
-            
-            self.logger.info("ICD Classification Completed")
-            return result
-            
+            self.logger.info("Initial ICD Category Classification Completed")
+            # Return the dictionary directly
+            return parsed_response 
+
         except Exception as e:
-            self.logger.error(f"Error in process: {str(e)}")
+            self.logger.error(f"Error in Initial ICD process: {str(e)}")
+            # Return error structure
             return {
-                "error": str(e),
-                "categories": [],
-                "code_lists": [],
-                "explanations": [],
-                "doubts": [],
-                "category_numbers_string": "",
-                "icd_topics_results": {},
-                "icd_codes": []
+                "category_number": None,
+                "explanation": f"An error occurred during initial ICD classification: {str(e)}",
+                "doubt": "Processing could not be completed.",
+                "error": str(e)
             }
 
     @property
@@ -273,84 +133,3 @@ CATEGORY: [Category Number and Name, e.g., "2. Dental Caries"]
             "model": self.service.model,
             "temperature": self.service.temperature
         }
-
-class ICDClassifierCLI:
-    """Command Line Interface for the ICDClassifier"""
-    
-    def __init__(self):
-        self.classifier = ICDClassifier()
-
-    def print_settings(self):
-        """Print current model settings"""
-        settings = self.classifier.current_settings
-        print(f"Using model: {settings['model']} with temperature: {settings['temperature']}")
-
-    def print_results(self, result: Dict[str, Any]):
-        """Print classification results in a formatted way"""
-        if "error" in result:
-            print(f"\nError: {result['error']}")
-            return
-
-        print("\n=== ICD-10-CM CATEGORIES IDENTIFIED ===")
-        if not result["categories"]:
-            print("No ICD categories were identified for this scenario.")
-        else:
-            for i, category in enumerate(result["categories"]):
-                print(f"\nCategory {i+1}: {category}")
-                if result["code_lists"][i]:
-                    print("CODES:")
-                    for code in result["code_lists"][i]:
-                        if code and not code.isspace():
-                            print(f"  {code}")
-                else:
-                    print("CODES: None specified")
-                    
-                if result["explanations"][i]:
-                    print("EXPLANATION:")
-                    print(result["explanations"][i])
-                
-                if result["doubts"][i]:
-                    print("DOUBT:")
-                    print(result["doubts"][i])
-                print("-" * 50)
-
-        print("\n=== ICD TOPICS ACTIVATION RESULTS ===")
-        if result["icd_topics_results"]:
-            for category_num, topic_data in result["icd_topics_results"].items():
-                print(f"\nCategory {category_num}: {topic_data['name']}")
-                print(f"Activation Result:")
-                print(topic_data['result'])
-                
-                if "parsed_result" in topic_data:
-                    parsed = topic_data["parsed_result"]
-                    print("\nParsed Data:")
-                    for key, value in parsed.items():
-                        print(f"{key.title()}: {value}")
-                print("-" * 50)
-        else:
-            print("No ICD topics were activated for this scenario.")
-
-        print("\n=== SUMMARY ===")
-        print(f"Total categories identified: {len(result['categories'])}")
-        print(f"Total ICD codes found: {len(result['icd_codes'])}")
-        if result['icd_codes']:
-            print("Codes found:")
-            for code in result['icd_codes']:
-                print(f"  - {code}")
-        print(f"Categories activated: {result['category_numbers_string'] or 'None'}")
-
-    def run(self):
-        """Run the CLI interface"""
-        self.print_settings()
-        default_scenario = "A 32-year-old female patient is currently nicotine dependent..."  # Your default scenario
-        scenario = input("Enter a dental scenario to classify (or press Enter for default): ") or default_scenario
-        result = self.classifier.process(scenario)
-        self.print_results(result)
-
-def main():
-    """Main entry point for the script"""
-    cli = ICDClassifierCLI()
-    cli.run()
-
-if __name__ == "__main__":
-    main()

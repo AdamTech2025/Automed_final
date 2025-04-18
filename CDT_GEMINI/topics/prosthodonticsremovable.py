@@ -1,6 +1,7 @@
 import os
 import sys
 import asyncio
+import re # Added for parsing
 from langchain.prompts import PromptTemplate
 from llm_services import LLMService, get_service, set_model, set_temperature
 
@@ -24,6 +25,37 @@ from subtopics.Prosthodontics_Removable.repairs_to_partial_dentures import Repai
 from subtopics.Prosthodontics_Removable.tissue_conditioning import TissueConditioningServices
 from subtopics.Prosthodontics_Removable.unspecified_removable_prosthodontic_procedure import UnspecifiedRemovableProsthodonticProcedureServices
 from subtopics.Prosthodontics_Removable.denture_reline_procedures import DentureRelineProceduresServices
+
+# Helper function to parse LLM activation results (same as in adjunctivegeneralservices.py)
+def _parse_llm_topic_output(result_text: str) -> dict:
+    parsed = {"explanation": None, "doubt": None, "code_range": None}
+    if not isinstance(result_text, str):
+        return parsed
+
+    # Extract Explanation
+    explanation_match = re.search(r"EXPLANATION:\s*(.*?)(?=\s*DOUBT:|\s*CODE RANGE:|$)", result_text, re.DOTALL | re.IGNORECASE)
+    if explanation_match:
+        parsed["explanation"] = explanation_match.group(1).strip()
+        if parsed["explanation"].lower() == 'none': parsed["explanation"] = None
+
+    # Extract Doubt
+    doubt_match = re.search(r"DOUBT:\s*(.*?)(?=\s*CODE RANGE:|$)", result_text, re.DOTALL | re.IGNORECASE)
+    if doubt_match:
+        parsed["doubt"] = doubt_match.group(1).strip()
+        if parsed["doubt"].lower() == 'none': parsed["doubt"] = None
+
+    # Extract Code Range
+    code_range_match = re.search(r"CODE RANGE:\s*(.*)", result_text, re.IGNORECASE)
+    if code_range_match:
+        parsed["code_range"] = code_range_match.group(1).strip()
+        if parsed["code_range"].lower() == 'none': parsed["code_range"] = None
+    elif not parsed["code_range"]: # Fallback: Find Dxxxx-Dxxxx patterns if CODE RANGE: not found
+        matches = re.findall(r"(D\d{4}-D\d{4})", result_text)
+        if matches:
+            parsed["code_range"] = ", ".join(matches)
+
+    return parsed
+
 class RemovableProsthodonticsServices:
     """Class to analyze and activate removable prosthodontics services based on dental scenarios."""
     
@@ -32,46 +64,47 @@ class RemovableProsthodonticsServices:
         self.llm_service = llm_service or get_service()
         self.prompt_template = self._create_prompt_template()
         
-        # # Initialize service classes
-        # self.complete_dentures = CompleteDenturesServices(self.llm_service)
-        # self.partial_denture = PartialDentureServices(self.llm_service)
-        # self.adjustments_to_dentures = AdjustmentsToDenturesServices(self.llm_service)
-        # self.repairs_to_complete_dentures = RepairsToCompleteDenturesServices(self.llm_service)
-        # self.repairs_to_partial_dentures = RepairsToPartialDenturesServices(self.llm_service)
-        # self.denture_rebase_procedures = DentureRebaseProceduresServices(self.llm_service)
-        # self.denture_reline_procedures = DentureRelineProceduresServices(self.llm_service)
-        # self.interim_prosthesis = InterimProsthesisServices(self.llm_service)
-        # self.other_removable_prosthetic_services = OtherRemovableProstheticServices(self.llm_service)
-        # self.tissue_conditioning = TissueConditioningServices(self.llm_service)
-        # self.unspecified_removable_prosthodontic_procedure = UnspecifiedRemovableProsthodonticProcedureServices(self.llm_service)
+        # Removed initialization of subtopic services here, they are called statically/via class methods now
         
         self.registry = SubtopicRegistry()
         self._register_subtopics()
     
     def _register_subtopics(self):
         """Register all subtopics for parallel activation."""
-        self.registry.register("D5110-D5140", CompleteDenturesServices.activate_complete_dentures, 
+        # Assuming subtopic services are designed to be called statically or via instances if needed
+        # Correcting calls to point to the activation methods if they exist
+        # If they are instance methods, need to instantiate the classes first.
+        # Let's assume they are structured like `subtopic_service.activate_subtopic` for now.
+        
+        # Example assuming static/class methods or module-level functions:
+        # Note: The actual function names might differ (e.g., activate_... vs. process_...)
+        # Need to verify the actual structure of the subtopic modules.
+        
+        # Using placeholder names - these need verification against actual subtopic code.
+        self.registry.register("D5110-D5140", CompleteDenturesServices().activate_complete_dentures, # Assumes instance method
                             "Complete Dentures (D5110-D5140)")
-        self.registry.register("D5211-D5286", PartialDentureServices.activate_partial_denture, 
+        self.registry.register("D5211-D5286", PartialDentureServices().activate_partial_denture, 
                             "Partial Denture (D5211-D5286)")
-        self.registry.register("D5410-D5422", AdjustmentsToDenturesServices.activate_adjustments_to_dentures, 
+        self.registry.register("D5410-D5422", AdjustmentsToDenturesServices().activate_adjustments_to_dentures, 
                             "Adjustments to Dentures (D5410-D5422)")
-        self.registry.register("D5511-D5520", RepairsToCompleteDenturesServices.activate_repairs_to_complete_dentures, 
+        self.registry.register("D5511-D5520", RepairsToCompleteDenturesServices().activate_repairs_to_complete_dentures, 
                             "Repairs to Complete Dentures (D5511-D5520)")
-        self.registry.register("D5611-D5671", RepairsToPartialDenturesServices.activate_repairs_to_partial_dentures, 
+        self.registry.register("D5611-D5671", RepairsToPartialDenturesServices().activate_repairs_to_partial_dentures, 
                             "Repairs to Partial Dentures (D5611-D5671)")
-        self.registry.register("D5710-D5725", DentureRebaseProceduresServices.activate_denture_rebase_procedures, 
+        self.registry.register("D5710-D5725", DentureRebaseProceduresServices().activate_denture_rebase_procedures, 
                             "Denture Rebase Procedures (D5710-D5725)")
-        self.registry.register("D5730-D5761", DentureRelineProceduresServices.activate_denture_reline_procedures, 
+        self.registry.register("D5730-D5761", DentureRelineProceduresServices().activate_denture_reline_procedures, 
                             "Denture Reline Procedures (D5730-D5761)")
-        self.registry.register("D5810-D5821", InterimProsthesisServices.activate_interim_prosthesis, 
+        self.registry.register("D5810-D5821", InterimProsthesisServices().activate_interim_prosthesis, 
                             "Interim Prosthesis (D5810-D5821)")
-        self.registry.register("D5765-D5899", OtherRemovableProstheticServices.activate_other_removable_prosthetic_services, 
-                            "Other Removable Prosthetic Services (D5765-D5899)")
-        self.registry.register("D5765-D5899", TissueConditioningServices.activate_tissue_conditioning, 
-                            "Tissue Conditioning (D5765-D5899)")
-        self.registry.register("D5765-D5899", UnspecifiedRemovableProsthodonticProcedureServices.activate_unspecified_removable_prosthodontic_procedure, 
-                            "Unspecified Removable Prosthodontic Procedure (D5765-D5899)")
+        # Grouping Other Removable Prosthetic Services under D5863-D5899 (typical range)
+        self.registry.register("D5863-D5876", OtherRemovableProstheticServices().activate_other_removable_prosthetic_services, 
+                            "Other Removable Prosthetic Services (D5863-D5876)") 
+        self.registry.register("D5850-D5851", TissueConditioningServices().activate_tissue_conditioning, # D5850-D5851 is specific to tissue conditioning
+                            "Tissue Conditioning (D5850-D5851)")
+        # D5899 is often unspecified
+        self.registry.register("D5899", UnspecifiedRemovableProsthodonticProcedureServices().activate_unspecified_removable_prosthodontic_procedure, 
+                            "Unspecified Removable Prosthodontic Procedure (D5899)")
     
     def _create_prompt_template(self) -> PromptTemplate:
         """Create the prompt template for analyzing removable prosthodontics services."""
@@ -136,11 +169,11 @@ Your task is to analyze the given scenario and determine the most applicable rem
 **Note:** These are not intended as definitive restorations but as transitional appliances.
 **Activation trigger:** Scenario mentions OR implies any temporary denture, interim prosthesis, transitional denture, provisional appliance, or temporary tooth replacement. INCLUDE this range if there's any hint of temporary dentures during transition to final prostheses.
 
-## **Other Removable Prosthetic Services (D5765-D5899)**
+## **Other Removable Prosthetic Services (D5863-D5876, D5850-D5851, D5899)**
 **Use when:** Providing specialized prosthetic services not covered in other categories.
 **Check:** Documentation details the specific service and its therapeutic purpose.
-**Note:** These include tissue conditioning, precision attachment, and other advanced procedures.
-**Activation trigger:** Scenario mentions OR implies any tissue conditioning, precision attachment, specialized denture procedure, overdenture, or unusual prosthetic technique. INCLUDE this range if there's any suggestion of specialized removable prosthetic services beyond standard dentures and partials.
+**Note:** These include tissue conditioning (D5850-D5851), precision attachments (D5863-D5866), overdentures (D5876), and other advanced procedures (D5899 for unspecified).
+**Activation trigger:** Scenario mentions OR implies any tissue conditioning, precision attachment, specialized denture procedure, overdenture, or unusual prosthetic technique. INCLUDE the relevant sub-range(s) (D5863-D5876, D5850-D5851, or D5899) if there's any suggestion of specialized removable prosthetic services beyond standard dentures and partials.
 
 ### **Scenario:**
 {{scenario}}
@@ -152,50 +185,58 @@ List them in order of relevance, with the most relevant first.
             input_variables=["scenario"]
         )
     
-    def analyze_prosthodontics_removable(self, scenario: str) -> str:
-        """Analyze the scenario to determine applicable code ranges."""
+    def analyze_prosthodontics_removable(self, scenario: str) -> dict: # Changed return type
+        """Analyze the scenario and return parsed explanation, doubt, and code range."""
         try:
             print(f"Analyzing removable prosthodontics scenario: {scenario[:100]}...")
-            result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
-            code_range = result.strip()
-            print(f"Prosthodontics Removable analyze_prosthodontics_removable result: {code_range}")
-            return code_range
+            raw_result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            parsed_result = _parse_llm_topic_output(raw_result) # Use helper
+            print(f"Prosthodontics Removable analyze result: Exp={parsed_result['explanation']}, Doubt={parsed_result['doubt']}, Range={parsed_result['code_range']}")
+            return parsed_result # Return parsed dictionary
         except Exception as e:
             print(f"Error in analyze_prosthodontics_removable: {str(e)}")
-            return ""
+            return {"explanation": None, "doubt": None, "code_range": None, "error": str(e)}
     
-    async def activate_prosthodontics_removable(self, scenario: str) -> dict:
-        """Activate relevant subtopics in parallel and return detailed results."""
+    async def activate_prosthodontics_removable(self, scenario: str) -> dict: # Changed return type and logic
+        """Activate relevant subtopics in parallel and return detailed results including explanation and doubt."""
+        final_result = {"explanation": None, "doubt": None, "code_range": None, "activated_subtopics": [], "codes": []}
         try:
-            # Get the code range from the analysis
-            prosthodontics_result = self.analyze_prosthodontics_removable(scenario)
-            if not prosthodontics_result:
-                print("No removable prosthodontics result returned")
-                return {}
+            # Get the parsed analysis (explanation, doubt, code_range)
+            topic_analysis_result = self.analyze_prosthodontics_removable(scenario)
             
-            print(f"Prosthodontics Removable Result in activate_prosthodontics_removable: {prosthodontics_result}")
+            # Store analysis results
+            final_result["explanation"] = topic_analysis_result.get("explanation")
+            final_result["doubt"] = topic_analysis_result.get("doubt")
+            final_result["code_range"] = topic_analysis_result.get("code_range") # This is the string of ranges
             
-            # Activate subtopics in parallel using the registry
-            result = await self.registry.activate_all(scenario, prosthodontics_result)
+            code_range_string = topic_analysis_result.get("code_range")
             
-            # Return a dictionary with the required fields
-            return {
-                "code_range": prosthodontics_result,
-                "activated_subtopics": result["activated_subtopics"],
-                "codes": result["topic_result"]
-            }
+            if code_range_string:
+                print(f"Prosthodontics Removable activate using code ranges: {code_range_string}")
+                # Activate subtopics in parallel using the registry with the parsed code range string
+                subtopic_results = await self.registry.activate_all(scenario, code_range_string)
+                final_result["activated_subtopics"] = subtopic_results.get("activated_subtopics", [])
+                final_result["codes"] = subtopic_results.get("topic_result", []) # Assuming 'topic_result' holds the list of codes
+            else:
+                print("No applicable code ranges found in removable prosthodontics analysis.")
+                
+            return final_result
+            
         except Exception as e:
-            print(f"Error in removable prosthodontics analysis: {str(e)}")
-            return {}
+            print(f"Error in removable prosthodontics activation: {str(e)}")
+            final_result["error"] = str(e)
+            return final_result
     
     async def run_analysis(self, scenario: str) -> None:
         """Run the analysis and print results."""
         print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
         result = await self.activate_prosthodontics_removable(scenario)
         print(f"\n=== REMOVABLE PROSTHODONTICS ANALYSIS RESULT ===")
+        print(f"EXPLANATION: {result.get('explanation', 'N/A')}")
+        print(f"DOUBT: {result.get('doubt', 'N/A')}")
         print(f"CODE RANGE: {result.get('code_range', 'None')}")
         print(f"ACTIVATED SUBTOPICS: {', '.join(result.get('activated_subtopics', []))}")
-        print(f"SPECIFIC CODES: {', '.join(result.get('codes', []))}")
+        print(f"SPECIFIC CODES: {result.get('codes', [])}")
 
 prosthodontics_service = RemovableProsthodonticsServices()
 # Example usage
