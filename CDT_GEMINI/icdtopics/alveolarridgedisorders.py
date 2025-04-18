@@ -104,11 +104,11 @@ SCENARIO: {{scenario}}
         raw_result = ""
         try:
             print(f"Analyzing alveolar ridge disorders scenario: {scenario[:100]}...")
-            raw_result = await self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            # Run synchronous LLM call in a separate thread
+            raw_result = await asyncio.to_thread(self.llm_service.invoke_chain, self.prompt_template, {"scenario": scenario})
             parsed_result = _parse_llm_topic_output(raw_result)
-            print(f"Alveolar ridge disorders extracted: Code={parsed_result.get('code')}, Exp={parsed_result.get('explanation')}, Doubt={parsed_result.get('doubt')}")
-            # Add raw data to the parsed result
-            parsed_result['raw_data'] = raw_result
+            print(f"Alveolar Ridge Disorders extracted: Code={parsed_result.get('code')}, Exp={parsed_result.get('explanation')}, Doubt={parsed_result.get('doubt')}")
+            parsed_result['raw_data'] = raw_result # Add raw data
             return parsed_result
         except Exception as e:
             print(f"Error in alveolar ridge disorders code extraction: {str(e)}")

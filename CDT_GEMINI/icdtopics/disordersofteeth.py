@@ -98,7 +98,8 @@ SCENARIO: {{scenario}}
         raw_result = ""
         try:
             print(f"Analyzing disorders of teeth scenario: {scenario[:100]}...")
-            raw_result = await self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            # Run synchronous LLM call in a separate thread to avoid blocking
+            raw_result = await asyncio.to_thread(self.llm_service.invoke_chain, self.prompt_template, {"scenario": scenario})
             parsed_result = _parse_llm_topic_output(raw_result) # Use standardized helper
             print(f"Disorders of Teeth extracted: Code={parsed_result.get('code')}, Exp={parsed_result.get('explanation')}, Doubt={parsed_result.get('doubt')}")
             parsed_result['raw_data'] = raw_result # Add raw data

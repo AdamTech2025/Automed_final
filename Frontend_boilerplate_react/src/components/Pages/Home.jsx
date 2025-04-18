@@ -1,6 +1,6 @@
 import { FaTooth, FaCogs, FaCheck, FaTimes, FaPaperPlane, FaRobot, FaCopy } from 'react-icons/fa';
 import { analyzeDentalScenario, submitSelectedCodes, addCustomCode } from '../../interceptors/services.js';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Questioner from './Questioner.jsx';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -18,25 +18,44 @@ const Home = () => {
 
   // Check if there are questions in the result
   useEffect(() => {
-    if (result && result.data.questioner_data && result.data.questioner_data.has_questions) {
+    if (result && result.questioner_data && result.questioner_data.has_questions) {
       setShowQuestioner(true);
     } else {
       setShowQuestioner(false);
     }
   }, [result]);
 
-  // Initialize expanded topics state
+  // Transform CDT_subtopic array into the object format needed by the component
+  const formattedSubtopicData = useMemo(() => {
+    if (!result?.CDT_subtopic) {
+      return {};
+    }
+    const formatted = {};
+    result.CDT_subtopic.forEach(topic => {
+      // Use a combination of topic name and code range as the key if possible
+      const key = `${topic.topic || 'Unknown'} (${topic.code_range || 'N/A'})`;
+      // Ensure the codes array exists and has data
+      if (Array.isArray(topic.codes) && topic.codes.length > 0) {
+        formatted[key] = topic.codes;
+      }
+    });
+    return formatted;
+  }, [result?.CDT_subtopic]);
+
+  // Initialize expanded topics state based on the formatted data
   useEffect(() => {
-    if (result?.data?.topics_results?.subtopic_data) {
-      console.log("Subtopics data received:", result.data.topics_results.subtopic_data);
+    if (formattedSubtopicData && Object.keys(formattedSubtopicData).length > 0) {
+      console.log("Formatted Subtopics data:", formattedSubtopicData);
       // Initialize expanded topics state
       const initialExpandedState = {};
-      Object.keys(result.data.topics_results.subtopic_data).forEach(topic => {
-        initialExpandedState[topic] = false;
+      Object.keys(formattedSubtopicData).forEach(topicKey => {
+        initialExpandedState[topicKey] = false; // Use the generated key
       });
       setExpandedTopics(initialExpandedState);
+    } else {
+        setExpandedTopics({}); // Reset if no data
     }
-  }, [result?.data?.topics_results?.subtopic_data]);
+  }, [formattedSubtopicData]); // Depend on the formatted data
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -48,7 +67,7 @@ const Home = () => {
     try {
       const response = await analyzeDentalScenario({ scenario });
       console.log('Analysis results received:', response);
-      console.log('Record ID:', response?.data?.record_id);
+      console.log('Record ID:', response?.record_id);
       setResult(response);
     } catch (err) {
       console.error('Error analyzing scenario:', err);
@@ -87,7 +106,7 @@ const Home = () => {
   const handleSubmitCodes = async () => {
     setSubmitting(true);
     try {
-      await submitSelectedCodes(selectedCodes, result.data.record_id);
+      await submitSelectedCodes(selectedCodes, result.record_id);
       // Reset form after successful submission
       setScenario('');
       setResult(null);
@@ -104,31 +123,43 @@ const Home = () => {
   };
 
   const handleQuestionerSuccess = (response) => {
-    if (response && response.status === 'success') {
-      // Only update result if we got a successful response
-      setResult(response);
-    } else if (response && response.status === 'error') {
-      // Display the error message
-      setError(response.message || 'Failed to process answers');
+    // If response is an array (batch), check if ALL were successful
+    const allSuccess = Array.isArray(response)
+      ? response.every(r => r.response && r.response.status === 'success')
+      : response && response.status === 'success';
+
+    if (allSuccess) {
+       // For batch, we might need to update the result state based on multiple responses.
+       // For now, let's assume a single response structure or handle the first successful one for simplicity.
+      const mainResponse = Array.isArray(response) ? response.find(r => r.response && r.response.status === 'success')?.response : response;
+      if (mainResponse) {
+          setResult(mainResponse); // Update result with the data returned AFTER answering questions
+      }
+    } else {
+      // Handle single or batch error
+      const errorMsg = Array.isArray(response)
+        ? response.find(r => r.response && r.response.status === 'error')?.response?.message || 'An error occurred in batch processing.'
+        : response?.message || 'Failed to process answers';
+      setError(errorMsg);
       // Don't hide the questioner modal on error
     }
   };
 
-  const toggleTopic = (topic) => {
-    console.log(`Toggling topic: ${topic}, current state:`, expandedTopics[topic]);
+  const toggleTopic = (topicKey) => {
+    console.log(`Toggling topic: ${topicKey}, current state:`, expandedTopics[topicKey]);
     setExpandedTopics(prev => {
       const newState = { ...prev };
-      newState[topic] = !prev[topic];
-      console.log(`New expanded state for ${topic}:`, newState[topic]);
+      newState[topicKey] = !prev[topicKey];
+      console.log(`New expanded state for ${topicKey}:`, newState[topicKey]);
       return newState;
     });
   };
 
   const handleCopyCodes = () => {
-    if (!result?.data?.inspector_results) return;
+    if (!result?.inspector_results) return;
     
-    // Get the actual inspector results object, which could be nested in different structures
-    const inspectorData = result.data.inspector_results.data?.inspector_results || result.data.inspector_results;
+    // Get the actual inspector results object (already direct)
+    const inspectorData = result.inspector_results;
     
     const cdtCodes = inspectorData.cdt?.codes || [];
     const icdCodes = inspectorData.icd?.codes || [];
@@ -143,18 +174,18 @@ const Home = () => {
   };
 
   const scrollToCode = (code) => {
-    // Find the topic containing the code
-    let foundTopic = null;
+    // Find the topic containing the code using formattedSubtopicData
+    let foundTopicKey = null;
     let codeIndex = -1;
     
-    // Search through all topics and their codes to find the matching code
-    if (result?.data?.topics_results?.subtopic_data) {
-      Object.keys(result.data.topics_results.subtopic_data).forEach(topic => {
-        const topicData = result.data.topics_results.subtopic_data[topic];
-        if (topicData) {
-          topicData.forEach((codeData, index) => {
+    // Search through the formatted data
+    if (formattedSubtopicData) {
+      Object.keys(formattedSubtopicData).forEach(topicKey => {
+        const topicCodes = formattedSubtopicData[topicKey];
+        if (topicCodes) {
+          topicCodes.forEach((codeData, index) => {
             if (codeData && codeData.code === code) {
-              foundTopic = topic;
+              foundTopicKey = topicKey;
               codeIndex = index;
             }
           });
@@ -162,14 +193,14 @@ const Home = () => {
       });
     }
 
-    if (foundTopic) {
-      console.log(`Found code ${code} in topic ${foundTopic} at index ${codeIndex}`);
+    if (foundTopicKey) {
+      console.log(`Found code ${code} in topic ${foundTopicKey} at index ${codeIndex}`);
       
       // Expand the topic if it's not already expanded
-      if (!expandedTopics[foundTopic]) {
+      if (!expandedTopics[foundTopicKey]) {
         setExpandedTopics(prev => ({
           ...prev,
-          [foundTopic]: true
+          [foundTopicKey]: true
         }));
       }
 
@@ -193,18 +224,14 @@ const Home = () => {
     }
   };
 
-  const renderCodeSection = (topic) => {
-    if (!result?.data?.topics_results?.subtopic_data?.[topic]) return null;
+  const renderCodeSection = (topicKey) => {
+    if (!formattedSubtopicData?.[topicKey]) return null;
     
-    const topicData = result.data.topics_results.subtopic_data[topic];
-    const isExpanded = expandedTopics[topic];
+    const topicData = formattedSubtopicData[topicKey];
+    const isExpanded = expandedTopics[topicKey];
     
-    // Get corresponding topic info from the active topics list
-    const topicInfo = result.data.topics_results.topic_result?.find(t => 
-      t.activated_subtopics?.some(st => st.includes(topic))
-    );
-    
-    const topicName = topicInfo?.topic || topic;
+    // Extract name from the key (assuming format "Name (Range)")
+    const topicName = topicKey.split('(')[0].trim();
     
     // Skip if no valid codes
     if (!topicData || topicData.length === 0) return null;
@@ -216,11 +243,11 @@ const Home = () => {
     return (
       <div className="mb-6">
         <div 
-          className={`flex items-center justify-between p-4 ${topic === 'custom_codes' ? 
+          className={`flex items-center justify-between p-4 ${topicKey.includes('custom_codes') ? 
             (isDark ? 'bg-blue-900/30' : 'bg-blue-50') : 
             (isDark ? 'bg-gray-800' : 'bg-gray-50')
           } rounded-lg cursor-pointer hover:${isDark ? 'bg-gray-700' : 'bg-gray-100'} transition-colors`}
-          onClick={() => toggleTopic(topic)}
+          onClick={() => toggleTopic(topicKey)}
         >
           <h3 className="text-lg font-semibold">{topicName}</h3>
           <div className="transform transition-transform duration-300">
@@ -239,7 +266,7 @@ const Home = () => {
             
             return (
               <div 
-                key={`topic-${index}-${topic}-${codeData.code}`}
+                key={`topic-${index}-${topicKey}-${codeData.code}`}
                 className={`mt-4 transition-all duration-300 ease-in-out ${
                   isAccepted ? (isDark ? 'bg-green-900/30 border-green-700' : 'bg-green-50 border-green-200') : 
                   isDenied ? (isDark ? 'bg-red-900/30 border-red-700' : 'bg-red-50 border-red-200') : 
@@ -251,7 +278,7 @@ const Home = () => {
                   className={`p-4 rounded-lg shadow-sm border transition-colors duration-300 ${
                   isAccepted ? (isDark ? 'border-green-700' : 'border-green-300') : 
                   isDenied ? (isDark ? 'border-red-700' : 'border-red-300') : 
-                  topic === 'custom_codes' && 'isApplicable' in codeData ? 
+                  topicKey.includes('custom_codes') && 'isApplicable' in codeData ? 
                     (codeData.isApplicable ? 
                       (isDark ? 'border-green-700' : 'border-green-300') : 
                       (isDark ? 'border-red-700' : 'border-red-300')
@@ -263,7 +290,7 @@ const Home = () => {
                     <span className={`font-mono px-2 py-1 rounded ${
                       isAccepted ? (isDark ? 'bg-green-900 text-green-200' : 'bg-green-100 text-green-800') : 
                       isDenied ? (isDark ? 'bg-red-900 text-red-200' : 'bg-red-100 text-red-800') : 
-                      topic === 'custom_codes' && 'isApplicable' in codeData ? 
+                      topicKey.includes('custom_codes') && 'isApplicable' in codeData ? 
                         (codeData.isApplicable ? 
                           (isDark ? 'bg-green-900 text-green-200' : 'bg-green-100 text-green-800') : 
                           (isDark ? 'bg-red-900 text-red-200' : 'bg-red-100 text-red-800')
@@ -304,26 +331,26 @@ const Home = () => {
                   <p className={`text-sm mb-1 ${
                     isAccepted ? (isDark ? 'text-green-300' : 'text-green-700') : 
                     isDenied ? (isDark ? 'text-red-300' : 'text-red-700') : 
-                    topic === 'custom_codes' && 'isApplicable' in codeData ? 
+                    topicKey.includes('custom_codes') && 'isApplicable' in codeData ? 
                       (codeData.isApplicable ? 
                         (isDark ? 'text-green-300' : 'text-green-700') : 
                         (isDark ? 'text-red-300' : 'text-red-700')
                       ) :
                     (isDark ? 'text-gray-300' : 'text-gray-600')
                   }`}>
-                    <span className="font-medium">Explanation:</span> {codeData.explanation}
+                    <span className="font-medium">Explanation:</span> {codeData.explanation || 'N/A'}
                   </p>
                   <p className={`text-sm ${
                     isAccepted ? (isDark ? 'text-green-300' : 'text-green-700') : 
                     isDenied ? (isDark ? 'text-red-300' : 'text-red-700') : 
-                    topic === 'custom_codes' && 'isApplicable' in codeData ? 
+                    topicKey.includes('custom_codes') && 'isApplicable' in codeData ? 
                       (codeData.isApplicable ? 
                         (isDark ? 'text-green-300' : 'text-green-700') : 
                         (isDark ? 'text-red-300' : 'text-red-700')
                       ) :
                     (isDark ? 'text-gray-300' : 'text-gray-600')
                   }`}>
-                    <span className="font-medium">Doubt:</span> {codeData.doubt}
+                    <span className="font-medium">Doubt:</span> {codeData.doubt || 'N/A'}
                   </p>
                 </div>
               </div>
@@ -335,15 +362,21 @@ const Home = () => {
   };
 
   const renderInspectorResults = () => {
-    if (!result?.data?.inspector_results) return null;
+    if (!result?.inspector_results) return null;
 
-    // Get the actual inspector results object, which could be nested in different structures
-    const inspectorData = result.data.inspector_results.data?.inspector_results || result.data.inspector_results;
+    // Get the actual inspector results object (already direct)
+    const inspectorData = result.inspector_results;
 
     const cdtCodes = inspectorData.cdt?.codes || [];
     const icdCodes = inspectorData.icd?.codes || [];
     const cdtExplanation = inspectorData.cdt?.explanation || '';
     const icdExplanation = inspectorData.icd?.explanation || '';
+
+    // Count CDT code occurrences
+    const cdtCodeCounts = cdtCodes.reduce((acc, code) => {
+      acc[code] = (acc[code] || 0) + 1;
+      return acc;
+    }, {});
 
     return (
       <div className={`mt-8 p-4 ${isDark ? 'bg-blue-900/30 border-blue-700' : 'bg-blue-50 border-blue-200'} rounded-lg border ai-final-analysis-content relative`}>
@@ -363,13 +396,13 @@ const Home = () => {
         <div className="mb-4">
           <h4 className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'} mb-2`}>CDT Codes:</h4>
           <div className="flex flex-wrap gap-2">
-            {cdtCodes.map((code, index) => {
+            {Object.entries(cdtCodeCounts).map(([code, count]) => {
               const isAccepted = selectedCodes.accepted.includes(code);
               const isDenied = selectedCodes.denied.includes(code);
               
               return (
                 <span 
-                  key={`cdt-code-${index}-${code}`}
+                  key={`cdt-code-${code}`}
                   onClick={() => scrollToCode(code)}
                   className={`cursor-pointer px-3 py-1 rounded-full text-sm transition-all duration-200 ${
                     isAccepted 
@@ -379,7 +412,7 @@ const Home = () => {
                         : (isDark ? 'bg-blue-800/60 text-blue-200' : 'bg-blue-100 text-blue-800')
                   }`}
                 >
-                  {code}
+                  {code}{count > 1 ? ` (${count} Times)` : ''}
                 </span>
               );
             })}
@@ -405,32 +438,6 @@ const Home = () => {
         </div>
       </div>
     );
-  };
-
-  // Update the areAllCodesSelected function to count codes from inspector_results
-  const areAllCodesSelected = () => {
-    if (!result?.data?.inspector_results) return false;
-    
-    // Get the actual inspector results object, which could be nested in different structures
-    const inspectorData = result.data.inspector_results.data?.inspector_results || result.data.inspector_results;
-    
-    const cdtCodes = inspectorData.cdt?.codes || [];
-    
-    // Check if all codes have been accepted
-    return cdtCodes.length > 0 && cdtCodes.every(code => selectedCodes.accepted.includes(code));
-  };
-
-  // Add a function to get the count of remaining codes to select
-  const getRemainingCodeCount = () => {
-    if (!result?.data?.inspector_results) return 0;
-    
-    // Get the actual inspector results object, which could be nested in different structures
-    const inspectorData = result.data.inspector_results.data?.inspector_results || result.data.inspector_results;
-    
-    const cdtCodes = inspectorData.cdt?.codes || [];
-    const acceptedCount = cdtCodes.filter(code => selectedCodes.accepted.includes(code)).length;
-    
-    return cdtCodes.length - acceptedCount;
   };
 
   // Add a function to render the selected codes section
@@ -485,7 +492,7 @@ const Home = () => {
       return;
     }
     
-    if (!result?.data?.record_id) {
+    if (!result?.record_id) {
       setError("No active analysis session. Please analyze a scenario first.");
       return;
     }
@@ -494,69 +501,87 @@ const Home = () => {
     setError(null);
     
     try {
-      const response = await addCustomCode(newCode, scenario, result.data.record_id);
+      const response = await addCustomCode(newCode, scenario, result.record_id);
       console.log('Custom code response:', response);
       
       // Update the result with the new code
       if (response.data && response.data.code_data) {
         // Create a copy of the current result
-        const updatedResult = {...result};
+        const updatedResult = JSON.parse(JSON.stringify(result));
         
         // Add the new code to the appropriate topic or create a new topic
         const codeData = response.data.code_data;
         
-        if (!updatedResult.data.topics_results) {
-          updatedResult.data.topics_results = {};
+        // Use the formattedSubtopicData logic for consistency
+        const customTopicKey = "Custom Codes (N/A)"; // Define a key for custom codes
+        
+        // Ensure CDT_subtopic exists
+        if (!updatedResult.CDT_subtopic) {
+          updatedResult.CDT_subtopic = [];
         }
         
-        if (!updatedResult.data.topics_results.subtopic_data) {
-          updatedResult.data.topics_results.subtopic_data = {};
+        // Find or create the custom topic entry in the original array format
+        let customTopicEntry = updatedResult.CDT_subtopic.find(t => t.topic === "Custom Codes");
+        if (!customTopicEntry) {
+          customTopicEntry = { topic: "Custom Codes", code_range: "N/A", codes: [] };
+          updatedResult.CDT_subtopic.push(customTopicEntry);
         }
         
-        // Extract applicability status from the explanation
-        const isApplicable = codeData.explanation && codeData.explanation.includes("**Applicable?** Yes");
+        // Extract applicability status from the response data directly
+        const isApplicable = codeData.isApplicable;
         
-        // Extract reason from the explanation
-        let reason = "";
+        // Extract reason from the structured explanation
+        let reason = "N/A";
         if (codeData.explanation) {
-          const reasonMatch = codeData.explanation.match(/\*\*Reason\*\*: (.*?)($|\n)/);
-          reason = reasonMatch ? reasonMatch[1].trim() : "";
-        }
-        
-        // Either add to "Custom Codes" topic or create it
-        if (!updatedResult.data.topics_results.subtopic_data.custom_codes) {
-          updatedResult.data.topics_results.subtopic_data.custom_codes = [];
+          const reasonMatch = codeData.explanation.match(/\*\*Reason\*\*:\s*([\s\S]*)/i);
+          reason = reasonMatch ? reasonMatch[1].trim() : codeData.explanation; // Fallback to full explanation if pattern fails
         }
         
         // Add the new code data with parsed information
-        updatedResult.data.topics_results.subtopic_data.custom_codes.push({
+        customTopicEntry.codes.push({
           code: codeData.code,
-          explanation: reason || codeData.explanation,
+          explanation: reason, // Use the extracted reason
           doubt: codeData.doubt || "None",
-          isApplicable: isApplicable
+          isApplicable: isApplicable, // Store applicability directly
+          raw_data: codeData.explanation // Store the original structured explanation as raw_data
         });
         
         // If there are inspector results, add the code there too if applicable
-        if (updatedResult.data.inspector_results) {
-          // Get the actual inspector results object, which could be nested in different structures
-          const inspectorData = updatedResult.data.inspector_results.data?.inspector_results || updatedResult.data.inspector_results;
+        if (updatedResult.inspector_results) {
+          const inspectorData = updatedResult.inspector_results; // Direct access
           
           if (isApplicable && inspectorData.cdt) {
-            // Add to accepted codes if applicable
+            // Ensure codes array exists
+            if (!inspectorData.cdt.codes) inspectorData.cdt.codes = [];
+            // Add to accepted codes if applicable and not already present
             if (!inspectorData.cdt.codes.includes(codeData.code)) {
               inspectorData.cdt.codes.push(codeData.code);
             }
+            // Ensure rejected_codes array exists and remove if present
+             if (!inspectorData.cdt.rejected_codes) inspectorData.cdt.rejected_codes = [];
+             inspectorData.cdt.rejected_codes = inspectorData.cdt.rejected_codes.filter(c => c !== codeData.code);
+          } else if (!isApplicable && inspectorData.cdt) {
+             // Add to rejected codes if not applicable and not already present
+             if (!inspectorData.cdt.rejected_codes) inspectorData.cdt.rejected_codes = [];
+             if (!inspectorData.cdt.rejected_codes.includes(codeData.code)) {
+                 inspectorData.cdt.rejected_codes.push(codeData.code);
+             }
+             // Ensure codes array exists and remove if present
+             if (!inspectorData.cdt.codes) inspectorData.cdt.codes = [];
+             inspectorData.cdt.codes = inspectorData.cdt.codes.filter(c => c !== codeData.code);
           }
         }
         
         // Update the result state
         setResult(updatedResult);
         
-        // Expand the custom codes topic
-        setExpandedTopics(prev => ({
-          ...prev,
-          custom_codes: true
-        }));
+        // Expand the custom codes topic using the predefined key
+         if (customTopicKey) { // Check if the key exists (it should)
+              setExpandedTopics(prev => ({
+                  ...prev,
+                  [customTopicKey]: true // Use the variable here
+              }));
+          }
         
         // Clear the input
         setNewCode('');
@@ -584,10 +609,10 @@ const Home = () => {
           isVisible={showQuestioner}
           onClose={handleQuestionerClose}
           questions={{
-            cdt_questions: result?.data?.questioner_data?.cdt_questions?.questions || [],
-            icd_questions: result?.data?.questioner_data?.icd_questions?.questions || []
+            cdt_questions: result.questioner_data?.cdt_questions?.questions || [],
+            icd_questions: result.questioner_data?.icd_questions?.questions || []
           }}
-          recordId={result?.data?.record_id || ''}
+          recordId={result.record_id || ''}
           onSubmitSuccess={handleQuestionerSuccess}
         />
       )}
@@ -661,13 +686,13 @@ const Home = () => {
                 </div>
 
                 {/* Code Sections */}
-                {result?.data?.topics_results?.subtopic_data && Object.keys(result.data.topics_results.subtopic_data).length > 0 ? (
-                  Object.keys(result.data.topics_results.subtopic_data).map((topic, index) => (
-                    <div key={`topic-container-${index}-${topic}`}>{renderCodeSection(topic)}</div>
+                {formattedSubtopicData && Object.keys(formattedSubtopicData).length > 0 ? (
+                  Object.keys(formattedSubtopicData).map((topicKey, index) => (
+                    <div key={`topic-container-${index}-${topicKey}`}>{renderCodeSection(topicKey)}</div>
                   ))
                 ) : (
                   <div className={`mt-4 p-4 ${isDark ? 'bg-gray-700' : 'bg-gray-50'} rounded-lg`}>
-                    <p className={`${isDark ? 'text-gray-300' : 'text-gray-600'}`}>No code sections available for this analysis.</p>
+                    <p className={`${isDark ? 'text-gray-300' : 'text-gray-600'}`}>No subtopic code sections available for this analysis.</p>
                   </div>
                 )}
 
@@ -694,7 +719,7 @@ const Home = () => {
                       } text-white rounded-lg shadow-md transition-all duration-300 disabled:${
                         isDark ? 'bg-gray-700' : 'bg-gray-400'
                       } flex items-center`}
-                      disabled={loading || !newCode.trim() || !result?.data?.record_id}
+                      disabled={loading || !newCode.trim() || !result?.record_id}
                     >
                       {loading ? 'Analyzing...' : 'Analyze Code'}
                     </button>
@@ -709,20 +734,15 @@ const Home = () => {
                 <div className="mt-6 flex justify-end">
                   <button
                     onClick={handleSubmitCodes}
-                    disabled={submitting || !areAllCodesSelected()}
-                    className={`px-4 py-2 rounded-lg shadow-md flex items-center transition-all duration-300 ${
-                      areAllCodesSelected() 
-                        ? (isDark ? 'bg-green-700 hover:bg-green-600' : 'bg-green-600 hover:bg-green-700') 
-                        : (isDark ? 'bg-gray-700' : 'bg-gray-400') + ' cursor-not-allowed'
+                    disabled={submitting || selectedCodes.accepted.length === 0}
+                    className={`px-4 py-2 rounded-lg shadow-md flex items-center transition-all duration-300 text-white ${
+                      selectedCodes.accepted.length > 0
+                        ? (isDark ? 'bg-green-700 hover:bg-green-600' : 'bg-green-600 hover:bg-green-700')
+                        : (isDark ? 'bg-gray-600' : 'bg-gray-400') + ' cursor-not-allowed'
                     } text-white`}
                   >
                     <FaPaperPlane className="mr-2" />
-                    {submitting 
-                      ? 'Submitting...' 
-                      : areAllCodesSelected() 
-                        ? 'Submit Accepted Codes' 
-                        : `Accept All Codes (${getRemainingCodeCount()} remaining)`
-                    }
+                    {submitting ? 'Submitting...' : `Submit ${selectedCodes.accepted.length} Accepted Code(s)`}
                   </button>
                 </div>
               </div>

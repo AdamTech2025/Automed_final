@@ -95,11 +95,11 @@ SCENARIO: {{scenario}}
         """Extract Medical Findings code(s), explanation, doubt, and include raw data."""
         raw_result = ""
         try:
-            print(f"Analyzing Medical Findings Related to Dental Treatment scenario: {scenario[:100]}...")
-            # Await the call
-            raw_result = await self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
+            print(f"Analyzing medical findings related to dental treatment scenario: {scenario[:100]}...")
+            # Run synchronous LLM call in a separate thread
+            raw_result = await asyncio.to_thread(self.llm_service.invoke_chain, self.prompt_template, {"scenario": scenario})
             parsed_result = _parse_llm_topic_output(raw_result) # Use standardized helper
-            print(f"Medical Findings Dental Treatment extracted: Code={parsed_result.get('code')}, Exp={parsed_result.get('explanation')}, Doubt={parsed_result.get('doubt')}")
+            print(f"Medical Findings extracted: Code={parsed_result.get('code')}, Exp={parsed_result.get('explanation')}, Doubt={parsed_result.get('doubt')}")
             # Add raw data to the parsed result
             parsed_result['raw_data'] = raw_result
             return parsed_result # Return parsed dictionary with raw data
