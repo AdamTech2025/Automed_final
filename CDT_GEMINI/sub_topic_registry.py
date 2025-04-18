@@ -2,7 +2,6 @@ import asyncio
 import inspect
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Callable, Any, Union, Coroutine
-import re
 
 class SubtopicRegistry:
     """Registry for managing subtopic activation functions."""
@@ -58,7 +57,7 @@ class SubtopicRegistry:
                 
             if result and result.get("raw_result"):
                 # Parse the raw result to extract properly formatted data
-                parsed_result = self._parse_topic_result(result["name"], result["raw_result"], result["code_range"])
+                parsed_result = self._parse_topic_result(result["raw_result"], result["name"], result["code_range"])
                 if parsed_result:
                     results_list.append(parsed_result)
                     activated_subtopics.append(result["name"])
@@ -68,98 +67,110 @@ class SubtopicRegistry:
             "activated_subtopics": activated_subtopics
         }
     
-    def _parse_topic_result(self, topic_name: str, raw_result: Any, code_range: str) -> Dict[str, Any]:
-        """Parse the raw LLM text output (expected string) for a topic into structured data."""
-        
-        # --- Input Type Validation ---
-        if not isinstance(raw_result, str):
-            print(f"Error parsing topic result for '{topic_name}': Expected raw_result to be a string, but got {type(raw_result)}.")
-            # Fallback: return basic structure with error and raw input (converted to str for safety)
-            return {
-                "topic": topic_name,
-                "explanation": "",
-                "doubt": "",
-                "code_range": code_range,
-                "error": f"Parsing Error: Invalid input type - Expected string, got {type(raw_result).__name__}",
-                "raw_text": str(raw_result), # Store the problematic input as string
-                "codes": []
-            }
-        # --- End Validation ---
-
-        parsed_codes = []
-        current_explanation = ""
-        current_doubt = ""
-        
-        lines = raw_result.strip().split('\n')
-
+    def _parse_topic_result(self, raw_result: str, topic_name: str, code_range: str) -> Dict[str, Any]:
+        """Parse the raw result from topic activation into a properly structured format."""
         try:
-            for line in lines:
-                stripped_line = line.strip()
+            # Handle empty responses
+            if not raw_result:
+                return None
                 
-                # Case-insensitive matching for markers
-                if stripped_line.upper().startswith("EXPLANATION:"):
-                    # Capture explanation, potentially overwriting previous if multiple are found before a code
-                    current_explanation = stripped_line[len("EXPLANATION:"):].strip()
-                elif stripped_line.upper().startswith("DOUBT:"):
-                    # Capture doubt
-                    current_doubt = stripped_line[len("DOUBT:"):].strip()
-                elif stripped_line.upper().startswith("CODE:"):
-                    code_part = stripped_line[len("CODE:"):].strip()
+            # If the result is already a dictionary, use it directly
+            if isinstance(raw_result, dict):
+                # Ensure the dict has the proper format
+                if "topic" not in raw_result:
+                    raw_result["topic"] = topic_name
+                if "code_range" not in raw_result:
+                    raw_result["code_range"] = code_range
+                # Remove subtopic field if it exists
+                if "subtopic" in raw_result:
+                    del raw_result["subtopic"]
+                return raw_result
+            
+            # Otherwise, parse the text format
+            explanation = ""
+            doubt = ""
+            parsed_codes = []
+            
+            if "EXPLANATION:" in raw_result:
+                parts = raw_result.split("EXPLANATION:")
+                for part in parts[1:]:  # Skip the first empty part
+                    code_part = ""
+                    exp_part = ""
+                    doubt_part = ""
                     
-                    # Ignore "none" or empty code parts
-                    if code_part.lower() == "none" or not code_part:
-                        continue
+                    if "DOUBT:" in part:
+                        exp_doubt_parts = part.split("DOUBT:")
+                        exp_part = exp_doubt_parts[0].strip()
                         
-                    # Extract potential codes (split by comma, handle potential surrounding text)
-                    potential_codes = [c.strip() for c in code_part.split(',')]
+                        if "CODE:" in exp_doubt_parts[1]:
+                            doubt_code_parts = exp_doubt_parts[1].split("CODE:")
+                            doubt_part = doubt_code_parts[0].strip()
+                            code_part = doubt_code_parts[1].strip() if len(doubt_code_parts) > 1 else ""
+                        else:
+                            doubt_part = exp_doubt_parts[1].strip()
+                    elif "CODE:" in part:
+                        exp_code_parts = part.split("CODE:")
+                        exp_part = exp_code_parts[0].strip()
+                        code_part = exp_code_parts[1].strip() if len(exp_code_parts) > 1 else ""
+                    else:
+                        exp_part = part.strip()
                     
-                    for pc in potential_codes:
-                        # Basic validation: check if it looks like a code (e.g., Dxxxx or Kxx.x)
-                        # This is a simple check and might need refinement for stricter validation
-                        if re.match(r'^[A-Z][0-9]{1,}[A-Z0-9\.]*$', pc, re.IGNORECASE):
-                            # Check if it's just "none" after stripping/validation
-                             if pc.lower() != 'none':
-                                parsed_codes.append({
-                                    "code": pc,
-                                    "explanation": current_explanation, 
-                                    "doubt": current_doubt
-                                })
-                        # else: Consider logging codes that didn't match the pattern? 
-                            
-                    # Reset explanation/doubt after processing a CODE line 
-                    # so they don't carry over to subsequent unrelated codes
-                    # current_explanation = "" # Keep the last explanation/doubt until a new one is found
-                    # current_doubt = "" 
-
-            # If no codes were parsed, return the raw text for inspection
+                    if code_part:
+                        # Split multiple codes if they exist
+                        code_values = [c.strip() for c in code_part.split(",")]
+                        for code in code_values:
+                            parsed_codes.append({
+                                "explanation": exp_part,
+                                "doubt": doubt_part,
+                                "code": code
+                            })
+            
+            # If we couldn't parse codes but still have a result
             if not parsed_codes and raw_result.strip():
                 return {
                     "topic": topic_name,
-                    "explanation": "", # Keep top-level fields for consistent structure
+                    "explanation": "",
                     "doubt": "",
                     "code_range": code_range, 
-                    "raw_text": raw_result.strip(), # Include raw text if parsing failed
+                    "raw_text": raw_result.strip(),
                     "codes": []
                 }
-
-            # Return the structured result with the list of codes
-            return {
+            
+            # Extract main explanation and doubt from the topic level if available
+            topic_explanation = ""
+            topic_doubt = ""
+            
+            # Try to extract topic-level explanation and doubt
+            if "TOPIC EXPLANATION:" in raw_result:
+                topic_parts = raw_result.split("TOPIC EXPLANATION:")
+                if len(topic_parts) > 1:
+                    if "TOPIC DOUBT:" in topic_parts[1]:
+                        topic_exp_doubt = topic_parts[1].split("TOPIC DOUBT:")
+                        topic_explanation = topic_exp_doubt[0].strip()
+                        topic_doubt = topic_exp_doubt[1].strip() if len(topic_exp_doubt) > 1 else ""
+                    else:
+                        topic_explanation = topic_parts[1].strip()
+            
+            # Return a flattened structure without nested codes
+            result = {
                 "topic": topic_name,
-                "explanation": "", # Keep top-level explanation/doubt empty now
-                "doubt": "",
+                "explanation": topic_explanation,
+                "doubt": topic_doubt,
                 "code_range": code_range,
-                "codes": parsed_codes 
+                "codes": parsed_codes
             }
             
+            return result
+            
         except Exception as e:
-            print(f"Error parsing topic result for '{topic_name}': {str(e)}")
-            # Fallback: return basic structure with error and raw text
+            print(f"Error parsing topic result: {str(e)}")
+            # Return the raw result as a fallback
             return {
                 "topic": topic_name,
                 "explanation": "",
                 "doubt": "",
                 "code_range": code_range,
-                "error": f"Parsing Error: {str(e)}",
+                "error": str(e),
                 "raw_text": raw_result,
                 "codes": []
             }
