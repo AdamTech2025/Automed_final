@@ -256,7 +256,7 @@ class MedicalCodingDB:
             logger.error(f"Error updating details for user ID {user_id}: {str(e)}", exc_info=True)
             return False
 
-    def update_user_otp(self, user_id: str, otp: str | None, otp_expires_at: datetime | None):
+    def update_user_otp(self, user_id: str, otp: Union[str, None], otp_expires_at: Union[datetime, None]):
         """Update the user's current OTP and its expiry time."""
         self.ensure_connection()
         try:
