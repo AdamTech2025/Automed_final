@@ -68,7 +68,7 @@ const Login = () => {
       <Particles />
       
       <div className="container mx-auto max-w-lg px-4 py-8 relative">
-        <div className="card p-8 backdrop-blur-md bg-opacity-15 bg-white border border-white border-opacity-30 shadow-lg rounded-2xl">
+        <div className="card p-8 backdrop-blur-xl bg-white bg-opacity-20 border border-white border-opacity-20 rounded-2xl">
           <div className="flex justify-center mb-6">
             <img src="https://via.placeholder.com/80?text=🦷" alt="Adam Tech Logo" className="w-20 h-20 animate-[float_3s_ease-in-out_infinite]" />
           </div>
@@ -76,7 +76,7 @@ const Login = () => {
           <h2 className="text-4xl font-bold text-center text-white mb-2">Adam Tech</h2>
           <p className="text-center text-gray-300 mb-6">Dental Coding Software</p>
           
-          <div className="w-full bg-gray-600 rounded-full h-1 mb-6">
+          <div className="w-full bg-gray-700 bg-opacity-50 rounded-full h-1 mb-6">
             <div 
               className="bg-yellow-400 h-1 rounded-full transition-all duration-300"
               style={{ width: `${progress}%` }}
@@ -92,7 +92,7 @@ const Login = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="mt-1 block w-full rounded-lg border-none bg-opacity-10 bg-white text-white focus:border-yellow-400 focus:ring focus:ring-yellow-400 focus:ring-opacity-50 p-3 transition-all duration-300"
+                className="mt-1 block w-full rounded-lg border-none bg-white bg-opacity-20 text-white focus:border-yellow-400 focus:ring focus:ring-yellow-400 focus:ring-opacity-50 p-3 transition-all duration-300"
                 placeholder="you@example.com"
               />
             </div>
@@ -105,7 +105,7 @@ const Login = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="mt-1 block w-full rounded-lg border-none bg-opacity-10 bg-white text-white focus:border-yellow-400 focus:ring focus:ring-yellow-400 focus:ring-opacity-50 p-3 transition-all duration-300"
+                className="mt-1 block w-full rounded-lg border-none bg-white bg-opacity-20 text-white focus:border-yellow-400 focus:ring focus:ring-yellow-400 focus:ring-opacity-50 p-3 transition-all duration-300"
                 placeholder="••••••••"
               />
             </div>
@@ -119,7 +119,7 @@ const Login = () => {
           </form>
           
           <p className="mt-4 text-center text-sm text-gray-300">
-            Don't have an account? <Link to="/signup" className="text-yellow-400 hover:underline">Sign Up</Link>
+            Don&apos;t have an account? <Link to="/signup" className="text-yellow-400 hover:underline">Sign Up</Link>
           </p>
         </div>
       </div>

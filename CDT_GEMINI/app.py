@@ -240,40 +240,50 @@ async def analyze_scenario(payload: ScenarioInput):
         else:
              logger.warning("Skipping ICD topic activation task due to missing/invalid classification.")
 
-        # Combine keys and run all activations via the registry
-        keys_to_activate_list = list(cdt_code_ranges_to_activate) + ([icd_category_to_activate] if icd_category_to_activate else [])
-        if keys_to_activate_list:
-            keys_to_activate_str = ",".join(keys_to_activate_list)
-            logger.info(f"Running topic activations via SubtopicRegistry for keys: {keys_to_activate_str}")
+        # Create separate concurrent tasks for CDT and ICD to avoid blocking each other
+        async def activate_cdt_topics():
+            if cdt_code_ranges_to_activate:
+                cdt_ranges_str = ",".join(cdt_code_ranges_to_activate)
+                logger.info(f"Activating CDT topics for ranges: {cdt_ranges_str}")
+                try:
+                    return await topic_registry.activate_all(cleaned_scenario_text, cdt_ranges_str)
+                except Exception as e:
+                    logger.error(f"Error in CDT topic activation: {e}", exc_info=True)
+                    return {"topic_result": [], "activated_subtopics": []}
+            return {"topic_result": [], "activated_subtopics": []}
+            
+        async def activate_icd_topic():
+            if icd_category_to_activate:
+                logger.info(f"Activating ICD topic for category: {icd_category_to_activate}")
+                try:
+                    return await topic_registry.activate_all(cleaned_scenario_text, icd_category_to_activate)
+                except Exception as e:
+                    logger.error(f"Error in ICD topic activation: {e}", exc_info=True)
+                    return {"topic_result": [], "activated_subtopics": []}
+            return {"topic_result": [], "activated_subtopics": []}
 
-            logger.info(f"Running {len(keys_to_activate_list)} topic activation tasks concurrently...")
-            # Use the SubtopicRegistry's activate_all method, passing the relevant keys
-            # Combine CDT ranges and the single ICD key into one string for the registry
-            keys_to_activate_str = ",".join(keys_to_activate_list)
-            logger.info(f"Keys passed to activate_all: {keys_to_activate_str}")
-            
-            # The registry now handles running and parsing
-            registry_results = await topic_registry.activate_all(cleaned_scenario_text, keys_to_activate_str)
-            logger.info("SubtopicRegistry activation completed.")
-            
-            # Separate the results
-            all_topic_results = registry_results.get("topic_result", []) 
-            cdt_topic_activation_results = [res for res in all_topic_results if res["code_range"] in cdt_code_ranges_to_activate] 
-            icd_results_list = [res for res in all_topic_results if res["code_range"] == icd_category_to_activate] 
-            
-            if icd_results_list:
-                icd_topic_details = icd_results_list[0] # Should only be one
-                logger.info(f"Successfully processed ICD topic: {icd_topic_details.get('topic')}")
-            else:
-                 logger.warning(f"No result found for activated ICD category: {icd_category_to_activate}")
-                 icd_topic_details = {"error": f"Activation result missing for ICD category {icd_category_to_activate}"}
-            
-            logger.info(f"Processed {len(cdt_topic_activation_results)} CDT topic results.")
-                 
+        # Run activations independently and concurrently
+        logger.info(f"Starting parallel activation of CDT and ICD topics")
+        cdt_activation_task = asyncio.create_task(activate_cdt_topics())
+        icd_activation_task = asyncio.create_task(activate_icd_topic())
+        
+        # Await both results
+        cdt_registry_results, icd_registry_results = await asyncio.gather(
+            cdt_activation_task, icd_activation_task
+        )
+        
+        # Process CDT results
+        cdt_topic_activation_results = cdt_registry_results.get("topic_result", [])
+        logger.info(f"Processed {len(cdt_topic_activation_results)} CDT topic results.")
+        
+        # Process ICD results
+        icd_topic_results = icd_registry_results.get("topic_result", [])
+        if icd_topic_results:
+            icd_topic_details = icd_topic_results[0]  # Should only be one
+            logger.info(f"Successfully processed ICD topic: {icd_topic_details.get('topic')}")
         else:
-            logger.warning("No topic activation tasks were created.")
-            cdt_topic_activation_results = [{"error": "No CDT topics activated."}]
-            icd_topic_details = {"error": "No ICD topic activated."}
+            logger.warning(f"No result found for activated ICD category: {icd_category_to_activate}")
+            icd_topic_details = {"error": f"Activation result missing for ICD category {icd_category_to_activate}"}
 
         # --- Step 4a: Save Initial Data to Database --- 
         logger.info("*********💾 step 4a: Saving Initial Data to DB:*********************")
@@ -481,6 +491,27 @@ async def analyze_scenario(payload: ScenarioInput):
         
         # ICD Topic Details (Includes raw_data within 'codes' list)
         icd_topic_response = icd_topic_details
+        
+        # Ensure ICD_topic_response has a 'code' field at the top level
+        if icd_topic_response and isinstance(icd_topic_response, dict):
+            # If the 'code' field isn't already present (from the updated SubtopicRegistry)
+            if 'code' not in icd_topic_response:
+                # Try to extract from codes list if available
+                if icd_topic_response.get('codes') and len(icd_topic_response.get('codes', [])) > 0:
+                    first_code = icd_topic_response['codes'][0]
+                    if isinstance(first_code, dict) and 'code' in first_code:
+                        icd_topic_response['code'] = first_code['code']
+                    elif isinstance(first_code, str):
+                        icd_topic_response['code'] = first_code
+                else:
+                    # No codes available, so set to null explicitly
+                    icd_topic_response['code'] = None
+                    
+                    # If raw text contains "CODE: none", make it explicitly clear
+                    if 'raw_topic_data' in icd_topic_response:
+                        raw_text = icd_topic_response['raw_topic_data']
+                        if isinstance(raw_text, str) and 'CODE: none' in raw_text.lower():
+                            icd_topic_response['code'] = None
 
         # Final response structure
         final_response = {

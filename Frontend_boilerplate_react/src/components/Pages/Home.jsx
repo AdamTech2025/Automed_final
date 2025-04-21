@@ -42,20 +42,69 @@ const Home = () => {
     return formatted;
   }, [result?.CDT_subtopic]);
 
+  // Add a formatted ICD topic data state (after the formattedSubtopicData useMemo)
+  const formattedICDTopicData = useMemo(() => {
+    if (!result?.ICD_topic_result) {
+      return null;
+    }
+    
+    const icdTopicResult = result.ICD_topic_result;
+    
+    // Create a topic key similar to CDT topics format
+    const categoryNumber = icdTopicResult.code_range || "N/A";
+    const topicKey = `${icdTopicResult.topic || 'Unknown'} (${categoryNumber})`;
+    
+    // Format the ICD topic data to have a similar structure to CDT topics
+    let formattedICDData = {};
+    
+    // Create a codes array with a single entry if the code exists
+    // Otherwise include explanation and doubt but indicate 'none' for the code
+    if (icdTopicResult.code) {
+      formattedICDData[topicKey] = [{
+        code: icdTopicResult.code,
+        explanation: icdTopicResult.explanation || 'No explanation provided',
+        doubt: icdTopicResult.doubt || 'None',
+        raw_data: icdTopicResult.raw_topic_data || ''
+      }];
+    } else {
+      // Still create an entry for "No applicable code" but with clear indication
+      formattedICDData[topicKey] = [{
+        code: 'none', // explicitly set to 'none' to match topic service response
+        explanation: icdTopicResult.explanation || 'No explanation provided',
+        doubt: icdTopicResult.doubt || 'None',
+        raw_data: icdTopicResult.raw_topic_data || ''
+      }];
+    }
+    
+    return formattedICDData;
+  }, [result?.ICD_topic_result]);
+
   // Initialize expanded topics state based on the formatted data
   useEffect(() => {
+    const initialExpandedState = {};
+    
+    // Handle CDT subtopics
     if (formattedSubtopicData && Object.keys(formattedSubtopicData).length > 0) {
       console.log("Formatted Subtopics data:", formattedSubtopicData);
-      // Initialize expanded topics state
-      const initialExpandedState = {};
       Object.keys(formattedSubtopicData).forEach(topicKey => {
-        initialExpandedState[topicKey] = false; // Use the generated key
+        initialExpandedState[topicKey] = false;
       });
+    }
+    
+    // Also handle ICD topic
+    if (formattedICDTopicData && Object.keys(formattedICDTopicData).length > 0) {
+      console.log("Formatted ICD Topic data:", formattedICDTopicData);
+      Object.keys(formattedICDTopicData).forEach(topicKey => {
+        initialExpandedState[topicKey] = false; // Default to collapsed
+      });
+    }
+    
+    if (Object.keys(initialExpandedState).length > 0) {
       setExpandedTopics(initialExpandedState);
     } else {
-        setExpandedTopics({}); // Reset if no data
+      setExpandedTopics({}); // Reset if no data
     }
-  }, [formattedSubtopicData]); // Depend on the formatted data
+  }, [formattedSubtopicData, formattedICDTopicData]); // Add dependency on ICD data
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -601,6 +650,72 @@ const Home = () => {
     }
   };
 
+  // Add a function to render the ICD topic section
+  const renderICDCodeSection = (topicKey) => {
+    if (!formattedICDTopicData?.[topicKey]) return null;
+    
+    const topicData = formattedICDTopicData[topicKey];
+    const isExpanded = expandedTopics[topicKey];
+    
+    // Extract name from the key (assuming format "Name (Range)")
+    const topicName = topicKey.split('(')[0].trim();
+    
+    return (
+      <div className="mb-6">
+        <div 
+          className={`flex items-center justify-between p-4 ${
+            isDark ? 'bg-purple-900/30' : 'bg-purple-50'
+          } rounded-lg cursor-pointer hover:${isDark ? 'bg-purple-800/30' : 'bg-purple-100'} transition-colors`}
+          onClick={() => toggleTopic(topicKey)}
+        >
+          <h3 className="text-lg font-semibold">ICD-10: {topicName}</h3>
+          <div className="transform transition-transform duration-300">
+            {isExpanded ? '▼' : '▶'}
+          </div>
+        </div>
+        
+        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${
+          isExpanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'
+        }`}>
+          {topicData.map((codeData, index) => {
+            // For ICD data, we also show entries with code 'none' to display explanations
+            // about why no code was applicable
+            const isNoCode = !codeData.code || codeData.code === 'none' || codeData.code.toLowerCase() === 'none';
+            
+            return (
+              <div 
+                key={`icd-topic-${index}-${topicKey}`}
+                className={`mt-4 transition-all duration-300 ease-in-out ${
+                  isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+                }`}
+              >
+                <div 
+                  className="p-4 rounded-lg shadow-sm border transition-colors duration-300"
+                >
+                  <div className="flex justify-between items-center mb-2">
+                    <span className={`font-mono px-2 py-1 rounded ${
+                      isNoCode 
+                        ? (isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600') 
+                        : (isDark ? 'bg-purple-900 text-purple-200' : 'bg-purple-100 text-purple-800')
+                    }`}>
+                      {isNoCode ? 'No applicable ICD-10 code' : codeData.code}
+                    </span>
+                  </div>
+                  <p className={`text-sm mb-1 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                    <span className="font-medium">Explanation:</span> {codeData.explanation || 'N/A'}
+                  </p>
+                  <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                    <span className="font-medium">Doubt:</span> {codeData.doubt || 'N/A'}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className={`flex flex-col transition-colors`}>
       {/* Questioner Modal */}
@@ -693,6 +808,15 @@ const Home = () => {
                     Selected: {selectedCodes.accepted.length}
                   </div>
                 </div>
+
+                {/* ICD Topic Section */}
+                {formattedICDTopicData && Object.keys(formattedICDTopicData).length > 0 && (
+                  <div className="mb-6">
+                    {Object.keys(formattedICDTopicData).map((topicKey, index) => (
+                      <div key={`icd-topic-container-${index}`}>{renderICDCodeSection(topicKey)}</div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Code Sections */}
                 {formattedSubtopicData && Object.keys(formattedSubtopicData).length > 0 ? (

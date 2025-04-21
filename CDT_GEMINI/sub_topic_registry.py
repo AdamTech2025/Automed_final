@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Callable, Any, Union, Coroutine
 import re
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,6 @@ class SubtopicRegistry:
         """Activate all relevant subtopics in parallel based on a comma-separated string of code ranges/keys."""
         results_list = []
         activated_subtopics_names = set()
-        tasks = []
         code_ranges_set = set(cr.strip() for cr in code_ranges_str.split(',') if cr.strip())
         logger.info(f"Activating topics for code ranges: {code_ranges_set}")
 
@@ -39,15 +39,26 @@ class SubtopicRegistry:
             if subtopic["code_range"] in code_ranges_set:
                 relevant_subtopics.append(subtopic)
 
+        # Create a fixed ThreadPoolExecutor with maximum workers
+        max_workers = min(len(relevant_subtopics), os.cpu_count() or 4)
+        thread_pool = ThreadPoolExecutor(max_workers=max_workers)
+        loop = asyncio.get_running_loop()
+
         async def run_subtopic(subtopic: Dict[str, Any]) -> Dict[str, Any]:
             logger.info(f"--> Activating topic: {subtopic['name']} ({subtopic['code_range']}) | Async: {subtopic['is_async']}")
             try:
                 if subtopic["is_async"]:
+                    # Directly await async function
                     result = await subtopic["activate_func"](scenario)
                 else:
-                    loop = asyncio.get_running_loop()
-                    with ThreadPoolExecutor() as pool:
-                        result = await loop.run_in_executor(pool, lambda s=scenario: subtopic["activate_func"](s))
+                    # Run in thread pool with timeout
+                    result = await asyncio.wait_for(
+                        loop.run_in_executor(
+                            thread_pool, 
+                            lambda s=scenario: subtopic["activate_func"](s)
+                        ),
+                        timeout=30  # Add timeout to prevent hanging
+                    )
                 
                 logger.info(f"<-- Finished activating topic: {subtopic['name']}")
                 return {
@@ -55,47 +66,62 @@ class SubtopicRegistry:
                     "name": subtopic["name"],
                     "code_range": subtopic["code_range"]
                 }
+            except asyncio.TimeoutError:
+                logger.error(f"Timeout occurred during activation of {subtopic['name']}")
+                return {
+                    "exception": "Timeout Error", 
+                    "name": subtopic["name"], 
+                    "code_range": subtopic["code_range"]
+                }
             except Exception as e:
                 logger.error(f"Exception during activation of {subtopic['name']}: {e}", exc_info=True)
-                return {"exception": e, "name": subtopic["name"], "code_range": subtopic["code_range"]}
+                return {
+                    "exception": e, 
+                    "name": subtopic["name"], 
+                    "code_range": subtopic["code_range"]
+                }
 
-        if relevant_subtopics:
-            tasks = [run_subtopic(subtopic) for subtopic in relevant_subtopics]
-            logger.info(f"Gathering results for {len(tasks)} topic tasks...")
-            gathered_results = await asyncio.gather(*tasks)
-            logger.info("Finished gathering topic results.")
-        else:
-            gathered_results = []
-            logger.warning("No relevant subtopics found to activate.")
-
-        for result_data in gathered_results:
-            topic_name = result_data.get("name", "Unknown")
-            code_range = result_data.get("code_range", "Unknown")
-            
-            if "exception" in result_data:
-                logger.error(f"Activation failed for topic '{topic_name}': {result_data['exception']}")
-                results_list.append({
-                    "topic": topic_name,
-                    "code_range": code_range,
-                    "error": f"Activation failed: {str(result_data['exception'])}"
-                })
-                continue
-
-            raw_result = result_data.get("raw_result")
-            logger.debug(f"Parsing result for topic '{topic_name}': {str(raw_result)[:100]}...")
-            parsed_result = self._parse_topic_result(raw_result, topic_name, code_range)
-            
-            if parsed_result:
-                results_list.append(parsed_result)
-                activated_subtopics_names.add(topic_name)
-                logger.debug(f"Successfully parsed result for '{topic_name}'.")
+        try:
+            if relevant_subtopics:
+                tasks = [run_subtopic(subtopic) for subtopic in relevant_subtopics]
+                logger.info(f"Gathering results for {len(tasks)} topic tasks...")
+                gathered_results = await asyncio.gather(*tasks)
+                logger.info("Finished gathering topic results.")
             else:
-                logger.warning(f"Parsing result for '{topic_name}' yielded no meaningful data. Raw result: {str(raw_result)[:100]}...")
+                gathered_results = []
+                logger.warning("No relevant subtopics found to activate.")
 
-        return {
-            "topic_result": results_list,
-            "activated_subtopics": sorted(list(activated_subtopics_names))
-        }
+            for result_data in gathered_results:
+                topic_name = result_data.get("name", "Unknown")
+                code_range = result_data.get("code_range", "Unknown")
+                
+                if "exception" in result_data:
+                    logger.error(f"Activation failed for topic '{topic_name}': {result_data['exception']}")
+                    results_list.append({
+                        "topic": topic_name,
+                        "code_range": code_range,
+                        "error": f"Activation failed: {str(result_data['exception'])}"
+                    })
+                    continue
+
+                raw_result = result_data.get("raw_result")
+                logger.debug(f"Parsing result for topic '{topic_name}': {str(raw_result)[:100]}...")
+                parsed_result = self._parse_topic_result(raw_result, topic_name, code_range)
+                
+                if parsed_result:
+                    results_list.append(parsed_result)
+                    activated_subtopics_names.add(topic_name)
+                    logger.debug(f"Successfully parsed result for '{topic_name}'.")
+                else:
+                    logger.warning(f"Parsing result for '{topic_name}' yielded no meaningful data. Raw result: {str(raw_result)[:100]}...")
+
+            return {
+                "topic_result": results_list,
+                "activated_subtopics": sorted(list(activated_subtopics_names))
+            }
+        finally:
+            # Ensure thread pool gets shut down
+            thread_pool.shutdown(wait=False)
     
     def _parse_topic_result(self, raw_result: Any, topic_name: str, code_range: str) -> Dict[str, Any]:
         """Parse the raw result from a topic activation function into a structured format.
@@ -103,7 +129,8 @@ class SubtopicRegistry:
         """
         parsed_topic_result = {
             "topic": topic_name,
-            "code_range": code_range
+            "code_range": code_range,
+            "code": None  # Initialize code as null by default
         }
         parsed_codes_list = []
 
@@ -122,7 +149,12 @@ class SubtopicRegistry:
                 if parsed_topic_result.get("error") and topic_level_raw_data:
                     parsed_topic_result["raw_topic_data"] = topic_level_raw_data
 
+                # Check for direct code in the result
                 if raw_result.get("code") is not None:
+                    # Add to the top level if it's a non-empty string
+                    if raw_result.get("code") and raw_result.get("code").lower() != 'none':
+                        parsed_topic_result["code"] = raw_result.get("code")
+                    
                     code_entry = {
                         "code": raw_result.get("code"),
                         "explanation": raw_result.get("explanation"),
@@ -149,11 +181,19 @@ class SubtopicRegistry:
                             }
                             cleaned_entry = {k: v for k, v in code_entry.items() if v is not None}
                             if cleaned_entry.get("code") is not None:
+                                # For the first valid code, elevate it to the top level
+                                if i == 0 and cleaned_entry.get("code") and cleaned_entry.get("code").lower() != 'none':
+                                    parsed_topic_result["code"] = cleaned_entry.get("code")
+                                
                                 logger.debug(f"    Parsed sub-code entry {i}: {cleaned_entry.get('code')}")
                                 parsed_codes_list.append(cleaned_entry)
                             else:
                                 logger.warning(f"    Sub-code entry {i} in '{topic_name}' had None or empty code.")
                         elif isinstance(sub_code_entry, str):
+                            # For the first valid code, elevate it to the top level
+                            if i == 0 and sub_code_entry and sub_code_entry.lower() != 'none':
+                                parsed_topic_result["code"] = sub_code_entry
+                                
                             logger.debug(f"    Parsed sub-code entry {i} as string: {sub_code_entry}")
                             parsed_codes_list.append({"code": sub_code_entry, "raw_data": sub_code_entry})
                         else:
@@ -178,7 +218,14 @@ class SubtopicRegistry:
                 explanation = exp_match.group(1).strip() if exp_match else None
                 doubt = doubt_match.group(1).strip() if doubt_match else None
 
-                code = None if code and code.lower() == 'none' else code
+                # Check if code is 'none' and keep it as null in that case
+                if code and code.lower() == 'none':
+                    code = None
+                else:
+                    # For a valid code, also elevate it to the top level
+                    if code:
+                        parsed_topic_result["code"] = code
+                
                 explanation = None if explanation and explanation.lower() == 'none' else explanation
                 doubt = None if doubt and doubt.lower() == 'none' else doubt
                 
@@ -201,6 +248,24 @@ class SubtopicRegistry:
 
             if parsed_codes_list:
                 parsed_topic_result["codes"] = parsed_codes_list
+            
+            # If no valid codes were found, either set code_range to null or keep it for reference
+            # only if there's an explanation or raw data that's meaningful to return
+            if not parsed_codes_list:
+                # Check if raw string result explicitly says "CODE: none"
+                if (isinstance(raw_result, str) and "CODE:" in raw_result and 
+                    re.search(r"CODE:\s*none", raw_result, re.IGNORECASE)):
+                    # For ICD topics which specifically return "CODE: none" in their raw data
+                    # We'll still retain the topic name but remove the code_range to avoid confusion
+                    logger.debug(f"Topic '{topic_name}' explicitly returned 'CODE: none'")
+                    # Keep the topic name but mark code_range as null
+                    # This avoids confusion where a code_range exists but no actual code was found
+                    parsed_topic_result["code_range"] = None
+                # For other cases where no codes were found but there's meaningful data to return
+                elif isinstance(raw_result, dict) and raw_result.get("code") is None and "code" in raw_result:
+                    # If the service explicitly returned code=None
+                    logger.debug(f"Topic '{topic_name}' returned code: None")
+                    parsed_topic_result["code_range"] = None
 
             is_meaningful = any(key in parsed_topic_result for key in ["codes", "explanation", "doubt", "error", "raw_topic_data"])
             
