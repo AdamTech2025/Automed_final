@@ -20,7 +20,34 @@ const apiInstance = axios.create({
     'Content-Type': 'application/json',
   },
   timeout: 600000, // 10 minutes timeout
-  withCredentials: true // Include cookies in requests (if needed for authentication)
+  // Remove withCredentials if you're using Bearer tokens and not cookies for auth
+  // withCredentials: true 
 });
+
+// Request interceptor to add the auth token header
+apiInstance.interceptors.request.use(
+  (config) => {
+    // List of endpoints that should NOT receive the Authorization header
+    const publicEndpoints = [
+      '/api/auth/login',
+      '/api/auth/signup/send-otp',
+      '/api/auth/signup/verify-otp'
+      // Add any other public endpoints here
+    ];
+
+    // Check if the request URL is for a protected endpoint
+    if (config.url && !publicEndpoints.some(endpoint => config.url.startsWith(endpoint))) {
+      const token = localStorage.getItem('accessToken');
+      if (token) {
+        config.headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+    return config;
+  },
+  (error) => {
+    // Handle request error here
+    return Promise.reject(error);
+  }
+);
 
 export default apiInstance;

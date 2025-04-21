@@ -4,8 +4,11 @@ from dotenv import load_dotenv
 import uuid
 from datetime import datetime
 import json
+import logging
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 class MedicalCodingDB:
     def __init__(self):
@@ -22,7 +25,7 @@ class MedicalCodingDB:
         if not self.supabase:
             self.connect()
 
-    def create_analysis_record(self, data: dict):
+    def create_analysis_record(self, data: dict, user_id: str | None = None):
         """Insert a new record into the dental_report table."""
         self.ensure_connection()
         try:
@@ -32,14 +35,20 @@ class MedicalCodingDB:
                 "cdt_result": data.get("cdt_result", "{}"),
                 "icd_result": data.get("icd_result", "{}"),
                 "questioner_data": data.get("questioner_data", "{}"),
-                "inspector_results": data.get("inspector_results", "{}")        
+                "inspector_results": data.get("inspector_results", "{}"),
+                "user_id": user_id
             }
             
             result = self.supabase.table("dental_report").insert(record_data).execute()
-            print(f"✅ Analysis record added successfully with ID: {result.data[0]['id']}")
-            return result.data
+            if result.data and len(result.data) > 0:
+                new_id = result.data[0].get('id')
+                logger.info(f"✅ Analysis record added successfully with ID: {new_id} for user: {user_id or 'Anonymous'}")
+                return result.data
+            else:
+                logger.error(f"❌ Supabase insert for dental_report returned no data. User: {user_id or 'Anonymous'}, Input Data: {data}")
+                return None
         except Exception as e:
-            print(f"❌ Error creating analysis record: {str(e)}")
+            logger.error(f"❌ Error creating analysis record for user {user_id or 'Anonymous'}: {str(e)}", exc_info=True)
             return None
 
     def update_processed_scenario(self, record_id, processed_scenario):
@@ -176,7 +185,107 @@ class MedicalCodingDB:
             print(f"❌ Error updating inspector results: {str(e)}")
             return False
 
-    def save_code_selections(self, record_id, accepted_cdt, rejected_cdt, accepted_icd, rejected_icd):
+    def get_user_by_email(self, email: str):
+        """Retrieve a user record by email address."""
+        self.ensure_connection()
+        try:
+            result = self.supabase.table("Users").select("*").eq("email", email).limit(1).execute()
+            if result.data:
+                logger.info(f"User found with email: {email}")
+                return result.data[0]
+            else:
+                logger.info(f"No user found with email: {email}")
+                return None
+        except Exception as e:
+            logger.error(f"Error retrieving user by email {email}: {str(e)}", exc_info=True)
+            return None
+
+    def create_user(self, user_data: dict):
+        """Insert a new user record (initially unverified)."""
+        self.ensure_connection()
+        try:
+            if not user_data.get('name') or not user_data.get('email'):
+                raise ValueError("Name and email are required to create a user.")
+            # Also require hashed_password for creation now
+            if not user_data.get('hashed_password'):
+                raise ValueError("Hashed password is required to create a user.")
+                
+            data_to_insert = {
+                "name": user_data['name'],
+                "email": user_data['email'],
+                "hashed_password": user_data['hashed_password'], # Store the hashed password
+                "phone": user_data.get('phone'), # Optional
+                "is_email_verified": False # Default to false
+            }
+            result = self.supabase.table("Users").insert(data_to_insert).execute()
+            if result.data:
+                logger.info(f"New user created successfully with email: {user_data['email']}")
+                return result.data
+            else:
+                logger.error(f"Supabase insert operation did not return data for email: {user_data['email']}")
+                return None
+        except Exception as e:
+            # Catch potential unique constraint violation for email
+            if "violates unique constraint" in str(e):
+                 logger.warning(f"Attempted to create user with existing email: {user_data.get('email')}")
+                 # Optionally, retrieve and return the existing user here if needed
+                 # return self.get_user_by_email(user_data['email'])
+                 raise ValueError(f"Email {user_data.get('email')} already exists.")
+            logger.error(f"Error creating user {user_data.get('email')}: {str(e)}", exc_info=True)
+            return None
+            
+    def update_user_details(self, user_id: str, details: dict):
+        """Update user details like name or phone."""
+        self.ensure_connection()
+        try:
+            update_data = {}
+            if 'name' in details: update_data['name'] = details['name']
+            if 'phone' in details: update_data['phone'] = details['phone']
+            
+            if not update_data:
+                 logger.warning(f"No details provided to update for user ID: {user_id}")
+                 return False
+                 
+            result = self.supabase.table("Users").update(update_data).eq("id", user_id).execute()
+            # Check if the update affected any rows (Supabase might return empty data if no match)
+            # Supabase Python v1 might not provide count, rely on lack of error for now
+            logger.info(f"User details updated for ID: {user_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error updating details for user ID {user_id}: {str(e)}", exc_info=True)
+            return False
+
+    def update_user_otp(self, user_id: str, otp: str | None, otp_expires_at: datetime | None):
+        """Update the user's current OTP and its expiry time."""
+        self.ensure_connection()
+        try:
+            expiry_str = otp_expires_at.isoformat() if otp_expires_at else None
+            result = self.supabase.table("Users").update({
+                "otp": otp,
+                "otp_expires_at": expiry_str
+            }).eq("id", user_id).execute()
+            logger.info(f"OTP updated for user ID: {user_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error updating OTP for user ID {user_id}: {str(e)}", exc_info=True)
+            return False
+
+    def verify_user_email(self, user_id: str):
+        """Mark the user's email as verified and clear OTP fields."""
+        self.ensure_connection()
+        try:
+            result = self.supabase.table("Users").update({
+                "is_email_verified": True,
+                "otp": None,  # Clear OTP after verification
+                "otp_expires_at": None # Clear expiry
+            }).eq("id", user_id).execute()
+            logger.info(f"Email verified for user ID: {user_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error verifying email for user ID {user_id}: {str(e)}", exc_info=True)
+            return False
+
+    def save_code_selections(self, record_id, accepted_cdt, rejected_cdt, accepted_icd, rejected_icd, user_id: str | None = None):
         """Insert or update code selections in the code_selections table."""
         self.ensure_connection()
         try:
@@ -186,6 +295,7 @@ class MedicalCodingDB:
                 "rejected_cdt_codes": rejected_cdt,
                 "accepted_icd_codes": accepted_icd,
                 "rejected_icd_codes": rejected_icd,
+                "user_id": user_id
                 # selection_timestamp will be set by default in the DB
             }
             
@@ -196,22 +306,23 @@ class MedicalCodingDB:
             ).execute()
             
             if result.data:
-                print(f"✅ Code selections saved/updated successfully for analysis record ID: {record_id}")
+                logger.info(f"✅ Code selections saved/updated successfully for analysis record ID: {record_id} by user: {user_id or 'Anonymous'}")
                 return result.data[0] # Return the saved/updated record
             else:
                  # Handle potential case where upsert might not return data as expected (check Supabase docs/behavior)
-                 print(f"⚠️ Code selections upsert executed for {record_id}, but no data returned in response.")
+                 logger.warning(f"⚠️ Code selections upsert executed for {record_id} by user {user_id or 'Anonymous'}, but no data returned in response.")
                  # We might assume success if no exception was raised.
                  return { # Return the input data as confirmation
                      "analysis_record_id": record_id,
                      "accepted_cdt_codes": accepted_cdt,
                      "rejected_cdt_codes": rejected_cdt,
                      "accepted_icd_codes": accepted_icd,
-                     "rejected_icd_codes": rejected_icd
+                     "rejected_icd_codes": rejected_icd,
+                     "user_id": user_id
                  }
 
         except Exception as e:
-            print(f"❌ Error saving code selections: {str(e)}")
+            logger.error(f"❌ Error saving code selections for record {record_id} by user {user_id or 'Anonymous'}: {str(e)}", exc_info=True)
             # Consider re-raising or returning a specific error indicator
             # raise e 
             return None
@@ -326,22 +437,28 @@ class MedicalCodingDB:
             print(f"❌ Error retrieving most recent analysis: {str(e)}")
             return None
 
-    def add_code_analysis(self, scenario: str, cdt_codes: str, response: str) -> int:
+    def add_code_analysis(self, scenario: str, cdt_codes: str, response: str, user_id: str | None = None) -> int | None:
         """Add a new dental code analysis record."""
         self.ensure_connection()
         try:
             record_data = {
                 "scenario": scenario,
                 "cdt_codes": cdt_codes,
-                "response": response
+                "response": response,
+                "user_id": user_id
             }
             
             result = self.supabase.table("dental_code_analysis").insert(record_data).execute()
-            print(f"✅ Code analysis record added successfully with ID: {result.data[0]['id']}")
-            return result.data[0]['id']
+            if result.data and len(result.data) > 0:
+                new_id = result.data[0].get('id')
+                logger.info(f"✅ Code analysis record added successfully with ID: {new_id} for user: {user_id or 'Anonymous'}")
+                return str(new_id) if new_id else None
+            else:
+                logger.error(f"❌ Supabase insert for dental_code_analysis returned no data. User: {user_id or 'Anonymous'}, Input Data: {record_data}")
+                return None
         except Exception as e:
-            print(f"❌ Error adding code analysis: {str(e)}")
-            raise
+            logger.error(f"❌ Error adding code analysis for user {user_id or 'Anonymous'}: {str(e)}", exc_info=True)
+            return None
 
 # ===========================
 # Example Usage

@@ -1,4 +1,4 @@
-﻿from fastapi import FastAPI, HTTPException, Request
+﻿from fastapi import FastAPI, HTTPException, Request, Depends, status
 from pydantic import BaseModel
 import uvicorn
 import logging
@@ -60,6 +60,10 @@ from icd_inspector import ICDInspector
 # Import Add Code functionality
 from add_codes.add_code_data import Add_code_data
 
+# Import Authentication Router and Dependency
+from auth.auth_routes import router as auth_router
+from auth.auth_utils import get_current_user_id # Import the dependency
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -86,6 +90,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include Authentication Routes
+app.include_router(auth_router)
 
 # Initialize processors/classifiers
 scenario_processor = DentalScenarioProcessor()
@@ -187,30 +194,34 @@ class CodeStatusRequest(BaseModel):
 # Remove response_model from the endpoint definition
 # @app.post(\"/api/analyze\", response_model=DetailedAnalysisOutput)
 @app.post("/api/analyze")
-async def analyze_scenario(payload: ScenarioInput):
+async def analyze_scenario(
+    payload: ScenarioInput,
+    user_id: str = Depends(get_current_user_id) # Inject user_id dependency
+):
     """
     Receives a dental scenario, cleans it, classifies CDT/ICD, 
-    activates relevant CDT/ICD topics, saves to DB, and returns results.
+    activates relevant CDT/ICD topics, saves to DB associated with the user, 
+    and returns results.
     """
-    logger.info(f"Received scenario for analysis: {payload.scenario[:75]}...")
+    logger.info(f"User {user_id}: Received scenario for analysis: {payload.scenario[:75]}...")
     record_id = None # Initialize record_id for error handling
 
     try:
         # Step 1: Clean the scenario
-        logger.info("*********🔍 step 1 :Cleaning Scenario:*********************")
+        logger.info(f"User {user_id}: *********🔍 step 1 :Cleaning Scenario:*********************")
         cleaned_data = scenario_processor.process(payload.scenario)
         cleaned_scenario_text = cleaned_data["standardized_scenario"]
-        logger.info("Scenario cleaned successfully.")
+        logger.info(f"User {user_id}: Scenario cleaned successfully.")
 
         # Step 2: Run CDT & ICD Classifiers concurrently
-        logger.info("*********🚀 step 2: Starting Concurrent CDT & ICD Classification:*********************")
+        logger.info(f"User {user_id}: *********🚀 step 2: Starting Concurrent CDT & ICD Classification:*********************")
         cdt_task = asyncio.to_thread(cdt_classifier.process, cleaned_scenario_text)
         icd_task = asyncio.to_thread(icd_classifier.process, cleaned_scenario_text)
         cdt_classification_results, icd_classification_results = await asyncio.gather(cdt_task, icd_task)
-        logger.info("CDT & ICD classification completed.")
+        logger.info(f"User {user_id}: CDT & ICD classification completed.")
 
         # Step 3: Activate relevant CDT and ICD topics CONCURRENTLY
-        logger.info("*********💡 step 3: Activating Topics Concurrently:*********************")
+        logger.info(f"User {user_id}: *********💡 step 3: Activating Topics Concurrently:*********************")
         
         cdt_topic_activation_results = [] # Store final CDT results
         icd_topic_details = None # Store final single ICD result
@@ -225,9 +236,9 @@ async def analyze_scenario(payload: ScenarioInput):
                 if code_range in CDT_TOPIC_MAPPING:
                     cdt_code_ranges_to_activate.add(code_range)
                 else:
-                    logger.warning(f"CDT code range {code_range} from classifier not found in CDT_TOPIC_MAPPING.")
+                    logger.warning(f"User {user_id}: CDT code range {code_range} from classifier not found in CDT_TOPIC_MAPPING.")
         else:
-            logger.warning("Skipping CDT topic activation tasks due to missing/invalid classification.")
+            logger.warning(f"User {user_id}: Skipping CDT topic activation tasks due to missing/invalid classification.")
 
         # Determine which ICD topic to activate
         icd_category_number = icd_classification_results.get("category_number")
@@ -236,34 +247,34 @@ async def analyze_scenario(payload: ScenarioInput):
             if icd_category_str in ICD_TOPIC_MAPPING:
                 icd_category_to_activate = icd_category_str
             else:
-                 logger.warning(f"ICD category number {icd_category_str} not found in ICD_TOPIC_MAPPING.")
+                 logger.warning(f"User {user_id}: ICD category number {icd_category_str} not found in ICD_TOPIC_MAPPING.")
         else:
-             logger.warning("Skipping ICD topic activation task due to missing/invalid classification.")
+             logger.warning(f"User {user_id}: Skipping ICD topic activation task due to missing/invalid classification.")
 
         # Create separate concurrent tasks for CDT and ICD to avoid blocking each other
         async def activate_cdt_topics():
             if cdt_code_ranges_to_activate:
                 cdt_ranges_str = ",".join(cdt_code_ranges_to_activate)
-                logger.info(f"Activating CDT topics for ranges: {cdt_ranges_str}")
+                logger.info(f"User {user_id}: Activating CDT topics for ranges: {cdt_ranges_str}")
                 try:
                     return await topic_registry.activate_all(cleaned_scenario_text, cdt_ranges_str)
                 except Exception as e:
-                    logger.error(f"Error in CDT topic activation: {e}", exc_info=True)
+                    logger.error(f"User {user_id}: Error in CDT topic activation: {e}", exc_info=True)
                     return {"topic_result": [], "activated_subtopics": []}
             return {"topic_result": [], "activated_subtopics": []}
             
         async def activate_icd_topic():
             if icd_category_to_activate:
-                logger.info(f"Activating ICD topic for category: {icd_category_to_activate}")
+                logger.info(f"User {user_id}: Activating ICD topic for category: {icd_category_to_activate}")
                 try:
                     return await topic_registry.activate_all(cleaned_scenario_text, icd_category_to_activate)
                 except Exception as e:
-                    logger.error(f"Error in ICD topic activation: {e}", exc_info=True)
+                    logger.error(f"User {user_id}: Error in ICD topic activation: {e}", exc_info=True)
                     return {"topic_result": [], "activated_subtopics": []}
             return {"topic_result": [], "activated_subtopics": []}
 
         # Run activations independently and concurrently
-        logger.info(f"Starting parallel activation of CDT and ICD topics")
+        logger.info(f"User {user_id}: Starting parallel activation of CDT and ICD topics")
         cdt_activation_task = asyncio.create_task(activate_cdt_topics())
         icd_activation_task = asyncio.create_task(activate_icd_topic())
         
@@ -274,19 +285,19 @@ async def analyze_scenario(payload: ScenarioInput):
         
         # Process CDT results
         cdt_topic_activation_results = cdt_registry_results.get("topic_result", [])
-        logger.info(f"Processed {len(cdt_topic_activation_results)} CDT topic results.")
+        logger.info(f"User {user_id}: Processed {len(cdt_topic_activation_results)} CDT topic results.")
         
         # Process ICD results
         icd_topic_results = icd_registry_results.get("topic_result", [])
         if icd_topic_results:
             icd_topic_details = icd_topic_results[0]  # Should only be one
-            logger.info(f"Successfully processed ICD topic: {icd_topic_details.get('topic')}")
+            logger.info(f"User {user_id}: Successfully processed ICD topic: {icd_topic_details.get('topic')}")
         else:
-            logger.warning(f"No result found for activated ICD category: {icd_category_to_activate}")
+            logger.warning(f"User {user_id}: No result found for activated ICD category: {icd_category_to_activate}")
             icd_topic_details = {"error": f"Activation result missing for ICD category {icd_category_to_activate}"}
 
         # --- Step 4a: Save Initial Data to Database --- 
-        logger.info("*********💾 step 4a: Saving Initial Data to DB:*********************")
+        logger.info(f"User {user_id}: *********💾 step 4a: Saving Initial Data to DB:*********************")
         cdt_data_to_save = {
             "cdt_classification": cdt_classification_results, # Includes raw_data, formatted_results
             "topics_results": cdt_topic_activation_results # Includes subtopic details with raw_data
@@ -304,19 +315,21 @@ async def analyze_scenario(payload: ScenarioInput):
             "processed_clean_data": cleaned_scenario_text,
             "cdt_result": cdt_json,
             "icd_result": icd_json
+            # user_id will be passed separately to the db function
         }
 
-        db_result_list = db.create_analysis_record(db_data)
+        # Pass user_id to the database function
+        db_result_list = db.create_analysis_record(db_data, user_id=user_id)
         if db_result_list and isinstance(db_result_list, list) and len(db_result_list) > 0 and "id" in db_result_list[0]:
             record_id = db_result_list[0]["id"]
-            logger.info(f"Data saved successfully with Record ID: {record_id}")
+            logger.info(f"User {user_id}: Data saved successfully with Record ID: {record_id}")
         else:
-            logger.error(f"Failed to save data to database or get valid ID. DB Response: {db_result_list}")
+            logger.error(f"User {user_id}: Failed to save data to database or get valid ID. DB Response: {db_result_list}")
             # Consider raising an error or returning a specific error response
             raise HTTPException(status_code=500, detail="Failed to save analysis results to database.")
 
         # --- Step 5: Generate Questions --- 
-        logger.info("*********❓ step 5: Generating Questions:*********************")
+        logger.info(f"User {user_id}: *********❓ step 5: Generating Questions:*********************")
         questioner_data = {"has_questions": False, "status": "skipped"} # Default
         try:
             # Format data for Questioner (similar to app.py.bak)
@@ -346,29 +359,29 @@ async def analyze_scenario(payload: ScenarioInput):
             )
             questioner_data = questioner_result # Store the full result
 
-            # Save questioner data to the database
+            # Save questioner data to the database (user_id isn't needed here, linked via record_id)
             questioner_json = json.dumps(questioner_result)
             db.update_questioner_data(record_id, questioner_json)
-            logger.info(f"Questioner data saved to DB for record ID: {record_id}. Has Questions: {questioner_result.get('has_questions', False)}")
+            logger.info(f"User {user_id}: Questioner data saved to DB for record ID: {record_id}. Has Questions: {questioner_result.get('has_questions', False)}")
 
         except Exception as q_err:
-            logger.error(f"Error during question generation for {record_id}: {q_err}", exc_info=True)
+            logger.error(f"User {user_id}: Error during question generation for {record_id}: {q_err}", exc_info=True)
             questioner_data["error"] = f"Questioner Error: {str(q_err)}"
             questioner_data["status"] = "error"
             # Attempt to save error state to DB
             try:
                 db.update_questioner_data(record_id, json.dumps(questioner_data))
-                logger.warning(f"Saved questioner error state to DB for record ID: {record_id}")
+                logger.warning(f"User {user_id}: Saved questioner error state to DB for record ID: {record_id}")
             except Exception as db_q_err:
-                logger.error(f"Failed to save questioner error state to DB for {record_id}: {db_q_err}")
+                logger.error(f"User {user_id}: Failed to save questioner error state to DB for {record_id}: {db_q_err}")
 
         # --- Step 6: Run Inspectors (Conditionally) ---
-        logger.info("*********🕵️ step 6: Running Inspectors (Conditionally):*********************")
+        logger.info(f"User {user_id}: *********🕵️ step 6: Running Inspectors (Conditionally):*********************")
         inspector_results = {"cdt": {}, "icd": {}, "status": "not_run"} # Default state
         should_run_inspectors = not questioner_data.get("has_questions", True) # Run if no questions
 
         if should_run_inspectors:
-            logger.info(f"No questions generated for {record_id}, running inspectors immediately.")
+            logger.info(f"User {user_id}: No questions generated for {record_id}, running inspectors immediately.")
             try:
                 # Format data for CDT inspector (mimicking app.py.bak)
                 cdt_topic_analysis_for_inspector = {}
@@ -419,11 +432,11 @@ async def analyze_scenario(payload: ScenarioInput):
                             "parsed_result": simplified
                         }
                     else:
-                        logger.warning(f"ICD category number missing in classification data for inspector.")
+                        logger.warning(f"User {user_id}: ICD category number missing in classification data for inspector.")
                 elif icd_classification_detail and icd_classification_detail.get('error'):
-                    logger.warning(f"Skipping ICD inspection for {record_id} due to ICD classification error: {icd_classification_detail.get('error')}")
+                    logger.warning(f"User {user_id}: Skipping ICD inspection for {record_id} due to ICD classification error: {icd_classification_detail.get('error')}")
                 else:
-                     logger.warning(f"Could not format ICD data for inspector for record {record_id}.")
+                     logger.warning(f"User {user_id}: Could not format ICD data for inspector for record {record_id}.")
 
                 # Define async inspector tasks
                 cdt_inspector_task = asyncio.to_thread(
@@ -443,33 +456,33 @@ async def analyze_scenario(payload: ScenarioInput):
                 cdt_inspector_result, icd_inspector_result = await asyncio.gather(
                     cdt_inspector_task, icd_inspector_task
                 )
-                logger.info(f"CDT Inspector Result: {cdt_inspector_result.get('codes')}")
-                logger.info(f"ICD Inspector Result: {icd_inspector_result.get('codes')}")
+                logger.info(f"User {user_id}: CDT Inspector Result: {cdt_inspector_result.get('codes')}")
+                logger.info(f"User {user_id}: ICD Inspector Result: {icd_inspector_result.get('codes')}")
 
-                # Combine and save results
+                # Combine and save results (user_id not needed here, linked via record_id)
                 inspector_results = {
                     "cdt": cdt_inspector_result,
                     "icd": icd_inspector_result,
                     "status": "completed" # Mark as completed
                 }
                 db.update_inspector_results(record_id, json.dumps(inspector_results))
-                logger.info(f"Inspector results saved to DB for record ID: {record_id}")
+                logger.info(f"User {user_id}: Inspector results saved to DB for record ID: {record_id}")
 
             except Exception as insp_err:
-                logger.error(f"Error during inspector processing for {record_id}: {insp_err}", exc_info=True)
+                logger.error(f"User {user_id}: Error during inspector processing for {record_id}: {insp_err}", exc_info=True)
                 inspector_results["error"] = f"Inspector Error: {str(insp_err)}"
                 inspector_results["status"] = "error"
                 # Attempt to save error state
                 try:
                     db.update_inspector_results(record_id, json.dumps(inspector_results))
-                    logger.warning(f"Saved inspector error state to DB for record ID: {record_id}")
+                    logger.warning(f"User {user_id}: Saved inspector error state to DB for record ID: {record_id}")
                 except Exception as db_insp_err:
-                    logger.error(f"Failed to save inspector error state to DB for {record_id}: {db_insp_err}")
+                    logger.error(f"User {user_id}: Failed to save inspector error state to DB for {record_id}: {db_insp_err}")
         else:
-            logger.info(f"Skipping immediate inspector run for {record_id} as questions were generated.")
+            logger.info(f"User {user_id}: Skipping immediate inspector run for {record_id} as questions were generated.")
 
         # --- Construct the final response --- 
-        logger.info("*********🔧 step 7: Constructing Final Response:*********************")
+        logger.info(f"User {user_id}: *********🔧 step 7: Constructing Final Response:*********************")
 
         # CDT Classifier Results
         cdt_classifier_response = {
@@ -545,18 +558,37 @@ async def read_root():
 
 # --- Add Custom Code Endpoint (from app.py.bak) ---
 @app.post("/api/add-custom-code")
-async def add_custom_code(request: CustomCodeRequest):
-    """Process and add a custom code for a given scenario."""
+async def add_custom_code(
+    request: CustomCodeRequest,
+    user_id: str = Depends(get_current_user_id) # Inject user_id dependency
+):
+    """Process and add a custom code for a given scenario, associated with the user."""
     try:
-        logger.info(f"--- Adding Custom Code for Record {request.record_id} ---")
-        logger.info(f"Custom code: {request.code}")
-        # logger.info(f"Scenario: {request.scenario[:75]}...")
+        logger.info(f"User {user_id}: --- Adding Custom Code for Record {request.record_id} --- ")
+        logger.info(f"User {user_id}: Custom code: {request.code}")
+        # logger.info(f"User {user_id}: Scenario: {request.scenario[:75]}...")
         
         # Run the custom code analysis - Assuming Add_code_data is synchronous
         # If it becomes async, use await asyncio.to_thread(Add_code_data, ...)
         analysis_result = Add_code_data(request.scenario, request.code)
-        logger.info(f"Add_code_data result: {analysis_result}")
-        
+        logger.info(f"User {user_id}: Add_code_data result: {analysis_result}")
+
+        # !!! IMPORTANT: Add the analysis result to the dental_code_analysis table !!!
+        # We need to call db.add_code_analysis here, passing the user_id
+        try:
+            # Assuming Add_code_data returns the string analysis result to store
+            db.add_code_analysis(
+                scenario=request.scenario,
+                cdt_codes=request.code,
+                response=analysis_result, # Store the full response from Add_code_data
+                user_id=user_id
+            )
+            logger.info(f"User {user_id}: Custom code analysis saved to dental_code_analysis table.")
+        except Exception as db_err:
+            # Log the error but potentially continue, depending on desired behavior
+            logger.error(f"User {user_id}: Failed to save custom code analysis to DB: {db_err}", exc_info=True)
+            # Maybe raise HTTPException here if saving is critical
+
         # Parse the analysis result to extract components (similar to app.py.bak)
         explanation = ""
         doubt = "None"
@@ -608,35 +640,43 @@ async def add_custom_code(request: CustomCodeRequest):
         
     except Exception as e:
         error_details = traceback.format_exc()
-        logger.error(f"❌ ERROR adding custom code: {str(e)}")
+        logger.error(f"User {user_id}: ❌ ERROR adding custom code: {str(e)}")
         logger.error(f"STACK TRACE: {error_details}")
-        return {"status": "error", "message": str(e), "details": error_details}
+        # Use 401 if it's an auth error from the dependency, otherwise 500
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        if isinstance(e, HTTPException) and e.status_code == 401:
+            status_code = e.status_code
+        raise HTTPException(status_code=status_code, detail=str(e)) # Re-raise as HTTPException
 
 # --- Add Store Code Status Endpoint (from app.py.bak) ---
 @app.post("/api/store-code-status")
-async def store_code_status(request: CodeStatusRequest):
-    """Store the final status of selected and rejected codes based on user input."""
+async def store_code_status(
+    request: CodeStatusRequest,
+    user_id: str = Depends(get_current_user_id) # Inject user_id dependency
+):
+    """Store the final status of selected and rejected codes based on user input, associated with the user."""
     try:
-        logger.info(f"--- Storing Code Status for Record {request.record_id} ---")
-        logger.info(f"Selected CDT: {request.cdt_codes}")
-        logger.info(f"Rejected CDT: {request.rejected_cdt_codes}")
-        logger.info(f"Selected ICD: {request.icd_codes}")
-        logger.info(f"Rejected ICD: {request.rejected_icd_codes}")
+        logger.info(f"User {user_id}: --- Storing Code Status for Record {request.record_id} --- ")
+        logger.info(f"User {user_id}: Selected CDT: {request.cdt_codes}")
+        logger.info(f"User {user_id}: Rejected CDT: {request.rejected_cdt_codes}")
+        logger.info(f"User {user_id}: Selected ICD: {request.icd_codes}")
+        logger.info(f"User {user_id}: Rejected ICD: {request.rejected_icd_codes}")
         
-        # Call the new function to save selections to the dedicated table
+        # Call the new function to save selections to the dedicated table, passing user_id
         saved_selection = db.save_code_selections(
             record_id=request.record_id,
             accepted_cdt=request.cdt_codes,
             rejected_cdt=request.rejected_cdt_codes,
             accepted_icd=request.icd_codes,
-            rejected_icd=request.rejected_icd_codes
+            rejected_icd=request.rejected_icd_codes,
+            user_id=user_id # Pass the user_id
         )
 
         if not saved_selection:
-            logger.error(f"Failed to save code selections for record ID: {request.record_id}")
+            logger.error(f"User {user_id}: Failed to save code selections for record ID: {request.record_id}")
             raise HTTPException(status_code=500, detail="Failed to save code selections to database.")
 
-        logger.info(f"Code status updated in the database for {request.record_id}")
+        logger.info(f"User {user_id}: Code status updated in the database for {request.record_id}")
         
         return {
             "status": "success",
@@ -646,9 +686,13 @@ async def store_code_status(request: CodeStatusRequest):
         
     except Exception as e:
         error_details = traceback.format_exc()
-        logger.error(f"❌ ERROR storing code status: {str(e)}")
+        logger.error(f"User {user_id}: ❌ ERROR storing code status: {str(e)}")
         logger.error(f"STACK TRACE: {error_details}")
-        return {"status": "error", "message": str(e), "details": error_details}
+        # Use 401 if it's an auth error from the dependency, otherwise 500
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        if isinstance(e, HTTPException) and e.status_code == 401:
+            status_code = e.status_code
+        raise HTTPException(status_code=status_code, detail=str(e)) # Re-raise as HTTPException
 
 # --- Application Runner ---
 if __name__ == "__main__":

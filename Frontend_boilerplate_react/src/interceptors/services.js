@@ -41,12 +41,23 @@ export const analyzeBatchScenarios = async (scenariosArray, signal) => {
 // Submit selected codes service
 export const submitSelectedCodes = async (selectedCodes, recordId) => {
   try {
-    const response = await apiInstance.post('/api/store-code-status', {
-      ...selectedCodes,
-      record_id: recordId
-    });
+    // selectedCodes is expected to have { accepted: [...], denied: [...] } structure
+    // Transform it to match the backend model CodeStatusRequest
+    const payload = {
+      record_id: recordId,
+      cdt_codes: selectedCodes.accepted || [], // Map accepted to cdt_codes
+      rejected_cdt_codes: selectedCodes.denied || [], // Map denied to rejected_cdt_codes
+      icd_codes: [], // Send empty list if frontend doesn't handle ICD yet
+      rejected_icd_codes: [] // Send empty list if frontend doesn't handle ICD yet
+    };
+
+    // Log the payload being sent
+    console.log("Sending payload to /api/store-code-status:", payload);
+
+    const response = await apiInstance.post('/api/store-code-status', payload); // Send the transformed payload
     return response.data;
   } catch (error) {
+    console.error("Error in submitSelectedCodes:", error.response || error);
     throw error.response?.data || { message: 'Failed to submit selected codes' };
   }
 };
@@ -80,5 +91,50 @@ export const addCustomCode = async (code, scenario, recordId) => {
     return response.data;
   } catch (error) {
     throw error.response?.data || { message: 'Failed to add custom code' };
+  }
+};
+
+// --- Authentication Services ---
+
+export const sendSignupOtp = async (userData) => {
+  try {
+    // userData should contain { name, email, phone }
+    const response = await apiInstance.post('/api/auth/signup/send-otp', userData);
+    return response.data; // Expected: { message: "...", user_id: "..." }
+  } catch (error) {
+    // Throw the specific error message from the backend if available
+    throw error.response?.data || { message: 'Failed to send OTP' };
+  }
+};
+
+export const verifySignupOtp = async (verificationData) => {
+  try {
+    // verificationData should contain { email, otp }
+    const response = await apiInstance.post('/api/auth/signup/verify-otp', verificationData);
+    return response.data; // Expected: { message: "...", user_id: "..." }
+  } catch (error) {
+    throw error.response?.data || { message: 'Failed to verify OTP' };
+  }
+};
+
+// Placeholder for Login service (implement when backend route is ready)
+export const loginUser = async (credentials) => {
+  try {
+    // credentials should contain { email, password }
+    const response = await apiInstance.post('/api/auth/login', credentials);
+    // Expected response: { access_token: "...", token_type: "bearer" }
+    
+    // Store the token upon successful login
+    if (response.data && response.data.access_token) {
+      localStorage.setItem('accessToken', response.data.access_token);
+      // You might also want to store other user info or set an authenticated state here
+    }
+    
+    return response.data; 
+  } catch (error) {
+     console.error("Login error:", error);
+    // Throw a structured error similar to other services
+    // Use detail if available (FastAPI validation errors often use this)
+    throw error.response?.data || { message: 'Login failed', detail: 'Could not connect or unexpected error' };
   }
 };
