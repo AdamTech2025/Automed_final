@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime
 import json
 import logging
+from typing import Union
 
 load_dotenv()
 
@@ -25,7 +26,7 @@ class MedicalCodingDB:
         if not self.supabase:
             self.connect()
 
-    def create_analysis_record(self, data: dict, user_id: str | None = None):
+    def create_analysis_record(self, data: dict, user_id: Union[str, None] = None):
         """Insert a new record into the dental_report table."""
         self.ensure_connection()
         try:
@@ -285,7 +286,7 @@ class MedicalCodingDB:
             logger.error(f"Error verifying email for user ID {user_id}: {str(e)}", exc_info=True)
             return False
 
-    def save_code_selections(self, record_id, accepted_cdt, rejected_cdt, accepted_icd, rejected_icd, user_id: str | None = None):
+    def save_code_selections(self, record_id, accepted_cdt, rejected_cdt, accepted_icd, rejected_icd, user_id: Union[str, None] = None):
         """Insert or update code selections in the code_selections table."""
         self.ensure_connection()
         try:
@@ -437,7 +438,7 @@ class MedicalCodingDB:
             print(f"❌ Error retrieving most recent analysis: {str(e)}")
             return None
 
-    def add_code_analysis(self, scenario: str, cdt_codes: str, response: str, user_id: str | None = None) -> int | None:
+    def add_code_analysis(self, scenario: str, cdt_codes: str, response: str, user_id: Union[str, None] = None) -> Union[str, None]:
         """Add a new dental code analysis record."""
         self.ensure_connection()
         try:
