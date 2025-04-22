@@ -122,12 +122,16 @@ export const loginUser = async (credentials) => {
   try {
     // credentials should contain { email, password }
     const response = await apiInstance.post('/api/auth/login', credentials);
-    // Expected response: { access_token: "...", token_type: "bearer" }
+    // Expected response: { access_token: "...", token_type: "bearer", name: "...", email: "..." }
     
-    // Store the token upon successful login
+    // Store the token and user details upon successful login
     if (response.data && response.data.access_token) {
       localStorage.setItem('accessToken', response.data.access_token);
-      // You might also want to store other user info or set an authenticated state here
+      // Store user details (name and email)
+      localStorage.setItem('user', JSON.stringify({ 
+        name: response.data.name, 
+        email: response.data.email 
+      }));
     }
     
     return response.data; 

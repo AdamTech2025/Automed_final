@@ -35,6 +35,13 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
+# Define a new response model for login
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str
+    name: str
+    email: EmailStr
+
 # --- Routes ---
 @router.post("/signup/send-otp", status_code=status.HTTP_200_OK)
 async def signup_send_otp(request: SignupRequest):
@@ -179,10 +186,10 @@ async def signup_verify_otp(request: VerifyOtpRequest):
         )
         
 # --- Login Route ---
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=LoginResponse)
 async def login_for_access_token(request: LoginRequest):
     """
-    Authenticates a user and returns a JWT access token.
+    Authenticates a user and returns a JWT access token along with user details.
     """
     logger.info(f"Login attempt for email: {request.email}")
     user = db.get_user_by_email(request.email)
@@ -221,4 +228,10 @@ async def login_for_access_token(request: LoginRequest):
     # Generate JWT token
     access_token = create_access_token(data={"sub": user["email"]}) # Use email as subject
     logger.info(f"Login successful for {request.email}. Token generated.")
-    return {"access_token": access_token, "token_type": "bearer"} 
+    # Return the new response structure
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "name": user.get("name", ""), # Include name (with fallback)
+        "email": user["email"] # Include email
+    } 
