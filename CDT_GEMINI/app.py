@@ -298,13 +298,69 @@ async def analyze_scenario(
 
         # --- Step 4a: Save Initial Data to Database --- 
         logger.info(f"User {user_id}: *********💾 step 4a: Saving Initial Data to DB:*********************")
+        
+        # Modified to save only raw_data for each code to reduce storage size
+        optimized_cdt_topic_results = []
+        for topic in cdt_topic_activation_results:
+            optimized_topic = {
+                "topic": topic.get("topic"),
+                "code_range": topic.get("code_range"),
+                "raw_topic_data": topic.get("raw_topic_data", "")
+            }
+            
+            # Only keep raw_data for each code instead of all code details
+            if "codes" in topic:
+                optimized_codes = []
+                for code_entry in topic.get("codes", []):
+                    if "raw_data" in code_entry:
+                        optimized_codes.append({"raw_data": code_entry["raw_data"]})
+                    else:
+                        # Fallback if raw_data is missing - construct minimal record
+                        optimized_codes.append({
+                            "raw_data": f"CODE: {code_entry.get('code', 'N/A')}\nEXPLANATION: {code_entry.get('explanation', 'N/A')}"
+                        })
+                optimized_topic["codes"] = optimized_codes
+            
+            # Include error if present
+            if "error" in topic:
+                optimized_topic["error"] = topic["error"]
+                
+            optimized_cdt_topic_results.append(optimized_topic)
+            
+        # Further optimized: Only storing the essential topic results, removing classification data entirely
         cdt_data_to_save = {
-            "cdt_classification": cdt_classification_results, # Includes raw_data, formatted_results
-            "topics_results": cdt_topic_activation_results # Includes subtopic details with raw_data
+            "topics_results": optimized_cdt_topic_results # Only save optimized topic results
         }
+        
+        # Optimize ICD data structure similar to CDT
+        optimized_icd_topic = None
+        if icd_topic_details and not isinstance(icd_topic_details, str):
+            optimized_icd_topic = {
+                "topic": icd_topic_details.get("topic"),
+                "code_range": icd_topic_details.get("code_range"),
+                "raw_topic_data": icd_topic_details.get("raw_topic_data", "")
+            }
+            
+            # Only keep raw_data for each ICD code
+            if "codes" in icd_topic_details:
+                optimized_icd_codes = []
+                for code_entry in icd_topic_details.get("codes", []):
+                    if "raw_data" in code_entry:
+                        optimized_icd_codes.append({"raw_data": code_entry["raw_data"]})
+                    else:
+                        # Fallback if raw_data is missing
+                        optimized_icd_codes.append({
+                            "raw_data": f"CODE: {code_entry.get('code', 'N/A')}\nEXPLANATION: {code_entry.get('explanation', 'N/A')}"
+                        })
+                optimized_icd_topic["codes"] = optimized_icd_codes
+            
+            # Include error if present
+            if "error" in icd_topic_details:
+                optimized_icd_topic["error"] = icd_topic_details["error"]
+        
+        # Only save the optimized topic data for ICD
         icd_data_to_save = {
-            "icd_classification": icd_classification_results, # Includes raw_data, category_number etc.
-            "topic_results": icd_topic_details # Includes topic details with raw_data
+            "topic_results": optimized_icd_topic
         }
 
         cdt_json = json.dumps(cdt_data_to_save)
@@ -387,6 +443,8 @@ async def analyze_scenario(
                 cdt_topic_analysis_for_inspector = {}
                 # Use the data we prepared for saving (cdt_data_to_save)
                 cdt_topics_results = cdt_data_to_save.get("topics_results", [])
+                icd_topic_result_detail = icd_data_to_save.get("topic_results")
+                
                 all_candidate_codes = []
                 for topic_res in cdt_topics_results:
                     if not topic_res.get('error'):
@@ -442,13 +500,13 @@ async def analyze_scenario(
                 cdt_inspector_task = asyncio.to_thread(
                     cdt_inspector.process, 
                     cleaned_scenario_text, 
-                    cdt_topic_analysis_for_inspector, # Pass formatted CDT data
+                    cdt_topics_results, # Pass direct CDT data
                     questioner_data
                 )
                 icd_inspector_task = asyncio.to_thread(
                     icd_inspector.process, 
                     cleaned_scenario_text, 
-                    icd_topic_analysis_for_inspector, # Pass formatted ICD data
+                    optimized_icd_topic, # Pass direct ICD data
                     questioner_data
                 )
 
@@ -606,6 +664,7 @@ async def add_custom_code(
         # Check if the code is likely applicable based on the analysis result
         # Using a case-insensitive check for robustness
         is_applicable = "applicable? yes" in analysis_result.lower()
+        
         
         # Format the response in the expected structure
         code_data = {

@@ -595,50 +595,32 @@ const Home = () => {
           raw_data: codeData.explanation // Store the original structured explanation as raw_data
         });
         
-        // If there are inspector results, add the code there too if applicable
-        if (updatedResult.inspector_results) {
-          const inspectorData = updatedResult.inspector_results; // Direct access
+        // Always add custom codes to the inspector results regardless of applicability
+        if (updatedResult.inspector_results && updatedResult.inspector_results.cdt) {
+          const inspectorData = updatedResult.inspector_results;
           
-          if (isApplicable && inspectorData.cdt) {
-            // Ensure codes array exists
-            if (!inspectorData.cdt.codes) inspectorData.cdt.codes = [];
-            // Add to accepted codes if applicable and not already present
-            if (!inspectorData.cdt.codes.includes(codeData.code)) {
-              inspectorData.cdt.codes.push(codeData.code);
-            }
-            // Ensure rejected_codes array exists and remove if present
-             if (!inspectorData.cdt.rejected_codes) inspectorData.cdt.rejected_codes = [];
-             inspectorData.cdt.rejected_codes = inspectorData.cdt.rejected_codes.filter(c => c !== codeData.code);
-          } else if (!isApplicable && inspectorData.cdt) {
-             // Add to rejected codes if not applicable and not already present
-             if (!inspectorData.cdt.rejected_codes) inspectorData.cdt.rejected_codes = [];
-             if (!inspectorData.cdt.rejected_codes.includes(codeData.code)) {
-                 inspectorData.cdt.rejected_codes.push(codeData.code);
-             }
-             // Ensure codes array exists and remove if present
-             if (!inspectorData.cdt.codes) inspectorData.cdt.codes = [];
-             inspectorData.cdt.codes = inspectorData.cdt.codes.filter(c => c !== codeData.code);
+          // Ensure codes array exists
+          if (!inspectorData.cdt.codes) inspectorData.cdt.codes = [];
+          
+          // Add the code if not already present
+          if (!inspectorData.cdt.codes.includes(codeData.code)) {
+            inspectorData.cdt.codes.push(codeData.code);
           }
         }
         
         // Update the result state
         setResult(updatedResult);
         
-        // Expand the custom codes topic using the predefined key
-         if (customTopicKey) { // Check if the key exists (it should)
-              setExpandedTopics(prev => ({
-                  ...prev,
-                  [customTopicKey]: true // Use the variable here
-              }));
-          }
+        // Open the custom codes dropdown and keep it open until user closes it
+        if (customTopicKey) {
+          setExpandedTopics(prev => ({
+            ...prev,
+            [customTopicKey]: true
+          }));
+        }
         
         // Clear the input
         setNewCode('');
-        
-        // Auto-select only the applicable codes
-        if (isApplicable) {
-          handleCodeSelection(codeData.code, 'accept');
-        }
       } else {
         setError("Received invalid response format from server");
       }

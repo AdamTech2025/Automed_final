@@ -48,11 +48,6 @@ Instructions:
 
 10) Output the same code multiple times if it is applicable (e.g., 8 scans would include the code 8 times).
 
-11) Coding Rules:
-    - Consider standard bundling rules but don't be overly strict
-    - Assume medical necessity for standard procedures
-    - Consider emergency/post-op status if implied by context
-    - You MUST include ALL appropriate codes that appeared in the topic analysis and reject all inappropriate codes
 
 IMPORTANT: You must format your response exactly as follows:
 
@@ -208,6 +203,16 @@ REJECTED CODES: D0140, D0220, D0230
     def process(self, scenario: str, topic_analysis: Any = None, questioner_data: Any = None) -> Dict[str, Any]:
         """Process a dental scenario and return inspection results"""
         try:
+            # Print debug information to terminal with asterisks for visibility
+            print("\n\n*******************************INSPECTOR INPUT DATA*******************************")
+            print("\n*******************************SCENARIO*******************************")
+            print(scenario)
+            print("\n*******************************TOPIC ANALYSIS*******************************")
+            print(topic_analysis)
+            print("\n*******************************QUESTIONER DATA*******************************")
+            print(questioner_data)
+            print("\n*******************************END INSPECTOR INPUT DATA*******************************\n\n")
+            
             # Pre-process topic_analysis to ensure all candidate codes are properly represented
             all_candidate_codes = self._extract_all_candidate_codes(topic_analysis)
             self.logger.info(f"Extracted {len(all_candidate_codes)} candidate codes for analysis")
