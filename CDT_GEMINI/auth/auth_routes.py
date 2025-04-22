@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel, EmailStr
 import logging
 from datetime import datetime
+from typing import Union
 
 from database import MedicalCodingDB  # Import your DB class
 from .auth_utils import (
@@ -20,7 +21,7 @@ class SignupRequest(BaseModel):
     name: str
     email: EmailStr
     password: str # Add password field
-    phone: str | None = None
+    phone: Union[str, None] = None
 
 class VerifyOtpRequest(BaseModel):
     email: EmailStr
