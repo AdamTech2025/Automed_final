@@ -12,6 +12,7 @@ from passlib.context import CryptContext # For password hashing
 from jose import JWTError, jwt # For JWT
 from fastapi import Depends, HTTPException, status # Add Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer # Add OAuth2PasswordBearer
+from typing import Union # Import Union
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -39,7 +40,7 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 # --- JWT Token Creation ---
-def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
+def create_access_token(data: dict, expires_delta: Union[timedelta, None] = None) -> str:
     """Creates a JWT access token."""
     if not SECRET_KEY:
         raise ValueError("JWT_SECRET_KEY is not configured. Cannot create token.")
