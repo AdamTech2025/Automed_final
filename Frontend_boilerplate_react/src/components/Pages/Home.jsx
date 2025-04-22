@@ -1,8 +1,9 @@
-import { FaTooth, FaCogs, FaCheck, FaTimes, FaPaperPlane, FaRobot, FaCopy, FaSpinner } from 'react-icons/fa';
+import { FaTooth, FaCogs, FaCheck, FaTimes, FaPaperPlane, FaRobot, FaCopy, FaSpinner, FaPlus } from 'react-icons/fa';
 import { analyzeDentalScenario, submitSelectedCodes, addCustomCode } from '../../interceptors/services.js';
 import { useState, useEffect, useMemo } from 'react';
 import Questioner from './Questioner.jsx';
 import { useTheme } from '../../context/ThemeContext';
+import Loader from '../Modal/Loading.jsx';
 
 const Home = () => {
   const { isDark } = useTheme();
@@ -15,6 +16,7 @@ const Home = () => {
   const [showQuestioner, setShowQuestioner] = useState(false);
   const [expandedTopics, setExpandedTopics] = useState({});
   const [newCode, setNewCode] = useState('');
+  const [loadingProgress, setLoadingProgress] = useState(0);
 
   // Check if there are questions in the result
   useEffect(() => {
@@ -24,6 +26,53 @@ const Home = () => {
       setShowQuestioner(false);
     }
   }, [result]);
+
+  // Fake progress simulation
+  useEffect(() => {
+    let progressInterval;
+    
+    if (loading) {
+      setLoadingProgress(0);
+      const totalTime = 550000; // 5.5 minutes in milliseconds
+      const intervalTime = 1000; // Update every second
+      const increments = totalTime / intervalTime;
+      const incrementAmount = 100 / increments;
+      
+      progressInterval = setInterval(() => {
+        setLoadingProgress(prevProgress => {
+          const newProgress = prevProgress + incrementAmount;
+          // Cap at 95% so it doesn't look complete before the actual data arrives
+          return newProgress >= 95 ? 95 : newProgress;
+        });
+      }, intervalTime);
+    } else {
+      // Reset progress when loading is complete
+      setLoadingProgress(0);
+    }
+    
+    return () => {
+      if (progressInterval) clearInterval(progressInterval);
+    };
+  }, [loading]);
+
+  // Listen for the newAnalysis event from Navbar
+  useEffect(() => {
+    const resetForm = (event) => {
+      console.log("New analysis event received, resetting form", event.detail);
+      setScenario('');
+      setResult(null);
+      setError(null);
+      setSelectedCodes({ accepted: [], denied: [] });
+      setExpandedTopics({});
+      setNewCode('');
+    };
+
+    window.addEventListener('newAnalysis', resetForm);
+    
+    return () => {
+      window.removeEventListener('newAnalysis', resetForm);
+    };
+  }, []);
 
   // Transform CDT_subtopic array into the object format needed by the component
   const formattedSubtopicData = useMemo(() => {
@@ -712,6 +761,41 @@ const Home = () => {
           recordId={result.record_id || ''}
           onSubmitSuccess={handleQuestionerSuccess}
         />
+      )}
+
+      {/* Loading Overlay */}
+      {loading && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center z-50 backdrop-blur-md">
+          <div className="bg-gradient-to-b from-blue-900 to-gray-900 p-10 rounded-xl shadow-2xl max-w-lg w-full mx-4">
+            <div className="flex justify-center">
+              <div className="w-24 h-24">
+                <Loader />
+              </div>
+            </div>
+            <h3 className="text-white text-2xl font-bold mt-6 text-center">Analyzing your scenario...</h3>
+            <div className="w-full bg-blue-800/30 h-2 my-4 rounded-full overflow-hidden">
+              <div 
+                className="bg-gradient-to-r from-blue-500 to-blue-300 h-full rounded-full transition-all duration-1000 ease-linear"
+                style={{width: `${loadingProgress}%`}}
+              ></div>
+            </div>
+            <p className="text-blue-100 mt-3 text-center text-sm">
+            ({Math.round(loadingProgress)}% complete)
+            </p>
+            <p className="text-blue-100 mt-4 text-center">
+              Our AI typically takes about 5 minutes to think. While you wait, you can start a new analysis in a separate tab.
+            </p>
+            <div className="flex justify-center mt-6">
+              <button
+                onClick={() => window.open(window.location.href, '_blank')}
+                className="flex items-center px-4 py-2 bg-blue-700 hover:bg-blue-600 text-white rounded-md transition-colors"
+              >
+                <FaPlus className="mr-2" />
+                New Analysis in New Tab
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Main content container */}

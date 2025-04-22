@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { FaTooth, FaSun, FaMoon, FaQuestion, FaPlus, FaUserCircle, FaSignOutAlt } from 'react-icons/fa';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -9,12 +9,27 @@ const Navbar = () => {
   const { isAuthenticated, user, logout } = useAuth();
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   // Log the state received from context
   console.log("Navbar received from useAuth:", { isAuthenticated, user });
 
-  const openNewTab = () => {
-    window.open(window.location.href, '_blank');
+  const handleNewAnalysis = () => {
+    // If already on dashboard page, reload it to reset state
+    if (location.pathname === '/dashboard') {
+      // Create a custom event that the Home component can listen for
+      const event = new CustomEvent('newAnalysis', { 
+        detail: { timestamp: new Date().getTime() } 
+      });
+      window.dispatchEvent(event);
+      
+      // Scroll to top to focus on the input
+      window.scrollTo(0, 0);
+    } else {
+      // If on another page, navigate to dashboard
+      navigate('/dashboard');
+    }
   };
 
   const handleLogout = () => {
@@ -47,12 +62,14 @@ const Navbar = () => {
       
       <div className="flex items-center space-x-4">
         <button
-          onClick={openNewTab}
-          className={`${isDark ? 'text-gray-400 hover:text-blue-300' : 'text-gray-600 hover:text-blue-700'} 
+          onClick={handleNewAnalysis}
+          className={`${isDark ? 'text-gray-300 hover:text-blue-300' : 'text-gray-600 hover:text-blue-700'} 
             flex items-center transition-colors p-2 rounded-md`}
-          aria-label="Open in new tab"
+          aria-label="New Analysis"
+          title="Start a new analysis"
         >
           <FaPlus className="text-lg" />
+          <span className="ml-1 hidden sm:inline">New Analysis</span>
         </button>
         <Link 
           to="/questions" 
