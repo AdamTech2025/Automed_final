@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import confetti from 'canvas-confetti';
+import { Link } from 'react-router-dom';
 import { gsap } from 'gsap';
 import Particles from '../Particles/Particles';
 import SuccessModal from '../Modal/SuccessModal';
 import { sendSignupOtp, verifySignupOtp } from '../../interceptors/services';
+import { useAuth } from '../../context/AuthContext';
 import logo from '../../assets/Adam_tech_logo.png';
 
 const Signup = () => {
@@ -18,7 +18,7 @@ const Signup = () => {
   const [modalData, setModalData] = useState({ title: '', message: '', isSuccess: true });
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
-  const navigate = useNavigate();
+  const { login } = useAuth();
 
   useEffect(() => {
     gsap.fromTo('.card', { y: 100, opacity: 0 }, { y: 0, opacity: 1, duration: 1, ease: 'power3.out' });
@@ -58,14 +58,14 @@ const Signup = () => {
       const verificationData = { email, otp };
       const response = await verifySignupOtp(verificationData);
       if (response.access_token) {
-        localStorage.setItem('authToken', response.access_token);
-        localStorage.setItem('tokenType', response.token_type);
-        setModalData({ title: 'Success!', message: 'Account verified successfully! Redirecting...', isSuccess: true });
-        setShowModal(true);
-        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-        setTimeout(() => navigate('/dashboard'), 2000);
+        localStorage.setItem('user', JSON.stringify({ 
+            name: name,
+            email: email
+        }));
+        localStorage.setItem('accessToken', response.access_token);
+        login();
       } else {
-        throw new Error('Verification response did not include an access token.');
+        throw new Error(response.detail || 'Verification response missing token.');
       }
     } catch (error) {
       setModalData({ title: 'Error', message: error.detail || error.message || 'Invalid OTP or verification failed.', isSuccess: false });

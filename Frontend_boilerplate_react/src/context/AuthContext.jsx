@@ -1,5 +1,6 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import { createContext, useState, useContext, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import PropTypes from 'prop-types';
 
 const AuthContext = createContext(null);
 
@@ -10,50 +11,87 @@ export const AuthProvider = ({ children }) => {
 
   // Check local storage on initial load
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
-    const storedUser = localStorage.getItem('user');
-    if (token && storedUser) {
-      try {
-        const parsedUser = JSON.parse(storedUser);
-        setIsAuthenticated(true);
-        setUser(parsedUser);
-      } catch (error) {
-        console.error("Failed to parse user from localStorage", error);
-        // Clear invalid storage if parsing fails
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('user');
+    const checkAuth = () => {
+      const token = localStorage.getItem('accessToken');
+      const storedUser = localStorage.getItem('user');
+      
+      if (token && storedUser) {
+        try {
+          const parsedUser = JSON.parse(storedUser);
+          setIsAuthenticated(true);
+          setUser(parsedUser);
+          console.log("Auth restored from localStorage:", { user: parsedUser });
+        } catch (error) {
+          console.error("Failed to parse user from localStorage", error);
+          // Clear invalid storage if parsing fails
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('user');
+          setIsAuthenticated(false);
+          setUser(null);
+        }
+      } else {
+        // Ensure state is synced if no valid data in localStorage
+        setIsAuthenticated(false);
+        setUser(null);
       }
-    }
+    };
+    
+    checkAuth();
+    
+    // Listen for storage events (if user logs in/out in another tab)
+    window.addEventListener('storage', checkAuth);
+    return () => window.removeEventListener('storage', checkAuth);
   }, []);
 
-  const login = (userData) => {
-    // Assumes userData contains { name, email, access_token, ... }
-    // We already stored token and user in services.js, just update state here
-     const token = localStorage.getItem('accessToken'); // Re-read token just in case
-     const storedUser = localStorage.getItem('user');
-     if (token && storedUser) {
-         try {
-             const parsedUser = JSON.parse(storedUser);
-             setIsAuthenticated(true);
-             setUser(parsedUser);
-             // Optionally navigate after login, e.g., to dashboard
-             // navigate('/'); 
-         } catch(error) {
-             console.error("Error processing login data", error);
-             logout(); // Log out if data is bad
-         }
-     } else {
-         console.error("Login called but token or user not found in localStorage");
-     }
+  // This function can either:
+  // 1. Be called after services.js has already set localStorage (normal case)
+  // 2. Be called with userData and token to set localStorage itself (alternative usage)
+  const login = (userData = null, token = null) => {
+    console.log("AuthContext: login function called", { providedData: !!userData, providedToken: !!token });
+    
+    // If user data and token were passed directly, store them in localStorage
+    if (userData && token) {
+      localStorage.setItem('accessToken', token);
+      localStorage.setItem('user', JSON.stringify(userData));
+      console.log("AuthContext: Stored in localStorage:", { token, userData });
+    }
+    
+    // Read from localStorage (either what was just set or what was set by services.js)
+    const accessToken = localStorage.getItem('accessToken');
+    const storedUser = localStorage.getItem('user');
+    console.log("AuthContext: Read from localStorage:", { accessToken, storedUser });
+
+    if (accessToken && storedUser) {
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        console.log("AuthContext: Parsed user:", parsedUser);
+        
+        // Update state
+        setIsAuthenticated(true);
+        setUser(parsedUser);
+        
+        console.log("AuthContext: State updated:", { isAuthenticated: true, user: parsedUser });
+        
+        // Navigate to dashboard after successful login state update
+        navigate('/dashboard');
+      } catch(error) {
+        console.error("Error processing login data", error);
+        logout(); // Log out if data is bad
+      }
+    } else {
+      console.error("Login called but token or user not found in localStorage");
+      // Optional: Could set an error state here if needed
+    }
   };
 
   const logout = () => {
+    console.log("AuthContext: logout function called");
     localStorage.removeItem('accessToken');
     localStorage.removeItem('user');
     setIsAuthenticated(false);
     setUser(null);
-    // Navigate to login or home page after logout
-    navigate('/login'); 
+    // Navigate to login page (root path) after logout
+    navigate('/'); 
   };
 
   return (
@@ -61,6 +99,11 @@ export const AuthProvider = ({ children }) => {
       {children}
     </AuthContext.Provider>
   );
+};
+
+// Add prop validation
+AuthProvider.propTypes = {
+  children: PropTypes.node.isRequired,
 };
 
 // Custom hook to use the auth context

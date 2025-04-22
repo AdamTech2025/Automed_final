@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import confetti from 'canvas-confetti';
+import { Link } from 'react-router-dom';
 import { gsap } from 'gsap';
 import Particles from '../Particles/Particles';
 import SuccessModal from '../Modal/SuccessModal';
 import { loginUser } from '../../interceptors/services';
+import { useAuth } from '../../context/AuthContext';
 import logo from '../../assets/Adam_tech_logo.png';
 
 const Login = () => {
@@ -14,7 +14,7 @@ const Login = () => {
   const [showModal, setShowModal] = useState(false);
   const [modalData, setModalData] = useState({ title: '', message: '', isSuccess: true });
   const [isLoading, setIsLoading] = useState(false);
-  const navigate = useNavigate();
+  const { login } = useAuth();
 
   useEffect(() => {
     gsap.fromTo('.card', { y: 100, opacity: 0 }, { y: 0, opacity: 1, duration: 1, ease: 'power3.out' });
@@ -36,27 +36,21 @@ const Login = () => {
       try {
         const response = await loginUser({ email, password });
         if (response.access_token) {
-          localStorage.setItem('authToken', response.access_token);
-          localStorage.setItem('tokenType', response.token_type);
-          setModalData({ title: 'Welcome Back!', message: 'Login Successful! Redirecting...', isSuccess: true });
-          setShowModal(true);
-          console.log('Modal should show:', modalData);
-          confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
-          setTimeout(() => navigate('/dashboard'), 1500);
+          login();
         } else {
-          throw new Error('Login response did not include an access token.');
+          throw new Error(response.detail || 'Login response missing token.');
         }
       } catch (error) {
         setModalData({ title: 'Login Failed', message: error.detail || error.message || 'Invalid credentials or server error.', isSuccess: false });
         setShowModal(true);
-        console.log('Modal should show (error):', modalData);
+        console.log('Modal should show (error): ', modalData);
       } finally {
         setIsLoading(false);
       }
     } else {
       setModalData({ title: 'Error', message: 'Please fill in all fields.', isSuccess: false });
       setShowModal(true);
-      console.log('Modal should show (validation):', modalData);
+      console.log('Modal should show (validation): ', modalData);
     }
   };
 

@@ -120,18 +120,24 @@ export const verifySignupOtp = async (verificationData) => {
 // Placeholder for Login service (implement when backend route is ready)
 export const loginUser = async (credentials) => {
   try {
+    console.log("services.js: Attempting login for:", credentials.email);
     // credentials should contain { email, password }
     const response = await apiInstance.post('/api/auth/login', credentials);
+    console.log("services.js: Received API response:", response.data);
     // Expected response: { access_token: "...", token_type: "bearer", name: "...", email: "..." }
     
     // Store the token and user details upon successful login
     if (response.data && response.data.access_token) {
+      console.log("services.js: Access token found. Storing data...");
       localStorage.setItem('accessToken', response.data.access_token);
-      // Store user details (name and email)
+      console.log("services.js: Stored accessToken.");
       localStorage.setItem('user', JSON.stringify({ 
         name: response.data.name, 
         email: response.data.email 
       }));
+      console.log("services.js: Stored user data:", { name: response.data.name, email: response.data.email });
+    } else {
+      console.warn("services.js: No access token found in response.");
     }
     
     return response.data; 

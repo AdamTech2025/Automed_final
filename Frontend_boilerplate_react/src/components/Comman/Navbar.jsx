@@ -10,6 +10,9 @@ const Navbar = () => {
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
 
+  // Log the state received from context
+  console.log("Navbar received from useAuth:", { isAuthenticated, user });
+
   const openNewTab = () => {
     window.open(window.location.href, '_blank');
   };
@@ -102,7 +105,7 @@ const Navbar = () => {
           </div>
         ) : (
           <Link 
-            to="/login"
+            to="/"
             className={`${isDark ? 'text-gray-300 hover:text-blue-300' : 'text-gray-700 hover:text-blue-700'} 
             flex items-center transition-colors p-2 rounded-md text-sm sm:text-base`}
           >
