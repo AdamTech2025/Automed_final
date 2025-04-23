@@ -204,14 +204,7 @@ REJECTED CODES: D0140, D0220, D0230
         """Process a dental scenario and return inspection results"""
         try:
             # Print debug information to terminal with asterisks for visibility
-            print("\n\n*******************************INSPECTOR INPUT DATA*******************************")
-            print("\n*******************************SCENARIO*******************************")
-            print(scenario)
-            print("\n*******************************TOPIC ANALYSIS*******************************")
-            print(topic_analysis)
-            print("\n*******************************QUESTIONER DATA*******************************")
-            print(questioner_data)
-            print("\n*******************************END INSPECTOR INPUT DATA*******************************\n\n")
+        
             
             # Pre-process topic_analysis to ensure all candidate codes are properly represented
             all_candidate_codes = self._extract_all_candidate_codes(topic_analysis)

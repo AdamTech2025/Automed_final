@@ -71,14 +71,14 @@ const Navbar = () => {
           <FaPlus className="text-lg" />
           <span className="ml-1 hidden sm:inline">New Analysis</span>
         </button>
-        <Link 
+        {/* <Link 
           to="/questions" 
           className={`${isDark ? 'text-gray-300 hover:text-blue-300' : 'text-gray-700 hover:text-blue-700'} 
             flex items-center transition-colors p-2 rounded-md text-sm sm:text-base`}
         >
           <FaQuestion className="mr-1" />
           <span>Questions</span>
-        </Link>
+        </Link> */}
         <button 
           onClick={toggleTheme}
           className="theme-toggle p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
