@@ -4,8 +4,8 @@ from database import MedicalCodingDB
 from typing import Dict, Any, Optional
 import logging
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging
+logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
 def Add_code_data(scenario: str, cdt_codes: str) -> str:

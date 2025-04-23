@@ -8,7 +8,7 @@ from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 
 # Basic logging configuration
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
 # Load environment variables
@@ -41,6 +41,8 @@ class LLMService:
                 base_url="https://openrouter.ai/api/v1",
                 api_key=OPENROUTER_API_KEY
             )
+            # Use print to ensure this message is shown regardless of logging level
+            print(f"Initialized OpenRouter with model: {self.model} (temp: {self.temperature})")
             logger.info(f"Initialized OpenRouter with model: {self.model} (temp: {self.temperature})")
         except Exception as e:
             logger.error(f"Failed to initialize OpenRouter: {e}")
@@ -49,6 +51,8 @@ class LLMService:
     def set_model(self, model_name: str):
         if model_name and model_name != self.model:
             self.model = model_name
+            # Use print to ensure this message is shown regardless of logging level
+            print(f"Updated model to: {model_name}")
             logger.info(f"Updated model to: {model_name}")
             return True
         return False

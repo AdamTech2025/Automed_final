@@ -6,6 +6,8 @@ import re
 import logging
 import os
 
+# Set logging level to ERROR for this module
+logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
 class SubtopicRegistry:

@@ -65,7 +65,7 @@ from auth.auth_routes import router as auth_router
 from auth.auth_utils import get_current_user_id # Import the dependency
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
