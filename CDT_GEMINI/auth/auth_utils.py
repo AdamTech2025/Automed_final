@@ -82,8 +82,20 @@ async def send_otp_email(email: str, otp: str):
 
     # Create the email message
     msg = EmailMessage()
-    msg.set_content(f"Your verification code for Adam Tech is: {otp}\n\nThis code will expire in 10 minutes.")
-    msg['Subject'] = 'Your Adam Tech OTP Code'
+    msg.set_content(f"""
+    Dear User,
+
+    Thank you for choosing Adam Tech. Your one-time verification code (OTP) is: {otp}
+
+    Please enter this code on the verification page to complete your account setup. This code will expire in 10 minutes.
+
+    If you didn’t request this code, please ignore this email or contact our support team at support@adamtechnologies.in.
+
+    Best regards,
+    The Adam Tech Team
+    Adam Tech Inc. | www.adamtechnologies.in
+    """)
+    msg['Subject'] = 'Your Adam Tech OTP for Verification'
     msg['From'] = sender_email
     msg['To'] = email
 

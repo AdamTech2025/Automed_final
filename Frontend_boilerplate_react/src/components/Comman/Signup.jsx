@@ -41,7 +41,7 @@ const Signup = () => {
     try {
       const userData = { name, email, password, phone };
       const response = await sendSignupOtp(userData);
-      setModalData({ title: 'OTP Sent!', message: response.message, isSuccess: true });
+      setModalData({ title: 'OTP Sent! Please check your email or spam folder!', message: response.message, isSuccess: true });
       setShowModal(true);
       setStep(2);
     } catch (error) {
