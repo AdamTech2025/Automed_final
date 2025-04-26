@@ -79,15 +79,59 @@ const Home = () => {
     if (!result?.CDT_subtopic) {
       return {};
     }
+    
+    console.log("Raw CDT_subtopic data:", result.CDT_subtopic);
     const formatted = {};
+    
     result.CDT_subtopic.forEach(topic => {
       // Use a combination of topic name and code range as the key if possible
       const key = `${topic.topic || 'Unknown'} (${topic.code_range || 'N/A'})`;
-      // Ensure the codes array exists and has data
-      if (Array.isArray(topic.codes) && topic.codes.length > 0) {
+      const allCodes = [];
+      
+      // First try to extract specific codes from subtopics_data
+      if (topic.raw_result && topic.raw_result.subtopics_data && Array.isArray(topic.raw_result.subtopics_data)) {
+        topic.raw_result.subtopics_data.forEach(subtopic => {
+          // The raw_result can be an array or an object with raw_result property
+          let rawResultsToProcess = [];
+          
+          if (Array.isArray(subtopic.raw_result)) {
+            // Direct array of results
+            rawResultsToProcess = subtopic.raw_result;
+          } else if (typeof subtopic.raw_result === 'object' && subtopic.raw_result !== null) {
+            // Get any specific entries that might contain codes
+            rawResultsToProcess = [subtopic.raw_result];
+          }
+            
+          rawResultsToProcess.forEach(codeEntry => {
+            // Check if this is a direct entry with specific_codes
+            if (codeEntry && Array.isArray(codeEntry.specific_codes) && codeEntry.specific_codes.length > 0) {
+              codeEntry.specific_codes.forEach(code => {
+                if (code) {
+                  allCodes.push({
+                    code: code,
+                    explanation: codeEntry.explanation || 'No explanation provided',
+                    doubt: codeEntry.doubt || 'None'
+                  });
+                }
+              });
+            }
+          });
+        });
+      }
+      
+      // If we found specific codes, use them
+      if (allCodes.length > 0) {
+        console.log(`Found ${allCodes.length} specific codes for ${key}`);
+        formatted[key] = allCodes;
+      }
+      // Fall back to the original codes array if present and no specific codes found
+      else if (Array.isArray(topic.codes) && topic.codes.length > 0) {
+        console.log(`Using fallback codes for ${key}: ${topic.codes.length} codes`);
         formatted[key] = topic.codes;
       }
     });
+    
+    console.log("Final formatted subtopic data:", formatted);
     return formatted;
   }, [result?.CDT_subtopic]);
 
@@ -106,22 +150,28 @@ const Home = () => {
     // Format the ICD topic data to have a similar structure to CDT topics
     let formattedICDData = {};
     
+    // Access data from raw_result if it exists, otherwise check direct properties
+    const rawResult = icdTopicResult.raw_result || {};
+    const code = rawResult.code || icdTopicResult.code;
+    const explanation = rawResult.explanation || icdTopicResult.explanation || 'No explanation provided';
+    const doubt = rawResult.doubt || icdTopicResult.doubt || 'None';
+    const rawData = rawResult.raw_data || rawResult.raw_result || '';
+    
     // Create a codes array with a single entry if the code exists
-    // Otherwise include explanation and doubt but indicate 'none' for the code
-    if (icdTopicResult.code) {
+    if (code) {
       formattedICDData[topicKey] = [{
-        code: icdTopicResult.code,
-        explanation: icdTopicResult.explanation || 'No explanation provided',
-        doubt: icdTopicResult.doubt || 'None',
-        raw_data: icdTopicResult.raw_topic_data || ''
+        code: code,
+        explanation: explanation,
+        doubt: doubt,
+        raw_data: rawData
       }];
     } else {
       // Still create an entry for "No applicable code" but with clear indication
       formattedICDData[topicKey] = [{
         code: 'none', // explicitly set to 'none' to match topic service response
-        explanation: icdTopicResult.explanation || 'No explanation provided',
-        doubt: icdTopicResult.doubt || 'None',
-        raw_data: icdTopicResult.raw_topic_data || ''
+        explanation: explanation,
+        doubt: doubt,
+        raw_data: rawData
       }];
     }
     
@@ -276,13 +326,22 @@ const Home = () => {
     let foundTopicKey = null;
     let codeIndex = -1;
     
+    console.log("Looking for code:", code);
+    console.log("Available topics:", Object.keys(formattedSubtopicData));
+    
     // Search through the formatted data
     if (formattedSubtopicData) {
       Object.keys(formattedSubtopicData).forEach(topicKey => {
         const topicCodes = formattedSubtopicData[topicKey];
-        if (topicCodes) {
+        if (topicCodes && Array.isArray(topicCodes)) {
           topicCodes.forEach((codeData, index) => {
-            if (codeData && codeData.code === code) {
+            // Check both direct code equality and specific_codes arrays
+            const codeMatch = 
+              (codeData && codeData.code === code) || 
+              (codeData && Array.isArray(codeData.specific_codes) && codeData.specific_codes.includes(code));
+              
+            if (codeMatch) {
+              console.log(`Found code ${code} in topic ${topicKey}`);
               foundTopicKey = topicKey;
               codeIndex = index;
             }

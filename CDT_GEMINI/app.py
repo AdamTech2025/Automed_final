@@ -559,7 +559,6 @@ async def analyze_scenario(
         cdt_subtopic_details = cdt_topic_activation_results
 
         formated_response = dental_manager.transform_json_list(cdt_subtopic_details)
-        print(f"##########*********CDT Subtopic Details*******######### : {formated_response}")
         # ICD Classifier Results
         icd_classifier_response = icd_classification_results # Use the original full result
         

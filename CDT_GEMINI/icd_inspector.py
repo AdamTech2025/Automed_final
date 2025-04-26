@@ -74,15 +74,24 @@ EXPLANATION: K05.1 (Chronic gingivitis) is appropriate as the scenario describes
         if topic_analysis is None:
             return "No ICD data analysis data available in DB"
         
+        # Handle the case when topic_analysis is a string
+        if isinstance(topic_analysis, str):
+            return topic_analysis
+        
         if isinstance(topic_analysis, dict):
             formatted_topics = []
             for category_num, topic_data in topic_analysis.items():
+                # Make sure topic_data is a dictionary before using get()
+                if not isinstance(topic_data, dict):
+                    formatted_topics.append(f"Category {category_num}: {str(topic_data)}")
+                    continue
+                    
                 topic_name = topic_data.get("name", "Unknown")
                 topic_result = topic_data.get("result", "No result")
                 parsed_result = topic_data.get("parsed_result", {})
                 
                 parsed_lines = []
-                if parsed_result:
+                if parsed_result and isinstance(parsed_result, dict):
                     for key in ["code", "explanation", "doubt"]:
                         if key in parsed_result and parsed_result[key]:
                             parsed_lines.append(f"{key.upper()}: {parsed_result[key]}")
@@ -98,12 +107,17 @@ EXPLANATION: K05.1 (Chronic gingivitis) is appropriate as the scenario describes
             
             return "\n\n".join(formatted_topics)
         
+        # As a fallback, convert to string
         return str(topic_analysis)
 
     def _format_questioner_data(self, questioner_data: Any) -> str:
         """Format questioner data into string"""
         if questioner_data is None:
             return "No additional information provided."
+        
+        # Handle the case when questioner_data is already a string
+        if isinstance(questioner_data, str):
+            return questioner_data
         
         if isinstance(questioner_data, dict):
             if questioner_data.get("has_questions", False) and questioner_data.get("has_answers", False):
@@ -122,6 +136,7 @@ EXPLANATION: K05.1 (Chronic gingivitis) is appropriate as the scenario describes
                 return "Questions were identified but not yet answered."
             return "No additional questions were needed."
         
+        # As a fallback for any other type
         return str(questioner_data)
 
     def _parse_response(self, response: str) -> Dict[str, Any]:
@@ -199,6 +214,14 @@ EXPLANATION: K05.1 (Chronic gingivitis) is appropriate as the scenario describes
     def process(self, scenario: str, topic_analysis: Any = None, questioner_data: Any = None) -> Dict[str, Any]:
         """Process a scenario and return ICD inspection results"""
         try:
+            # Log input types for debugging
+            self.logger.info(f"Processing scenario with topic_analysis type: {type(topic_analysis)}")
+            self.logger.info(f"Questioner data type: {type(questioner_data)}")
+            
+            # Pre-process topic_analysis if it's a string to convert to a more useful format
+            if isinstance(topic_analysis, str):
+                self.logger.info("Received topic_analysis as string, using as-is")
+            
             formatted_prompt = self.PROMPT_TEMPLATE.format(
                 scenario=scenario,
                 topic_analysis=self._format_topic_analysis(topic_analysis),
@@ -212,13 +235,20 @@ EXPLANATION: K05.1 (Chronic gingivitis) is appropriate as the scenario describes
             return result
             
         except Exception as e:
+            import traceback
+            error_traceback = traceback.format_exc()
             self.logger.error(f"Error in process: {str(e)}")
+            self.logger.error(f"Error traceback: {error_traceback}")
+            self.logger.error(f"Input topic_analysis type: {type(topic_analysis)}")
+            
+            # Include more detailed error information
             return {
                 "error": str(e),
                 "codes": [],
                 "explanation": f"Error occurred: {str(e)}",
                 "type": "error",
-                "data_source": "error"
+                "data_source": "error",
+                "traceback": error_traceback[:500] if error_traceback else None
             }
 
     @property
