@@ -12,7 +12,7 @@ import json # Add json import
 import traceback # Add traceback import
 from typing import List, Dict, Any # Import List for request models
 import datetime # Import datetime for timestamping
-
+from subtopic import dental_manager
 # Import Topic Activation components
 from sub_topic_registry import SubtopicRegistry
 # Import Questioner
@@ -558,6 +558,8 @@ async def analyze_scenario(
         # CDT Subtopic Details (Includes raw_data within 'codes' list)
         cdt_subtopic_details = cdt_topic_activation_results
 
+        formated_response = dental_manager.transform_json_list(cdt_subtopic_details)
+        print(f"##########*********CDT Subtopic Details*******######### : {formated_response}")
         # ICD Classifier Results
         icd_classifier_response = icd_classification_results # Use the original full result
         
@@ -591,7 +593,7 @@ async def analyze_scenario(
             "scenario": cleaned_scenario_text,
             "CDT_classifier": cdt_classifier_response,
             "CDT_topic": cdt_topic_summary,
-            "CDT_subtopic": cdt_subtopic_details,
+            "CDT_subtopic": formated_response,
             "ICD_classifier": icd_classifier_response,
             "ICD_topic_result": icd_topic_response,
             "questioner_data": questioner_data, # Add questioner results
