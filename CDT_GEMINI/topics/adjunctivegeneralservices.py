@@ -151,64 +151,105 @@ Example: "D9210-D9248, D9110-D9130, D9610-D9630"
             input_variables=["scenario"]
         )
     
-    def analyze_adjunctive_general_services(self, scenario: str) -> dict: # Changed return type
-        """Analyze the scenario and return parsed explanation, doubt, and code range."""
+    def analyze_adjunctive_general_services(self, scenario: str) -> dict: # Changed return type to dict
+        """Analyze the scenario and return raw LLM output and the applicable code range string."""
+        result = {"raw_output": None, "code_range": None}
         try:
             print(f"Analyzing adjunctive general services scenario: {scenario[:100]}...")
             raw_result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
-            parsed_result = _parse_llm_topic_output(raw_result) # Use helper
-            print(f"Adjunctive analyze result: Exp={parsed_result['explanation']}, Doubt={parsed_result['doubt']}, Range={parsed_result['code_range']}")
-            return parsed_result # Return parsed dictionary
+            result["raw_output"] = raw_result # Store raw output
+            
+            # Extract Code Range directly using regex based on the expected format
+            code_range_match = re.search(r"CODE RANGE:\s*(.*)", raw_result, re.IGNORECASE | re.DOTALL)
+            code_range_string = None # Initialize
+            
+            if code_range_match:
+                extracted_string = code_range_match.group(1).strip()
+                # Handle potential 'none' response
+                if extracted_string.lower() != 'none':
+                    code_range_string = extracted_string
+            else:
+                # Fallback: Try to find Dxxxx-Dxxxx patterns if "CODE RANGE:" marker isn't found
+                fallback_matches = re.findall(r"(D\d{4}-D\d{4})", raw_result)
+                if fallback_matches:
+                    code_range_string = ", ".join(fallback_matches)
+
+            result["code_range"] = code_range_string # Store extracted range (or None)
+
+            if code_range_string:
+                 print(f"Adjunctive analyze result: Found Code Range={code_range_string}")
+            else:
+                 print("Adjunctive analyze result: No applicable code range found in raw output.")
+                    
+            return result
+                    
         except Exception as e:
             print(f"Error in analyze_adjunctive_general_services: {str(e)}")
-            return {"explanation": None, "doubt": None, "code_range": None, "error": str(e)}
+            result["error"] = str(e) # Add error to result
+            return result # Return result even on error
     
     async def activate_adjunctive_general_services(self, scenario: str) -> dict:
-        """Activate relevant subtopics in parallel and return detailed results including explanation and doubt."""
-        final_result = {"explanation": None, "doubt": None, "code_range": None, "activated_subtopics": [], "codes": []}
+        """Activate relevant subtopics in parallel based on LLM-identified code ranges."""
+        # Consistent final result structure
+        final_result = {"raw_topic_data": None, "code_range": "D9000-D9999", "activated_subtopics": [], "subtopics_data": [], "error": None}
         try:
-            # Get the parsed analysis (explanation, doubt, code_range)
-            topic_analysis_result = self.analyze_adjunctive_general_services(scenario)
+            # Get the analysis result dictionary (including raw output and code range)
+            analysis_result = self.analyze_adjunctive_general_services(scenario)
             
-            # Store analysis results
-            final_result["explanation"] = topic_analysis_result.get("explanation")
-            final_result["doubt"] = topic_analysis_result.get("doubt")
-            final_result["code_range"] = "D9000-D9999" # Main range for this topic
+            # Store the raw output from the analysis step
+            final_result["raw_topic_data"] = analysis_result.get("raw_output")
+
+            # Check for errors during analysis before proceeding
+            if analysis_result.get("error"):
+                final_result["error"] = f"Analysis Error: {analysis_result['error']}"
+                # No need to delete error key here, just return
+                return final_result
             
-            code_range_string = topic_analysis_result.get("code_range")
+            # Get the code range string from the analysis result
+            code_range_string = analysis_result.get("code_range")
             
             if code_range_string:
                 print(f"Adjunctive activate using code ranges: {code_range_string}")
-                # Activate subtopics in parallel using the registry with the parsed code range string
-                subtopic_results = await self.registry.activate_all(scenario, code_range_string)
+                # Activate subtopics in parallel using the registry
+                # activate_all returns a list of dictionaries directly
+                subtopic_results_list = await self.registry.activate_all(scenario, code_range_string)
                 
-                # Aggregate codes from the subtopic results
-                aggregated_codes = []
-                activated_subtopic_names = set() # Collect names of subtopics that returned codes
+                # Aggregate results
+                aggregated_subtopic_data = [] # Stores the raw results/errors from subtopics
+                activated_subtopic_names = set() # Collect names of subtopics that were activated successfully
 
-                subtopic_results_list = subtopic_results.get("topic_result", [])
+                # Directly iterate over the returned list
                 for sub_result in subtopic_results_list:
-                    if isinstance(sub_result, dict) and not sub_result.get("error"):
-                        codes_from_sub = sub_result.get("codes", [])
-                        if codes_from_sub:
-                            aggregated_codes.extend(codes_from_sub)
-                            # Try to get a cleaner subtopic name
-                            subtopic_name_match = re.match(r"^(.*?)\s*\(", sub_result.get("topic", ""))
-                            if subtopic_name_match:
-                                activated_subtopic_names.add(subtopic_name_match.group(1).strip())
-                            else:
-                                activated_subtopic_names.add(sub_result.get("topic", "Unknown Subtopic"))
+                    # sub_result is a dict like: {"topic": ..., "code_range": ..., "raw_result": ..., "error": ...}
+                    if isinstance(sub_result, dict):
+                        topic_name = sub_result.get("topic", "Unknown Subtopic")
+                        if sub_result.get("error"):
+                            print(f"  Error activating subtopic '{topic_name}': {sub_result['error']}")
+                            # Store the error entry if needed for debugging/reporting
+                            aggregated_subtopic_data.append(sub_result) 
+                        else:
+                            # Add the successful raw result directly to the list
+                            aggregated_subtopic_data.append(sub_result) # Store the whole dict including raw_result
+                            activated_subtopic_names.add(topic_name) # Add name if successful
+                    else:
+                         print(f"  Warning: Unexpected item type in subtopic results list: {type(sub_result)}")
+
 
                 final_result["activated_subtopics"] = sorted(list(activated_subtopic_names))
-                final_result["codes"] = aggregated_codes # Assign the flattened list of code dicts
+                final_result["subtopics_data"] = aggregated_subtopic_data # Store the list of raw results/errors
             else:
-                print("No applicable code ranges found in adjunctive analysis.")
-                
+                print("No applicable code ranges identified by LLM for adjunctive analysis.")
+            
+            # Clear the error key if no error occurred during the activation phase
+            if final_result.get("error") is None:
+                 try: del final_result["error"]
+                 except KeyError: pass # Key might not exist if analysis failed
+
             return final_result
             
         except Exception as e:
             print(f"Error in adjunctive general services activation: {str(e)}")
-            final_result["error"] = str(e)
+            final_result["error"] = str(e) # Add activation error
             return final_result
     
     async def run_analysis(self, scenario: str) -> None:
@@ -216,11 +257,15 @@ Example: "D9210-D9248, D9110-D9130, D9610-D9630"
         print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
         result = await self.activate_adjunctive_general_services(scenario)
         print(f"\n=== ADJUNCTIVE GENERAL SERVICES ANALYSIS RESULT ===")
-        print(f"EXPLANATION: {result.get('explanation', 'N/A')}")
-        print(f"DOUBT: {result.get('doubt', 'N/A')}")
-        print(f"CODE RANGE: {result.get('code_range', 'None')}")
+        # Print the raw LLM analysis output using the new key
+        print(f"RAW TOPIC DATA:\n---\n{result.get('raw_topic_data', 'N/A')}\n---")
+        # Removed Explanation and Doubt
+        print(f"OVERALL TOPIC CODE RANGE: {result.get('code_range', 'None')}") # Clarified name
         print(f"ACTIVATED SUBTOPICS: {', '.join(result.get('activated_subtopics', []))}")
-        print(f"SPECIFIC CODES: {result.get('codes', [])}") # Print list directly for clarity
+        # Print the aggregated codes using the new key
+        print(f"SUBTOPICS DATA: {result.get('subtopics_data', [])}")
+        if 'error' in result:
+            print(f"ERROR: {result['error']}")
 
 adjunctive_general_services_service = AdjunctiveGeneralServices()
 # Example usage

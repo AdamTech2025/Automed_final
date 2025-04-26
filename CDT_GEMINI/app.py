@@ -65,7 +65,7 @@ from auth.auth_routes import router as auth_router
 from auth.auth_utils import get_current_user_id # Import the dependency
 
 # Configure logging
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
@@ -284,16 +284,17 @@ async def analyze_scenario(
         )
         
         # Process CDT results
-        cdt_topic_activation_results = cdt_registry_results.get("topic_result", [])
+        cdt_topic_activation_results = cdt_registry_results if isinstance(cdt_registry_results, list) else []
         logger.info(f"User {user_id}: Processed {len(cdt_topic_activation_results)} CDT topic results.")
         
         # Process ICD results
-        icd_topic_results = icd_registry_results.get("topic_result", [])
+        icd_topic_results = icd_registry_results if isinstance(icd_registry_results, list) else []
         if icd_topic_results:
             icd_topic_details = icd_topic_results[0]  # Should only be one
             logger.info(f"User {user_id}: Successfully processed ICD topic: {icd_topic_details.get('topic')}")
         else:
             logger.warning(f"User {user_id}: No result found for activated ICD category: {icd_category_to_activate}")
+            # Ensure icd_topic_details is a dict even on error for consistency
             icd_topic_details = {"error": f"Activation result missing for ICD category {icd_category_to_activate}"}
 
         # --- Step 4a: Save Initial Data to Database --- 

@@ -20,35 +20,8 @@ from subtopics.diagnostics.oralpathologylaboratory import oral_pathology_laborat
 from subtopics.diagnostics.prediagnosticservices import prediagnostic_service
 from subtopics.diagnostics.testsandexaminations import tests_service
 
-# Helper function to parse LLM activation results (same as in adjunctivegeneralservices.py)
-def _parse_llm_topic_output(result_text: str) -> dict:
-    parsed = {"explanation": None, "doubt": None, "code_range": None}
-    if not isinstance(result_text, str):
-        return parsed
+# Helper function removed
 
-    # Extract Explanation
-    explanation_match = re.search(r"EXPLANATION:\s*(.*?)(?=\s*DOUBT:|\s*CODE RANGE:|$)", result_text, re.DOTALL | re.IGNORECASE)
-    if explanation_match:
-        parsed["explanation"] = explanation_match.group(1).strip()
-        if parsed["explanation"].lower() == 'none': parsed["explanation"] = None
-
-    # Extract Doubt
-    doubt_match = re.search(r"DOUBT:\s*(.*?)(?=\s*CODE RANGE:|$)", result_text, re.DOTALL | re.IGNORECASE)
-    if doubt_match:
-        parsed["doubt"] = doubt_match.group(1).strip()
-        if parsed["doubt"].lower() == 'none': parsed["doubt"] = None
-
-    # Extract Code Range
-    code_range_match = re.search(r"CODE RANGE:\s*(.*)", result_text, re.IGNORECASE)
-    if code_range_match:
-        parsed["code_range"] = code_range_match.group(1).strip()
-        if parsed["code_range"].lower() == 'none': parsed["code_range"] = None
-    elif not parsed["code_range"]: # Fallback: Find Dxxxx-Dxxxx patterns if CODE RANGE: not found
-        matches = re.findall(r"(D\d{4}-D\d{4})", result_text)
-        if matches:
-            parsed["code_range"] = ", ".join(matches)
-
-    return parsed
 
 class DiagnosticServices:
     """Class to analyze and activate diagnostic services based on dental scenarios."""
@@ -128,61 +101,99 @@ List them in order of relevance, with the most relevant first.
             input_variables=["scenario"]
         )
     
-    def analyze_diagnostic(self, scenario: str) -> dict: # Changed return type
-        """Analyze the scenario and return parsed explanation, doubt, and code range."""
+    def analyze_diagnostic(self, scenario: str) -> dict: # Changed return type to dict
+        """Analyze the scenario and return raw LLM output and the applicable code range string."""
+        result = {"raw_output": None, "code_range": None}
         try:
             print(f"Analyzing diagnostic scenario: {scenario[:100]}...")
             raw_result = self.llm_service.invoke_chain(self.prompt_template, {"scenario": scenario})
-            parsed_result = _parse_llm_topic_output(raw_result) # Use helper
-            print(f"Diagnostic analyze result: Exp={parsed_result['explanation']}, Doubt={parsed_result['doubt']}, Range={parsed_result['code_range']}")
-            return parsed_result # Return parsed dictionary
+            result["raw_output"] = raw_result # Store raw output
+            
+            # Extract Code Range directly using regex based on the expected format
+            code_range_match = re.search(r"CODE RANGE:\s*(.*)", raw_result, re.IGNORECASE | re.DOTALL)
+            code_range_string = None # Initialize
+            
+            if code_range_match:
+                extracted_string = code_range_match.group(1).strip()
+                # Handle potential 'none' response
+                if extracted_string.lower() != 'none':
+                    code_range_string = extracted_string
+            else:
+                # Fallback: Try to find Dxxxx-Dxxxx patterns if "CODE RANGE:" marker isn't found
+                fallback_matches = re.findall(r"(D\d{4}-D\d{4})", raw_result)
+                if fallback_matches:
+                    code_range_string = ", ".join(fallback_matches)
+
+            result["code_range"] = code_range_string # Store extracted range (or None)
+
+            if code_range_string:
+                 print(f"Diagnostic analyze result: Found Code Range={code_range_string}")
+            else:
+                 print("Diagnostic analyze result: No applicable code range found in raw output.")
+                    
+            return result
+                    
         except Exception as e:
             print(f"Error in analyze_diagnostic: {str(e)}")
-            return {"explanation": None, "doubt": None, "code_range": None, "error": str(e)}
+            result["error"] = str(e) # Add error to result
+            return result # Return result even on error
     
     async def activate_diagnostic(self, scenario: str) -> dict: # Changed return type and logic
-        """Activate relevant subtopics in parallel and return detailed results including explanation and doubt."""
-        final_result = {"explanation": None, "doubt": None, "code_range": None, "activated_subtopics": [], "codes": []}
+        """Activate relevant subtopics in parallel based on LLM-identified code ranges."""
+        # Updated final result structure
+        final_result = {"raw_topic_data": None, "code_range": "D0100-D0999", "activated_subtopics": [], "subtopics_data": [], "error": None}
         try:
-            # Get the parsed analysis (explanation, doubt, code_range)
-            topic_analysis_result = self.analyze_diagnostic(scenario)
+            # Get the analysis result dictionary
+            analysis_result = self.analyze_diagnostic(scenario)
             
-            # Store analysis results
-            final_result["explanation"] = topic_analysis_result.get("explanation")
-            final_result["doubt"] = topic_analysis_result.get("doubt")
-            final_result["code_range"] = "D0100-D0999" # Hardcoded for now, might need dynamic lookup
+            # Store the raw output
+            final_result["raw_topic_data"] = analysis_result.get("raw_output")
+
+            # Check for errors during analysis
+            if analysis_result.get("error"):
+                final_result["error"] = f"Analysis Error: {analysis_result['error']}"
+                if final_result["error"] is None: del final_result["error"]
+                return final_result
             
-            code_range_string = topic_analysis_result.get("code_range")
+            # Get the code range string
+            code_range_string = analysis_result.get("code_range")
             
             if code_range_string:
                 print(f"Diagnostic activate using code ranges: {code_range_string}")
-                # Activate subtopics in parallel using the registry with the parsed code range string
-                subtopic_results = await self.registry.activate_all(scenario, code_range_string)
+                # Activate subtopics in parallel
+                # activate_all now returns a list of dictionaries directly
+                subtopic_results_list = await self.registry.activate_all(scenario, code_range_string)
                 
-                # Aggregate codes from the subtopic results
-                aggregated_codes = []
-                activated_subtopic_names = set() # Collect names of subtopics that returned codes
+                # Aggregate results
+                aggregated_subtopic_data = [] # Renamed for clarity
+                activated_subtopic_names = set()
 
-                subtopic_results_list = subtopic_results.get("topic_result", [])
+                # Directly iterate over the returned list
                 for sub_result in subtopic_results_list:
-                    if isinstance(sub_result, dict) and not sub_result.get("error"):
-                        codes_from_sub = sub_result.get("codes", [])
-                        if codes_from_sub:
-                            # Add subtopic name or keep original topic from sub-result if needed
-                            # For now, just aggregate the code dicts
-                            aggregated_codes.extend(codes_from_sub)
-                            # Try to get a cleaner subtopic name
-                            subtopic_name_match = re.match(r"^(.*?)\s*\(", sub_result.get("topic", ""))
-                            if subtopic_name_match:
-                                activated_subtopic_names.add(subtopic_name_match.group(1).strip())
-                            else:
-                                activated_subtopic_names.add(sub_result.get("topic", "Unknown Subtopic"))
+                    # sub_result is a dict like: {"topic": ..., "code_range": ..., "raw_result": ..., "error": ...}
+                    if isinstance(sub_result, dict):
+                        topic_name = sub_result.get("topic", "Unknown Subtopic")
+                        if sub_result.get("error"):
+                            print(f"  Error activating subtopic '{topic_name}': {sub_result['error']}")
+                            # Optionally store the error if needed
+                            # aggregated_subtopic_data.append({"topic": topic_name, "error": sub_result['error']})
+                        else:
+                            # Add the raw result directly to the list
+                            aggregated_subtopic_data.append(sub_result) # Store the whole dict including raw_result
+                            activated_subtopic_names.add(topic_name) # Add name if successful
+                    else:
+                         print(f"  Warning: Unexpected item type in subtopic results list: {type(sub_result)}")
 
                 final_result["activated_subtopics"] = sorted(list(activated_subtopic_names))
-                final_result["codes"] = aggregated_codes # Assign the flattened list of code dicts
+                final_result["subtopics_data"] = aggregated_subtopic_data # Store the list of raw results/errors
             else:
-                print("No applicable code ranges found in diagnostic analysis.")
+                print("No applicable code ranges identified by LLM for diagnostic analysis.")
                 
+            # Clear the error key if no error occurred
+            if final_result.get("error") is None:
+                 try: del final_result["error"]
+                 except KeyError: pass
+
             return final_result
             
         except Exception as e:
@@ -195,11 +206,13 @@ List them in order of relevance, with the most relevant first.
         print(f"Using model: {self.llm_service.model} with temperature: {self.llm_service.temperature}")
         result = await self.activate_diagnostic(scenario)
         print(f"\n=== DIAGNOSTIC ANALYSIS RESULT ===")
-        print(f"EXPLANATION: {result.get('explanation', 'N/A')}")
-        print(f"DOUBT: {result.get('doubt', 'N/A')}")
-        print(f"CODE RANGE: {result.get('code_range', 'None')}")
+        # Updated printing logic
+        print(f"RAW TOPIC DATA:\n---\n{result.get('raw_topic_data', 'N/A')}\n---")
+        print(f"OVERALL TOPIC CODE RANGE: {result.get('code_range', 'None')}")
         print(f"ACTIVATED SUBTOPICS: {', '.join(result.get('activated_subtopics', []))}")
-        print(f"SPECIFIC CODES: {result.get('codes', [])}")
+        print(f"SUBTOPICS DATA: {result.get('subtopics_data', [])}")
+        if 'error' in result:
+            print(f"ERROR: {result['error']}")
 
 diagnostic_service = DiagnosticServices()
 # Example usage

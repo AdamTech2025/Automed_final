@@ -18,16 +18,16 @@ Instructions:
 
 8) If you have uncertainties or need additional clarifications, list them in the "DOUBT" section.
 
-9) If the same code applies multiple times (e.g., multiple scans), include it the appropriate number of times IN SEPARATE OUTPUT BLOCKS FOR EACH INSTANCE.
+9) IMPORTANT OUTPUT STRUCTURE: If the same code applies multiple times (e.g., multiple scans) OR if multiple different codes apply, you MUST create a SEPARATE output block (starting with EXPLANATION:, followed by DOUBT:, then CODE:) for EACH individual instance of an applicable code.
 
 10) Only code for procedures actually performed on the date billed, not for planned future procedures.
 
 OUTPUT FORMAT:
-Your answer must strictly follow this exact format for each applicable code:
+Your answer must strictly follow this exact format. Create a separate block like the one below for EACH applicable code instance. Do NOT combine multiple codes or explanations into a single block.
 
-EXPLANATION: [provide a brief, concise explanation of why this code is applicable to the scenario]
-DOUBT: [list any uncertainties or questions about the applicability of this code, or "None"]
-CODE: [MUST BE ONLY the exact CDT code from the provided list (e.g., D1234) OR the single word "none". NO other text, summaries, or explanations are allowed in this field.]"""
+EXPLANATION: [provide a brief, concise explanation of why THIS SPECIFIC code instance is applicable to the scenario]
+DOUBT: [list any uncertainties or questions about the applicability of THIS SPECIFIC code instance, or "None"]
+CODE: [MUST BE ONLY the single, exact CDT code from the provided list (e.g., D1234) OR the single word "none". NO other text, summaries, or explanations are allowed in this field.]"""
 
 
 
