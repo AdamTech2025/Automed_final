@@ -23,7 +23,12 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # JWT Configuration (Read from environment variables)
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))
+# Ensure default value if not set or invalid
+try:
+    ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")) 
+except ValueError:
+    logger.warning("Invalid ACCESS_TOKEN_EXPIRE_MINUTES, defaulting to 30.")
+    ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 if not SECRET_KEY:
     logger.error("FATAL ERROR: JWT_SECRET_KEY environment variable not set.")
@@ -41,7 +46,7 @@ def get_password_hash(password: str) -> str:
 
 # --- JWT Token Creation ---
 def create_access_token(data: dict, expires_delta: Union[timedelta, None] = None) -> str:
-    """Creates a JWT access token."""
+    """Creates a JWT access token. Expects 'sub' (email) and optionally 'role' in data."""
     if not SECRET_KEY:
         raise ValueError("JWT_SECRET_KEY is not configured. Cannot create token.")
         
@@ -89,13 +94,13 @@ async def send_otp_email(email: str, otp: str):
 
     Please enter this code on the verification page to complete your account setup. This code will expire in 10 minutes.
 
-    If you didn’t request this code, please ignore this email or contact our support team at support@adamtechnologies.in.
+    If you didn't request this code, please ignore this email or contact our support team at support@adamtechnologies.in.
 
     Best regards,
     The Adam Tech Team
     Adam Tech Inc. | www.adamtechnologies.in
     """)
-    msg['Subject'] = 'Your Adam Tech OTP for Verification'
+    msg['Subject'] = 'Your Adam Tech OTP for Verification'
     msg['From'] = sender_email
     msg['To'] = email
 
@@ -139,10 +144,11 @@ def calculate_otp_expiry(minutes: int = 10) -> datetime:
 # --- Authentication Dependency --- 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login") # Point to your login route
 
-async def get_current_user_id(token: str = Depends(oauth2_scheme)) -> str:
+async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
     """
-    Dependency to get the current user's ID (UUID) from a JWT token.
-    Validates the token and fetches the user from the database.
+    Dependency to get the current user's data (as dict) from a JWT token.
+    Validates the token, fetches the user from the database, and checks verification status.
+    Returns the full user dictionary (excluding sensitive fields potentially handled by DB query).
     """
     # Import database here to avoid potential top-level circular imports
     from database import MedicalCodingDB 
@@ -162,13 +168,19 @@ async def get_current_user_id(token: str = Depends(oauth2_scheme)) -> str:
         if email is None:
             logger.warning("Token payload missing 'sub' (email) claim.")
             raise credentials_exception
+        # Role is now also in the token, but we fetch from DB for freshness
+        # role: str | None = payload.get("role") # Example if we wanted to use role from token
+        # if role is None:
+        #    logger.warning("Token payload missing 'role' claim.")
+        #    raise credentials_exception
+
     except JWTError as e:
         logger.error(f"JWT Error during token decode: {e}")
         raise credentials_exception from e
 
     # Fetch user from DB using the email from the token
-    user = db.get_user_by_email(email)
-    if user is None or not user.get('id'):
+    user = db.get_user_by_email(email) # This now fetches the role too
+    if user is None:
         logger.warning(f"User with email '{email}' from token not found in DB.")
         raise credentials_exception
         
@@ -181,5 +193,26 @@ async def get_current_user_id(token: str = Depends(oauth2_scheme)) -> str:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    logger.info(f"Authenticated user ID: {user['id']} for email: {email}")
-    return user['id'] # Return the user's UUID 
+    logger.info(f"Authenticated user ID: {user.get('id')} | Email: {email} | Role: {user.get('role')}")
+    # Exclude sensitive fields before returning (already handled by get_user_by_email select *)
+    user_data = user.copy()
+    user_data.pop('hashed_password', None)
+    user_data.pop('otp', None)
+    user_data.pop('otp_expires_at', None)
+    return user_data # Return the user dictionary
+
+# --- Role Check Dependency ---
+async def require_admin_role(current_user: dict = Depends(get_current_user)):
+    """
+    Dependency that checks if the current user has the 'admin' role.
+    Raises HTTP 403 Forbidden if the user is not an admin.
+    """
+    user_role = current_user.get('role')
+    if user_role != 'admin':
+        logger.warning(f"Admin access denied for user {current_user.get('id')} with role '{user_role}'.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrator privileges required.",
+        )
+    logger.info(f"Admin access granted for user {current_user.get('id')}.")
+    return current_user # Return user data if admin check passes 

@@ -1,11 +1,11 @@
 from fastapi import FastAPI, HTTPException, Depends, status
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 import uvicorn
 import logging
 import os
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import json
 
 # Import the data cleaner
@@ -17,7 +17,7 @@ from icd_classifier import ICDClassifier
 
 # Import Authentication Router and Dependency
 from auth.auth_routes import router as auth_router
-from auth.auth_utils import get_current_user_id
+from auth.auth_utils import get_current_user, require_admin_role
 
 # Import Topic Activation components
 from sub_topic_registry import SubtopicRegistry
@@ -220,20 +220,48 @@ class CodeStatusRequest(BaseModel):
     icd_codes: List[str] = []
     rejected_cdt_codes: List[str] = []
     rejected_icd_codes: List[str] = []
+
+# --- User Activity Response Model ---
+class UserDetails(BaseModel):
+    id: str
+    name: str
+    email: EmailStr
+    phone: Optional[str]
+    is_email_verified: bool
+    created_at: Optional[str] # Assuming it comes as string from DB
+    role: str # Add role
+
+class AnalysisSummary(BaseModel):
+    id: str
+    user_question: Optional[str]
+    created_at: Optional[str]
+
+class UserActivityResponse(BaseModel):
+    user_details: UserDetails
+    analysis_count: int
+    analyses: List[AnalysisSummary]
+
+# --- Admin Response Models ---
+class AdminUserSummary(UserDetails): # Inherits fields from UserDetails
+    analysis_count: int
+
+class AllUsersActivityResponse(BaseModel):
+    users: List[AdminUserSummary]
+
 # --- End Request Models ---
 
 @app.post("/api/analyze", response_model=AnalysisStep6Output)
 async def analyze_scenario_endpoint(
     payload: ScenarioInput,
-    user_id: str = Depends(get_current_user_id) # Inject user_id dependency
+    current_user: dict = Depends(get_current_user) # Inject user data dependency
 ):
     """
     Receives a dental scenario, cleans it, classifies CDT/ICD, 
     activates topics, saves to DB, generates questions, runs inspectors (conditionally),
     and returns full results. Requires authentication.
     """
-    logger.info(f"Received scenario for full analysis from user {user_id}: {payload.scenario[:75]}...")
-    record_id = None # Initialize record_id for potential error handling later
+    logger.info(f"Received scenario for full analysis from user {current_user.get('id')}: {payload.scenario[:75]}...")
+    record_id = None
     questioner_data = {} # Initialize for scope
     inspector_results = {} # Initialize for scope
     try:
@@ -299,7 +327,7 @@ async def analyze_scenario_endpoint(
         cdt_activation_task = None
         icd_activation_task = None
         
-        # Corrected Indentation for Task Creation
+        # Corrected Indentation for Task Creation (relative to outer try block)
         if cdt_code_ranges_to_activate:
             cdt_ranges_str = ",".join(sorted(list(cdt_code_ranges_to_activate)))
             logger.info(f"Creating activation task for CDT ranges: {cdt_ranges_str}")
@@ -308,12 +336,12 @@ async def analyze_scenario_endpoint(
             async def _dummy_cdt_task(): return []
             cdt_activation_task = _dummy_cdt_task()
             
-        if icd_category_to_activate:
-            logger.info(f"Creating activation task for ICD category: {icd_category_to_activate}")
-            icd_activation_task = topic_registry.activate_all(cleaned_scenario_text, icd_category_to_activate)
-        else:
-            async def _dummy_icd_task(): return []
-            icd_activation_task = _dummy_icd_task()
+            if icd_category_to_activate:
+                logger.info(f"Creating activation task for ICD category: {icd_category_to_activate}")
+                icd_activation_task = topic_registry.activate_all(cleaned_scenario_text, icd_category_to_activate)
+            else:
+                async def _dummy_icd_task(): return []
+                icd_activation_task = _dummy_icd_task()
 
         # Run activations concurrently using asyncio.gather
         logger.info(f"Starting parallel activation of CDT and ICD topics")
@@ -337,7 +365,7 @@ async def analyze_scenario_endpoint(
             # Ensure icd_topic_details is a dict even on error for consistency
             icd_topic_details = {"error": f"Activation result missing for ICD category {icd_category_to_activate}", "topic": "Error", "code_range": icd_category_to_activate}
         else:
-             # If no category was activated, keep icd_topic_details as an empty dict
+            # If no category was activated, keep icd_topic_details as an empty dict
             logger.info("No ICD category was activated.")
         logger.debug(f"ICD Activation Result: {icd_topic_details}")
 
@@ -365,7 +393,7 @@ async def analyze_scenario_endpoint(
         }
 
         # Save to DB and get record_id
-        db_result_list = db.create_analysis_record(db_data, user_id=user_id)
+        db_result_list = db.create_analysis_record(db_data, user_id=current_user.get('id'))
         
         if db_result_list and isinstance(db_result_list, list) and len(db_result_list) > 0 and "id" in db_result_list[0]:
             record_id = db_result_list[0]["id"]
@@ -519,11 +547,11 @@ async def analyze_scenario_endpoint(
 @app.post("/api/add-custom-code")
 async def add_custom_code(
     request: CustomCodeRequest,
-    user_id: str = Depends(get_current_user_id) # Inject user_id dependency
+    current_user: dict = Depends(get_current_user) # Inject user data dependency
 ):
     """Process and add a custom code for a given scenario, associated with the user."""
     try:
-        logger.info(f"--- Adding Custom Code for Record {request.record_id} by User {user_id} --- ")
+        logger.info(f"--- Adding Custom Code for Record {request.record_id} by User {current_user.get('id')} --- ")
         logger.info(f"Custom code: {request.code}")
         
         # Run the custom code analysis 
@@ -537,7 +565,7 @@ async def add_custom_code(
                 scenario=request.scenario,
                 cdt_codes=request.code,
                 response=analysis_result, # Store the full response
-                user_id=user_id
+                user_id=current_user.get('id')
             )
             logger.info(f"Custom code analysis saved to dental_code_analysis table.")
         except Exception as db_err:
@@ -560,7 +588,7 @@ async def add_custom_code(
             is_applicable = "applicable? yes" in analysis_result.lower()
         else:
             explanation = "Invalid analysis result format received."
-
+        
         # Format response (mimicking inspector structure for consistency)
         code_data = {
             "code": request.code,
@@ -598,10 +626,11 @@ async def add_custom_code(
 @app.post("/api/store-code-status")
 async def store_code_status(
     request: CodeStatusRequest,
-    user_id: str = Depends(get_current_user_id) # Inject user_id dependency
+    current_user: dict = Depends(get_current_user) # Inject user data dependency
 ):
     """Store the final status of selected and rejected codes based on user input."""
     try:
+        user_id = current_user.get('id') # Extract user ID
         logger.info(f"--- Storing Code Status for Record {request.record_id} by User {user_id} --- ")
         logger.info(f"Accepted CDT: {request.cdt_codes}")
         logger.info(f"Rejected CDT: {request.rejected_cdt_codes}")
@@ -637,6 +666,89 @@ async def store_code_status(
         if isinstance(e, HTTPException) and e.status_code == 401:
             status_code = e.status_code
         raise HTTPException(status_code=status_code, detail=str(e))
+
+# --- User Activity Endpoint ---
+@app.get("/api/user/activity", response_model=UserActivityResponse)
+async def get_user_activity(
+    current_user: dict = Depends(get_current_user) # Inject user data dependency
+):
+    """Retrieve user details and their analysis history."""
+    user_id = current_user.get('id') # Get user ID from the dependency result
+    logger.info(f"Fetching activity for user ID: {user_id} (Role: {current_user.get('role')})")
+    try:
+        # Fetch user details
+        user_details_data = db.get_user_details_by_id(user_id)
+        if not user_details_data:
+            logger.warning(f"User not found for activity request: {user_id}")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        
+        # Fetch user analyses
+        user_analyses_data = db.get_user_analyses(user_id)
+        
+        # Prepare response
+        user_details = UserDetails(**user_details_data)
+        analysis_summaries = [AnalysisSummary(**analysis) for analysis in user_analyses_data]
+        
+        response = UserActivityResponse(
+            user_details=user_details,
+            analysis_count=len(analysis_summaries),
+            analyses=analysis_summaries
+        )
+        
+        logger.info(f"Successfully retrieved activity for user ID: {user_id} ({len(analysis_summaries)} analyses)")
+        return response
+
+    except HTTPException as http_exc: # Re-raise HTTP exceptions
+        raise http_exc
+    except Exception as e:
+        error_details = traceback.format_exc()
+        logger.error(f"❌ ERROR fetching user activity for User {user_id}: {str(e)}")
+        logger.error(f"STACK TRACE: {error_details}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve user activity")
+
+# --- Admin Endpoint --- 
+@app.get("/api/admin/all-users", response_model=AllUsersActivityResponse)
+async def get_all_user_activity(
+    admin_user: dict = Depends(require_admin_role) # Use REAL admin check dependency
+):
+    """(Admin) Retrieve details and analysis count for all users."""
+    admin_user_id = admin_user.get('id') # Get admin user ID
+    logger.info(f"Admin request received from {admin_user_id} (Role: {admin_user.get('role')}) to fetch all user activity.")
+    try:
+        # Fetch all user details
+        all_users_data = db.get_all_users_details()
+        if not all_users_data:
+             logger.info("No users found to report.")
+             return AllUsersActivityResponse(users=[])
+             
+        # Fetch all analysis summaries (includes user_id)
+        all_analyses_data = db.get_user_analyses() # Call with no user_id
+        
+        # Create a map of user_id -> analysis_count
+        analysis_counts = {}
+        for analysis in all_analyses_data:
+            uid = analysis.get('user_id')
+            if uid:
+                analysis_counts[uid] = analysis_counts.get(uid, 0) + 1
+                
+        # Prepare response list
+        admin_user_summaries = []
+        for user_data in all_users_data:
+            user_id = user_data.get('id')
+            user_summary = AdminUserSummary(
+                **user_data, # Pass all fields from UserDetails
+                analysis_count=analysis_counts.get(user_id, 0)
+            )
+            admin_user_summaries.append(user_summary)
+
+        response = AllUsersActivityResponse(users=admin_user_summaries)
+        logger.info(f"Successfully retrieved activity summary for {len(admin_user_summaries)} users.")
+        return response
+
+    except Exception as e:
+        error_details = traceback.format_exc()
+        logger.error(f"❌ ERROR fetching all user activity: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve all user activity")
 
 # Add a root endpoint for basic checks
 @app.get("/")

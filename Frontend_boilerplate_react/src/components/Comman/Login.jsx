@@ -35,10 +35,15 @@ const Login = () => {
       setIsLoading(true);
       try {
         const response = await loginUser({ email, password });
-        if (response.access_token) {
-          login();
+        if (response.access_token && response.name && response.email && response.role) {
+          const userData = { 
+            name: response.name,
+            email: response.email,
+            role: response.role 
+          };
+          login(userData, response.access_token);
         } else {
-          throw new Error(response.detail || 'Login response missing token.');
+          throw new Error(response.detail || 'Login response missing token or user details.');
         }
       } catch (error) {
         setModalData({ title: 'Login Failed', message: error.detail || error.message || 'Invalid credentials or server error.', isSuccess: false });
