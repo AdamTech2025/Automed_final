@@ -203,63 +203,6 @@ REJECTED CODES: D0140, D0220, D0230
     def process(self, scenario: str, topic_analysis: Any = None, questioner_data: Any = None) -> Dict[str, Any]:
         """Process a dental scenario and return inspection results"""
         try:
-            # Print detailed debug info about data going to inspectors
-            print("\n" + "*"*50)
-            print("**** CDT INSPECTOR RECEIVED DATA ****")
-            print("*"*50)
-            print(f"SCENARIO TYPE: {type(scenario)}")
-            print(f"SCENARIO PREVIEW: {scenario[:100]}...")
-
-            print(f"\nTOPIC_ANALYSIS TYPE: {type(topic_analysis)}")
-            if isinstance(topic_analysis, list):
-                print(f"TOPIC_ANALYSIS LIST LENGTH: {len(topic_analysis)}")
-                if len(topic_analysis) > 0:
-                    print(f"FIRST ITEM TYPE: {type(topic_analysis[0])}")
-                    if isinstance(topic_analysis[0], dict):
-                        print(f"FIRST ITEM KEYS: {list(topic_analysis[0].keys())}")
-                        if 'codes' in topic_analysis[0]:
-                            print(f"CODES TYPE: {type(topic_analysis[0]['codes'])}")
-                            print(f"CODES LENGTH: {len(topic_analysis[0]['codes']) if isinstance(topic_analysis[0]['codes'], list) else 'Not a list'}")
-                            if isinstance(topic_analysis[0]['codes'], list) and len(topic_analysis[0]['codes']) > 0:
-                                print(f"FIRST CODE KEYS: {list(topic_analysis[0]['codes'][0].keys()) if isinstance(topic_analysis[0]['codes'][0], dict) else 'Not a dict'}")
-            elif isinstance(topic_analysis, dict):
-                print(f"TOPIC_ANALYSIS DICT KEYS: {list(topic_analysis.keys())}")
-                # Print a few key/value pairs for illustration
-                for key in list(topic_analysis.keys())[:2]:  # First 2 keys
-                    print(f"  KEY: {key}, VALUE TYPE: {type(topic_analysis[key])}")
-            else:
-                print(f"TOPIC_ANALYSIS VALUE: {str(topic_analysis)[:200]}")
-
-            print(f"\nQUESTIONER_DATA TYPE: {type(questioner_data)}")
-            if isinstance(questioner_data, dict):
-                print(f"QUESTIONER_DATA KEYS: {list(questioner_data.keys())}")
-            else:
-                print(f"QUESTIONER_DATA VALUE: {str(questioner_data)[:200]}")
-            print("*"*50)
-            
-            # Print full data content for all three parameters
-            print("\n" + "="*80)
-            print("FULL DATA RECEIVED BY INSPECTOR")
-            print("="*80)
-            
-            print("\n[SCENARIO FULL TEXT]:")
-            print(scenario)
-            
-            print("\n[TOPIC_ANALYSIS FULL CONTENT]:")
-            import json
-            if isinstance(topic_analysis, (dict, list)):
-                print(json.dumps(topic_analysis, indent=2))
-            else:
-                print(topic_analysis)
-                
-            print("\n[QUESTIONER_DATA FULL CONTENT]:")
-            if isinstance(questioner_data, (dict, list)):
-                print(json.dumps(questioner_data, indent=2))
-            else:
-                print(questioner_data)
-            
-            print("="*80)
-            
             # Pre-process topic_analysis to ensure all candidate codes are properly represented
             all_candidate_codes = self._extract_all_candidate_codes(topic_analysis)
             self.logger.info(f"Extracted {len(all_candidate_codes)} candidate codes for analysis")
@@ -440,21 +383,17 @@ class InspectorCLI:
     def print_settings(self):
         """Print current model settings"""
         settings = self.inspector.current_settings
-        print(f"Using model: {settings['model']} with temperature: {settings['temperature']}")
+        self.logger.info(f"Inspector settings - Model: {settings['model']}, Temp: {settings['temperature']}")
 
     def print_results(self, result: Dict[str, Any]):
         """Print inspection results in a formatted way"""
-        print("\n=== INSPECTION RESULTS ===")
-        print("\nAccepted Codes:")
-        for code in result["codes"]:
-            print(f"- {code}")
-        
-        print("\nRejected Codes:")
-        for code in result["rejected_codes"]:
-            print(f"- {code}")
-        
-        print("\nExplanation:")
-        print(result["explanation"])
+        if "error" in result:
+            self.logger.error(f"Inspection Error: {result['error']}")
+            return
+
+        self.logger.info(f"Inspection Accepted Codes: {result['codes']}")
+        self.logger.info(f"Inspection Rejected Codes: {result['rejected_codes']}")
+        self.logger.info(f"Inspection Explanation: {result['explanation']}")
 
     def run(self):
         """Run the CLI interface"""

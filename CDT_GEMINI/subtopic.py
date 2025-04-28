@@ -163,12 +163,26 @@ Rules:
         output_json_list = copy.deepcopy(input_json_list)
         
         for topic_json in output_json_list:
-            subtopics_data = topic_json['raw_result']['subtopics_data']
-            for subtopic in subtopics_data:
-                raw_result = subtopic['raw_result']
-                parsed_results = self.parse_llm_output(raw_result)
-                subtopic['raw_result'] = parsed_results
-        
+            # Check if raw_result exists and is a dictionary containing subtopics_data
+            if 'raw_result' in topic_json and isinstance(topic_json['raw_result'], dict) and 'subtopics_data' in topic_json['raw_result']:
+                subtopics_data = topic_json['raw_result']['subtopics_data']
+                if isinstance(subtopics_data, list):
+                    for subtopic in subtopics_data:
+                        if 'raw_result' in subtopic:
+                            original_raw_result = subtopic['raw_result'] # Keep the original raw result string
+                            # Parse the original raw result
+                            parsed_results = self.parse_llm_output(original_raw_result)
+                            # Add the parsed results under a new key, keep original raw_result
+                            subtopic['parsed_result'] = parsed_results 
+                            # subtopic['raw_result'] = original_raw_result # Ensure original is preserved (already there)
+                        else:
+                            # Handle case where subtopic might not have raw_result
+                            subtopic['parsed_result'] = [] 
+                else:
+                     logger.warning(f"Expected subtopics_data to be a list in topic {topic_json.get('topic')}, got {type(subtopics_data)}")
+            # else: # Handle cases where raw_result format is unexpected or missing
+            #     logger.warning(f"Unexpected format or missing 'raw_result' or 'subtopics_data' in topic: {topic_json.get('topic')}")
+
         return output_json_list
 
 # Example usage with multiple topics

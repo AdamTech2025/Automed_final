@@ -79,6 +79,9 @@ class LLMService:
                 elif isinstance(prompt, dict):
                     messages.append(prompt)
                 
+                # Print status before hitting the API
+                print(f"--> Calling LLM API: Model={self.model}, Temp={self.temperature}")
+                
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=messages,

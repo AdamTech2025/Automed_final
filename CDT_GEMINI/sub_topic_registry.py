@@ -64,7 +64,7 @@ class SubtopicRegistry:
                             thread_pool,
                             lambda s=scenario: subtopic["activate_func"](s)
                         ),
-                        timeout=30  # Add timeout to prevent hanging
+                        timeout=60  # Increased timeout to 60 seconds
                     )
                 
                 logger.info(f"<-- Finished activating topic: {subtopic['name']}")

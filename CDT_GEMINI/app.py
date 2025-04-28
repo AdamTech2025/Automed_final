@@ -1,22 +1,40 @@
-﻿from fastapi import FastAPI, HTTPException, Request, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status
 from pydantic import BaseModel
 import uvicorn
 import logging
-import asyncio # Add asyncio import
-import os # Add os import for getenv
-from fastapi.middleware.cors import CORSMiddleware # Import CORS Middleware
-from data_cleaner import DentalScenarioProcessor # Import the processor
-from cdt_classifier import CDTClassifier       # Import CDT Classifier
-from icd_classifier import ICDClassifier       # Import ICD Classifier
-import json # Add json import
-import traceback # Add traceback import
-from typing import List, Dict, Any # Import List for request models
-import datetime # Import datetime for timestamping
-from subtopic import dental_manager
+import os
+from fastapi.middleware.cors import CORSMiddleware
+import asyncio
+from typing import Dict, Any, List
+import json
+
+# Import the data cleaner
+from data_cleaner import DentalScenarioProcessor
+
+# Import Classifiers
+from cdt_classifier import CDTClassifier
+from icd_classifier import ICDClassifier
+
+# Import Authentication Router and Dependency
+from auth.auth_routes import router as auth_router
+from auth.auth_utils import get_current_user_id
+
 # Import Topic Activation components
 from sub_topic_registry import SubtopicRegistry
+
+# Import Database class
+from database import MedicalCodingDB
+
 # Import Questioner
 from questioner import Questioner
+
+# Import Inspectors
+from inspector import DentalInspector
+from icd_inspector import ICDInspector
+
+# Import Subtopic Parser
+from subtopic import dental_manager
+
 # CDT Topics
 from topics.diagnostics import diagnostic_service
 from topics.preventive import preventive_service
@@ -30,7 +48,8 @@ from topics.prosthodonticsfixed import prosthodontics_service as prostho_fixed_s
 from topics.oralandmaxillofacialsurgery import oral_surgery_service
 from topics.orthodontics import orthodontic_service
 from topics.adjunctivegeneralservices import adjunctive_general_services_service
-# ICD Topics - Corrected Imports based on previous step
+
+# ICD Topics
 from icdtopics.disordersofpulpandperiapicaltissues import disorders_of_pulp_and_periapical_tissues_service
 from icdtopics.dentalencounters import dental_encounter_service
 from icdtopics.disordersofteeth import disorders_of_teeth_service
@@ -50,27 +69,23 @@ from icdtopics.medicalfindingsrelatedtodentaltreatment import medical_findings_d
 from icdtopics.socialdeterminants import social_determinants_service
 from icdtopics.symptomsanddisorderspertienttoorthodontiacases import symptoms_and_disorders_orthodontics_service
 
-# Import Database class
-from database import MedicalCodingDB
-
-# Import Inspectors
-from inspector import DentalInspector
-from icd_inspector import ICDInspector
-
 # Import Add Code functionality
 from add_codes.add_code_data import Add_code_data
 
-# Import Authentication Router and Dependency
-from auth.auth_routes import router as auth_router
-from auth.auth_utils import get_current_user_id # Import the dependency
+# Import Traceback for detailed error logging
+import traceback
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error") # USE UVICORN'S LOGGER
+
+# Silence httpx INFO logs
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 app = FastAPI(
-    title="Dental Scenario Analysis API",
-    description="API for analyzing dental scenarios and suggesting CDT/ICD codes.",
+    title="Dental Scenario Analysis API - Step 1: Cleaning & Auth",
+    description="API for cleaning dental scenarios, with authentication.",
     version="0.1.0"
 )
 
@@ -94,19 +109,21 @@ app.add_middleware(
 # Include Authentication Routes
 app.include_router(auth_router)
 
-# Initialize processors/classifiers
+# Initialize processors
 scenario_processor = DentalScenarioProcessor()
-cdt_classifier = CDTClassifier()
-icd_classifier = ICDClassifier()
-questioner = Questioner() # Initialize Questioner
-cdt_inspector = DentalInspector() # Initialize CDT Inspector
-icd_inspector = ICDInspector() # Initialize ICD Inspector
+cdt_classifier = CDTClassifier()       # Initialize CDT Classifier
+icd_classifier = ICDClassifier()       # Initialize ICD Classifier
 
 # Initialize Topic Registry (Combined CDT & ICD)
 topic_registry = SubtopicRegistry()
 
 # Initialize Database Connection
 db = MedicalCodingDB()
+
+# Initialize Questioner & Inspectors
+questioner = Questioner()
+cdt_inspector = DentalInspector()
+icd_inspector = ICDInspector()
 
 # --- CDT Topic Mapping and Registration ---
 CDT_TOPIC_MAPPING = {
@@ -126,7 +143,7 @@ CDT_TOPIC_MAPPING = {
 for code_range, topic_info in CDT_TOPIC_MAPPING.items():
     topic_registry.register(code_range, topic_info["func"], topic_info["name"])
 
-# --- ICD Topic Mapping and Registration (Corrected based on previous step) ---
+# --- ICD Topic Mapping and Registration ---
 ICD_CATEGORY_NAMES = {
     "1": "Dental Encounters", "2": "Dental Caries", "3": "Disorders of Teeth",
     "4": "Disorders of Pulp and Periapical Tissues", "5": "Diseases and Conditions of the Periodontium",
@@ -163,14 +180,39 @@ ICD_TOPIC_MAPPING = {
 for category_num, topic_info in ICD_TOPIC_MAPPING.items():
     topic_registry.register(category_num, topic_info["func"], topic_info["name"])
 
+# --- Request Models ---
 class ScenarioInput(BaseModel):
     scenario: str
 
-# --- Add Request Models from app.py.bak ---
+class CleanedScenarioOutput(BaseModel):
+    original_scenario: str
+    cleaned_scenario: str
+    standardized_scenario: str
+    details: dict
+
+class AnalysisStep2Output(BaseModel):
+    original_scenario: str
+    cleaned_scenario: str 
+    standardized_scenario: str
+    cdt_classification_results: Dict[str, Any]
+    icd_classification_results: Dict[str, Any]
+
+class AnalysisStep3Output(AnalysisStep2Output):
+    cdt_topic_activation_results: List[Dict[str, Any]]
+    icd_topic_activation_results: Dict[str, Any] 
+
+class AnalysisStep4Output(AnalysisStep3Output):
+    record_id: str
+
+class AnalysisStep6Output(AnalysisStep4Output):
+    questioner_data: Dict[str, Any]
+    inspector_results: Dict[str, Any]
+
+# Request models from app.txt
 class CustomCodeRequest(BaseModel):
     code: str
     scenario: str # Need the original scenario for Add_code_data
-    record_id: str # Might be useful for context, though not used in bak logic
+    record_id: str # Might be useful for context
 
 class CodeStatusRequest(BaseModel):
     record_id: str
@@ -178,237 +220,183 @@ class CodeStatusRequest(BaseModel):
     icd_codes: List[str] = []
     rejected_cdt_codes: List[str] = []
     rejected_icd_codes: List[str] = []
-# ------------------------------------------
+# --- End Request Models ---
 
-# REMOVE the old response model
-# class DetailedAnalysisOutput(BaseModel):
-#     standardized_scenario: str
-#     cdt_classification_results: dict 
-#     icd_classification_results: dict 
-#     cdt_topic_results: dict 
-#     icd_topic_results: dict 
-
-# REMOVE the old helper function (parsing is now done in SubtopicRegistry)
-# def _parse_activation_result(result_text: str) -> dict: ... 
-
-# Remove response_model from the endpoint definition
-# @app.post(\"/api/analyze\", response_model=DetailedAnalysisOutput)
-@app.post("/api/analyze")
-async def analyze_scenario(
+@app.post("/api/analyze", response_model=AnalysisStep6Output)
+async def analyze_scenario_endpoint(
     payload: ScenarioInput,
     user_id: str = Depends(get_current_user_id) # Inject user_id dependency
 ):
     """
     Receives a dental scenario, cleans it, classifies CDT/ICD, 
-    activates relevant CDT/ICD topics, saves to DB associated with the user, 
-    and returns results.
+    activates topics, saves to DB, generates questions, runs inspectors (conditionally),
+    and returns full results. Requires authentication.
     """
-    logger.info(f"User {user_id}: Received scenario for analysis: {payload.scenario[:75]}...")
-    record_id = None # Initialize record_id for error handling
-
+    logger.info(f"Received scenario for full analysis from user {user_id}: {payload.scenario[:75]}...")
+    record_id = None # Initialize record_id for potential error handling later
+    questioner_data = {} # Initialize for scope
+    inspector_results = {} # Initialize for scope
     try:
         # Step 1: Clean the scenario
-        logger.info(f"User {user_id}: *********🔍 step 1 :Cleaning Scenario:*********************")
+        logger.info(f"*********🔍 Step 1: Cleaning Scenario:*********************")
         cleaned_data = scenario_processor.process(payload.scenario)
-        cleaned_scenario_text = cleaned_data["standardized_scenario"]
-        logger.info(f"User {user_id}: Scenario cleaned successfully.")
+        cleaned_scenario_text = cleaned_data.get("standardized_scenario", "")
+        if not cleaned_scenario_text:
+            logger.error("Scenario cleaning failed or produced empty result.")
+            raise HTTPException(status_code=500, detail="Failed to clean scenario.")
+        logger.info(f"Scenario cleaned successfully.")
 
         # Step 2: Run CDT & ICD Classifiers concurrently
-        logger.info(f"User {user_id}: *********🚀 step 2: Starting Concurrent CDT & ICD Classification:*********************")
+        logger.info(f"*********🚀 Step 2: Starting Concurrent CDT & ICD Classification:*********************")
         cdt_task = asyncio.to_thread(cdt_classifier.process, cleaned_scenario_text)
         icd_task = asyncio.to_thread(icd_classifier.process, cleaned_scenario_text)
-        cdt_classification_results, icd_classification_results = await asyncio.gather(cdt_task, icd_task)
-        logger.info(f"User {user_id}: CDT & ICD classification completed.")
+        
+        # Await results from both classifiers
+        cdt_results, icd_results = await asyncio.gather(cdt_task, icd_task)
+        logger.info(f"CDT & ICD classification completed.")
+        logger.debug(f"CDT Raw Results: {cdt_results}")
+        logger.debug(f"ICD Raw Results: {icd_results}")
 
         # Step 3: Activate relevant CDT and ICD topics CONCURRENTLY
-        logger.info(f"User {user_id}: *********💡 step 3: Activating Topics Concurrently:*********************")
+        logger.info(f"*********💡 Step 3: Activating Topics Concurrently:*********************")
         
         cdt_topic_activation_results = [] # Store final CDT results
-        icd_topic_details = None # Store final single ICD result
+        icd_topic_details = {} # Store final single ICD result (or error)
         cdt_code_ranges_to_activate = set()
         icd_category_to_activate = None
 
         # Determine which CDT topics to activate
-        if cdt_classification_results and cdt_classification_results.get("range_codes_string"):
-            cdt_range_codes_str = cdt_classification_results["range_codes_string"]
+        if cdt_results and isinstance(cdt_results, dict) and cdt_results.get("range_codes_string"):
+            cdt_range_codes_str = cdt_results["range_codes_string"]
+            logger.info(f"Classifier identified CDT ranges: {cdt_range_codes_str}")
             for code_range in cdt_range_codes_str.split(','):
                 code_range = code_range.strip()
                 if code_range in CDT_TOPIC_MAPPING:
                     cdt_code_ranges_to_activate.add(code_range)
                 else:
-                    logger.warning(f"User {user_id}: CDT code range {code_range} from classifier not found in CDT_TOPIC_MAPPING.")
+                    logger.warning(f"CDT code range '{code_range}' from classifier not found in CDT_TOPIC_MAPPING.")
         else:
-            logger.warning(f"User {user_id}: Skipping CDT topic activation tasks due to missing/invalid classification.")
+            logger.warning(f"Skipping CDT topic activation tasks due to missing/invalid classification result: {cdt_results}")
 
         # Determine which ICD topic to activate
-        icd_category_number = icd_classification_results.get("category_number")
+        icd_category_number = None # Initialize
+        if icd_results and isinstance(icd_results, dict):
+            icd_category_number = icd_results.get("category_number")
+            
+        # Corrected logic block for determining icd_category_to_activate
         if icd_category_number:
             icd_category_str = str(icd_category_number)
             if icd_category_str in ICD_TOPIC_MAPPING:
                 icd_category_to_activate = icd_category_str
             else:
-                 logger.warning(f"User {user_id}: ICD category number {icd_category_str} not found in ICD_TOPIC_MAPPING.")
-        else:
-             logger.warning(f"User {user_id}: Skipping ICD topic activation task due to missing/invalid classification.")
+                logger.warning(f"ICD category number '{icd_category_str}' not found in ICD_TOPIC_MAPPING.")
+        elif icd_results: # Check if icd_results exists but number is missing
+             logger.warning(f"ICD category number missing in classification result: {icd_results}")
+        else: # Case where icd_results itself is invalid or missing
+             logger.warning(f"Skipping ICD topic activation task due to missing/invalid classification result: {icd_results}")
 
-        # Create separate concurrent tasks for CDT and ICD to avoid blocking each other
-        async def activate_cdt_topics():
-            if cdt_code_ranges_to_activate:
-                cdt_ranges_str = ",".join(cdt_code_ranges_to_activate)
-                logger.info(f"User {user_id}: Activating CDT topics for ranges: {cdt_ranges_str}")
-                try:
-                    return await topic_registry.activate_all(cleaned_scenario_text, cdt_ranges_str)
-                except Exception as e:
-                    logger.error(f"User {user_id}: Error in CDT topic activation: {e}", exc_info=True)
-                    return {"topic_result": [], "activated_subtopics": []}
-            return {"topic_result": [], "activated_subtopics": []}
-            
-        async def activate_icd_topic():
-            if icd_category_to_activate:
-                logger.info(f"User {user_id}: Activating ICD topic for category: {icd_category_to_activate}")
-                try:
-                    return await topic_registry.activate_all(cleaned_scenario_text, icd_category_to_activate)
-                except Exception as e:
-                    logger.error(f"User {user_id}: Error in ICD topic activation: {e}", exc_info=True)
-                    return {"topic_result": [], "activated_subtopics": []}
-            return {"topic_result": [], "activated_subtopics": []}
-
-        # Run activations independently and concurrently
-        logger.info(f"User {user_id}: Starting parallel activation of CDT and ICD topics")
-        cdt_activation_task = asyncio.create_task(activate_cdt_topics())
-        icd_activation_task = asyncio.create_task(activate_icd_topic())
+        # Create activation tasks
+        cdt_activation_task = None
+        icd_activation_task = None
         
-        # Await both results
+        # Corrected Indentation for Task Creation
+        if cdt_code_ranges_to_activate:
+            cdt_ranges_str = ",".join(sorted(list(cdt_code_ranges_to_activate)))
+            logger.info(f"Creating activation task for CDT ranges: {cdt_ranges_str}")
+            cdt_activation_task = topic_registry.activate_all(cleaned_scenario_text, cdt_ranges_str)
+        else:
+            async def _dummy_cdt_task(): return []
+            cdt_activation_task = _dummy_cdt_task()
+            
+        if icd_category_to_activate:
+            logger.info(f"Creating activation task for ICD category: {icd_category_to_activate}")
+            icd_activation_task = topic_registry.activate_all(cleaned_scenario_text, icd_category_to_activate)
+        else:
+            async def _dummy_icd_task(): return []
+            icd_activation_task = _dummy_icd_task()
+
+        # Run activations concurrently using asyncio.gather
+        logger.info(f"Starting parallel activation of CDT and ICD topics")
         cdt_registry_results, icd_registry_results = await asyncio.gather(
-            cdt_activation_task, icd_activation_task
+            cdt_activation_task,
+            icd_activation_task
         )
+        logger.info(f"Finished gathering topic activation results.")
         
-        # Process CDT results
+        # Process CDT results (already a list from activate_all)
         cdt_topic_activation_results = cdt_registry_results if isinstance(cdt_registry_results, list) else []
-        logger.info(f"User {user_id}: Processed {len(cdt_topic_activation_results)} CDT topic results.")
+        logger.info(f"Processed {len(cdt_topic_activation_results)} CDT topic results.")
+        logger.debug(f"CDT Activation Results: {cdt_topic_activation_results}")
         
-        # Process ICD results
-        icd_topic_results = icd_registry_results if isinstance(icd_registry_results, list) else []
-        if icd_topic_results:
-            icd_topic_details = icd_topic_results[0]  # Should only be one
-            logger.info(f"User {user_id}: Successfully processed ICD topic: {icd_topic_details.get('topic')}")
-        else:
-            logger.warning(f"User {user_id}: No result found for activated ICD category: {icd_category_to_activate}")
+        # Process ICD results (should be a list with 0 or 1 item from activate_all)
+        if isinstance(icd_registry_results, list) and icd_registry_results:
+            icd_topic_details = icd_registry_results[0]  # Get the first (and only) result
+            logger.info(f"Successfully processed ICD topic: {icd_topic_details.get('topic')}")
+        elif icd_category_to_activate: # Log warning only if we expected a result
+            logger.warning(f"No result found for activated ICD category: {icd_category_to_activate}")
             # Ensure icd_topic_details is a dict even on error for consistency
-            icd_topic_details = {"error": f"Activation result missing for ICD category {icd_category_to_activate}"}
+            icd_topic_details = {"error": f"Activation result missing for ICD category {icd_category_to_activate}", "topic": "Error", "code_range": icd_category_to_activate}
+        else:
+             # If no category was activated, keep icd_topic_details as an empty dict
+            logger.info("No ICD category was activated.")
+        logger.debug(f"ICD Activation Result: {icd_topic_details}")
 
-        # --- Step 4a: Save Initial Data to Database --- 
-        logger.info(f"User {user_id}: *********💾 step 4a: Saving Initial Data to DB:*********************")
+        # --- Step 4: Save Initial Data to Database --- 
+        logger.info(f"*********💾 Step 4: Saving Initial Data to DB:*********************")
         
-        # Modified to save only raw_data for each code to reduce storage size
-        optimized_cdt_topic_results = []
-        for topic in cdt_topic_activation_results:
-            optimized_topic = {
-                "topic": topic.get("topic"),
-                "code_range": topic.get("code_range"),
-                "raw_topic_data": topic.get("raw_topic_data", "")
-            }
-            
-            # Only keep raw_data for each code instead of all code details
-            if "codes" in topic:
-                optimized_codes = []
-                for code_entry in topic.get("codes", []):
-                    if "raw_data" in code_entry:
-                        optimized_codes.append({"raw_data": code_entry["raw_data"]})
-                    else:
-                        # Fallback if raw_data is missing - construct minimal record
-                        optimized_codes.append({
-                            "raw_data": f"CODE: {code_entry.get('code', 'N/A')}\nEXPLANATION: {code_entry.get('explanation', 'N/A')}"
-                        })
-                optimized_topic["codes"] = optimized_codes
-            
-            # Include error if present
-            if "error" in topic:
-                optimized_topic["error"] = topic["error"]
-                
-            optimized_cdt_topic_results.append(optimized_topic)
-            
-        # Further optimized: Only storing the essential topic results, removing classification data entirely
-        cdt_data_to_save = {
-            "topics_results": optimized_cdt_topic_results # Only save optimized topic results
-        }
+        # Prepare the full topic activation results for saving
+        # CDT: Use the direct list of results from activate_all
+        cdt_data_to_save = cdt_topic_activation_results
         
-        # Optimize ICD data structure similar to CDT
-        optimized_icd_topic = None
-        if icd_topic_details and not isinstance(icd_topic_details, str):
-            optimized_icd_topic = {
-                "topic": icd_topic_details.get("topic"),
-                "code_range": icd_topic_details.get("code_range"),
-                "raw_topic_data": icd_topic_details.get("raw_topic_data", "")
-            }
-            
-            # Only keep raw_data for each ICD code
-            if "codes" in icd_topic_details:
-                optimized_icd_codes = []
-                for code_entry in icd_topic_details.get("codes", []):
-                    if "raw_data" in code_entry:
-                        optimized_icd_codes.append({"raw_data": code_entry["raw_data"]})
-                    else:
-                        # Fallback if raw_data is missing
-                        optimized_icd_codes.append({
-                            "raw_data": f"CODE: {code_entry.get('code', 'N/A')}\nEXPLANATION: {code_entry.get('explanation', 'N/A')}"
-                        })
-                optimized_icd_topic["codes"] = optimized_icd_codes
-            
-            # Include error if present
-            if "error" in icd_topic_details:
-                optimized_icd_topic["error"] = icd_topic_details["error"]
-        
-        # Only save the optimized topic data for ICD
-        icd_data_to_save = {
-            "topic_results": optimized_icd_topic
-        }
+        # ICD: Use the direct result dictionary from activate_all processing
+        icd_data_to_save = icd_topic_details
 
-        cdt_json = json.dumps(cdt_data_to_save)
-        icd_json = json.dumps(icd_data_to_save)
+        # Convert to JSON strings
+        # Use default=str to handle potential non-serializable types like datetime if they exist
+        cdt_json = json.dumps(cdt_data_to_save, default=str)
+        icd_json = json.dumps(icd_data_to_save, default=str)
 
         db_data = {
             "user_question": payload.scenario,
             "processed_clean_data": cleaned_scenario_text,
-            "cdt_result": cdt_json,
-            "icd_result": icd_json
-            # user_id will be passed separately to the db function
+            "cdt_result": cdt_json, # Store JSON string of the full list
+            "icd_result": icd_json, # Store JSON string of the full dict
+            # user_id will be passed separately
         }
 
-        # Pass user_id to the database function
+        # Save to DB and get record_id
         db_result_list = db.create_analysis_record(db_data, user_id=user_id)
+        
         if db_result_list and isinstance(db_result_list, list) and len(db_result_list) > 0 and "id" in db_result_list[0]:
             record_id = db_result_list[0]["id"]
-            logger.info(f"User {user_id}: Data saved successfully with Record ID: {record_id}")
+            logger.info(f"Data saved successfully with Record ID: {record_id}")
         else:
-            logger.error(f"User {user_id}: Failed to save data to database or get valid ID. DB Response: {db_result_list}")
-            # Consider raising an error or returning a specific error response
+            logger.error(f"Failed to save data to database or get valid ID. DB Response: {db_result_list}")
             raise HTTPException(status_code=500, detail="Failed to save analysis results to database.")
 
         # --- Step 5: Generate Questions --- 
-        logger.info(f"User {user_id}: *********❓ step 5: Generating Questions:*********************")
+        logger.info(f"*********❓ Step 5: Generating Questions:*********************")
         questioner_data = {"has_questions": False, "status": "skipped"} # Default
         try:
-            # Format data for Questioner (similar to app.py.bak)
+            # Format data for Questioner (using actual results)
+            # Note: Ensure cdt_results and icd_results are dictionaries as expected
             simplified_cdt_data = {
-                "code_ranges": cdt_classification_results.get("range_codes_string", ""),
-                "activated_topics": [topic.get('topic') for topic in cdt_topic_activation_results if not topic.get('error')],
-                "formatted_cdt_results": [
-                    f"{res.get('code_range')}: {res.get('explanation')}"
-                    for res in cdt_classification_results.get('formatted_results', [])
-                ]
+                "code_ranges": cdt_results.get("range_codes_string", "") if isinstance(cdt_results, dict) else "",
+                "activated_topics": [topic.get('topic') for topic in cdt_topic_activation_results if topic.get("error") is None],
+                "formatted_cdt_results": cdt_results.get('formatted_results', []) if isinstance(cdt_results, dict) else []
             }
-            # Extract simplified ICD info
             simplified_icd_data = {
-                "code": icd_classification_results.get("icd_code", ""), # Assuming 'icd_code' key exists
-                "explanation": icd_classification_results.get("explanation", ""),
-                "doubt": icd_classification_results.get("doubt", ""),
-                "category": ICD_CATEGORY_NAMES.get(str(icd_classification_results.get("category_number")))
+                "code": icd_results.get("icd_code", "") if isinstance(icd_results, dict) else "",
+                "explanation": icd_results.get("explanation", "") if isinstance(icd_results, dict) else "",
+                "doubt": icd_results.get("doubt", "") if isinstance(icd_results, dict) else "",
+                "category": ICD_CATEGORY_NAMES.get(str(icd_results.get("category_number"))) if isinstance(icd_results, dict) and icd_results.get("category_number") else None
             }
-            # Ensure ICD data passed is not just the error structure
-            if "error" in simplified_icd_data:
+            # Prevent passing error structure as data
+            if simplified_icd_data.get("error"):
                  simplified_icd_data = {"code": "", "explanation": f"ICD Error: {simplified_icd_data['error']}", "doubt": "", "category": "Error"}
 
+            # Run Questioner (assuming synchronous for now, wrap if needed)
+            # If questioner.process is async, use: await questioner.process(...)
             questioner_result = questioner.process(
                 cleaned_scenario_text,
                 simplified_cdt_data,
@@ -416,98 +404,46 @@ async def analyze_scenario(
             )
             questioner_data = questioner_result # Store the full result
 
-            # Save questioner data to the database (user_id isn't needed here, linked via record_id)
-            questioner_json = json.dumps(questioner_result)
+            # Save questioner data to the database
+            questioner_json = json.dumps(questioner_result, default=str)
             db.update_questioner_data(record_id, questioner_json)
-            logger.info(f"User {user_id}: Questioner data saved to DB for record ID: {record_id}. Has Questions: {questioner_result.get('has_questions', False)}")
+            logger.info(f"Questioner data saved to DB for record ID: {record_id}. Has Questions: {questioner_result.get('has_questions', False)}")
 
         except Exception as q_err:
-            logger.error(f"User {user_id}: Error during question generation for {record_id}: {q_err}", exc_info=True)
+            logger.error(f"Error during question generation for {record_id}: {q_err}", exc_info=True)
             questioner_data["error"] = f"Questioner Error: {str(q_err)}"
             questioner_data["status"] = "error"
             # Attempt to save error state to DB
             try:
-                db.update_questioner_data(record_id, json.dumps(questioner_data))
-                logger.warning(f"User {user_id}: Saved questioner error state to DB for record ID: {record_id}")
+                db.update_questioner_data(record_id, json.dumps(questioner_data, default=str))
+                logger.warning(f"Saved questioner error state to DB for record ID: {record_id}")
             except Exception as db_q_err:
-                logger.error(f"User {user_id}: Failed to save questioner error state to DB for {record_id}: {db_q_err}")
+                logger.error(f"Failed to save questioner error state to DB for {record_id}: {db_q_err}")
 
         # --- Step 6: Run Inspectors (Conditionally) ---
-        logger.info(f"User {user_id}: *********🕵️ step 6: Running Inspectors (Conditionally):*********************")
+        logger.info(f"*********🕵️ Step 6: Running Inspectors (Conditionally):*********************")
         inspector_results = {"cdt": {}, "icd": {}, "status": "not_run"} # Default state
-        should_run_inspectors = not questioner_data.get("has_questions", True) # Run if no questions
+        # Run inspectors only if the questioner didn't generate questions
+        should_run_inspectors = not questioner_data.get("has_questions", True) 
 
         if should_run_inspectors:
-            logger.info(f"User {user_id}: No questions generated for {record_id}, running inspectors immediately.")
+            logger.info(f"No questions generated for {record_id}, running inspectors immediately.")
             try:
-                # Format data for CDT inspector (mimicking app.py.bak)
-                cdt_topic_analysis_for_inspector = {}
-                # Use the data we prepared for saving (cdt_data_to_save)
-                cdt_topics_results = cdt_data_to_save.get("topics_results", [])
-                icd_topic_result_detail = icd_data_to_save.get("topic_results")
+                # Pass the full activation results to inspectors
+                cdt_inspector_input = cdt_topic_activation_results
+                icd_inspector_input = icd_topic_details # This is the single dictionary
                 
-                all_candidate_codes = []
-                for topic_res in cdt_topics_results:
-                    if not topic_res.get('error'):
-                        codes_list = topic_res.get('codes', [])
-                        if codes_list: # Assuming 'codes' now contains the detailed list including raw_data
-                            formatted_codes = []
-                            subtopic_key = f"{topic_res.get('topic', 'Unknown')} ({topic_res.get('code_range', '')})"
-                            for code_entry in codes_list:
-                                code = code_entry.get("code", "")
-                                explanation = code_entry.get("explanation", "")
-                                doubt = code_entry.get("doubt", "")
-                                if code and code.lower() != 'none':
-                                    all_candidate_codes.append(code) # Add to candidate list
-                                formatted_code = f"CODE: {code}\nEXPLANATION: {explanation}"
-                                if doubt: formatted_code += f"\nDOUBT: {doubt}"
-                                formatted_codes.append(formatted_code)
-                            # Store formatted result string for the subtopic
-                            cdt_topic_analysis_for_inspector[subtopic_key] = {"name": subtopic_key, "result": "\n\n".join(formatted_codes)}
-                # Add all candidate codes summary
-                if all_candidate_codes:
-                    cdt_topic_analysis_for_inspector["_all_candidate_codes"] = {
-                        "name": "All Candidate Codes",
-                        "result": "CODES: " + ", ".join(list(set(all_candidate_codes)))
-                    }
-
-                # Format data for ICD inspector (mimicking app.py.bak)
-                icd_topic_analysis_for_inspector = {}
-                # Use the data we prepared for saving (icd_data_to_save)
-                icd_topic_result_detail = icd_data_to_save.get("topic_results")
-                icd_classification_detail = icd_data_to_save.get("icd_classification")
-                if icd_topic_result_detail and not icd_topic_result_detail.get('error') and icd_classification_detail:
-                    category_num = icd_classification_detail.get('category_number')
-                    if category_num:
-                        category_key = str(category_num)
-                        simplified = { # Reconstruct simplified structure for inspector
-                            "code": icd_topic_result_detail.get('codes', [{}])[0].get('code', ''),
-                            "explanation": icd_topic_result_detail.get('codes', [{}])[0].get('explanation', ''),
-                            "doubt": icd_topic_result_detail.get('codes', [{}])[0].get('doubt', '')
-                        }
-                        icd_topic_analysis_for_inspector[category_key] = {
-                            "name": ICD_CATEGORY_NAMES.get(category_key, "Unknown ICD Topic"),
-                            "result": icd_topic_result_detail.get('raw_data', "No raw data"), # Pass raw data if available
-                            "parsed_result": simplified
-                        }
-                    else:
-                        logger.warning(f"User {user_id}: ICD category number missing in classification data for inspector.")
-                elif icd_classification_detail and icd_classification_detail.get('error'):
-                    logger.warning(f"User {user_id}: Skipping ICD inspection for {record_id} due to ICD classification error: {icd_classification_detail.get('error')}")
-                else:
-                     logger.warning(f"User {user_id}: Could not format ICD data for inspector for record {record_id}.")
-
-                # Define async inspector tasks
+                # Define async inspector tasks using asyncio.to_thread
                 cdt_inspector_task = asyncio.to_thread(
                     cdt_inspector.process, 
                     cleaned_scenario_text, 
-                    cdt_topics_results, # Pass direct CDT data
+                    cdt_inspector_input, 
                     questioner_data
                 )
                 icd_inspector_task = asyncio.to_thread(
                     icd_inspector.process, 
                     cleaned_scenario_text, 
-                    optimized_icd_topic, # Pass direct ICD data
+                    icd_inspector_input, 
                     questioner_data
                 )
 
@@ -515,108 +451,71 @@ async def analyze_scenario(
                 cdt_inspector_result, icd_inspector_result = await asyncio.gather(
                     cdt_inspector_task, icd_inspector_task
                 )
-                logger.info(f"User {user_id}: CDT Inspector Result: {cdt_inspector_result.get('codes')}")
-                logger.info(f"User {user_id}: ICD Inspector Result: {icd_inspector_result.get('codes')}")
+                logger.info(f"CDT Inspector Result Codes: {cdt_inspector_result.get('codes')}")
+                logger.info(f"ICD Inspector Result Codes: {icd_inspector_result.get('codes')}")
 
-                # Combine and save results (user_id not needed here, linked via record_id)
+                # Combine and save results
                 inspector_results = {
                     "cdt": cdt_inspector_result,
                     "icd": icd_inspector_result,
                     "status": "completed" # Mark as completed
                 }
-                db.update_inspector_results(record_id, json.dumps(inspector_results))
-                logger.info(f"User {user_id}: Inspector results saved to DB for record ID: {record_id}")
+                db.update_inspector_results(record_id, json.dumps(inspector_results, default=str))
+                logger.info(f"Inspector results saved to DB for record ID: {record_id}")
 
             except Exception as insp_err:
-                logger.error(f"User {user_id}: Error during inspector processing for {record_id}: {insp_err}", exc_info=True)
+                logger.error(f"Error during inspector processing for {record_id}: {insp_err}", exc_info=True)
                 inspector_results["error"] = f"Inspector Error: {str(insp_err)}"
                 inspector_results["status"] = "error"
                 # Attempt to save error state
                 try:
-                    db.update_inspector_results(record_id, json.dumps(inspector_results))
-                    logger.warning(f"User {user_id}: Saved inspector error state to DB for record ID: {record_id}")
+                    db.update_inspector_results(record_id, json.dumps(inspector_results, default=str))
+                    logger.warning(f"Saved inspector error state to DB for record ID: {record_id}")
                 except Exception as db_insp_err:
-                    logger.error(f"User {user_id}: Failed to save inspector error state to DB for {record_id}: {db_insp_err}")
+                    logger.error(f"Failed to save inspector error state to DB for {record_id}: {db_insp_err}")
         else:
-            logger.info(f"User {user_id}: Skipping immediate inspector run for {record_id} as questions were generated.")
+            logger.info(f"Skipping immediate inspector run for {record_id} as questions were generated.")
 
-        # --- Construct the final response --- 
-        logger.info(f"User {user_id}: *********🔧 step 7: Constructing Final Response:*********************")
-
-        # CDT Classifier Results
-        cdt_classifier_response = {
-            "raw_data": cdt_classification_results.get('raw_data'),
-            "formatted_results": cdt_classification_results.get('formatted_results')
-        }
+        # --- Step 7: Construct Final Response --- 
+        logger.info(f"*********🔧 Step 7: Constructing Final Response:*********************")
         
-        # CDT Topic Summary
-        cdt_topic_summary = [
-            {"topic": item.get('topic'), "code_range": item.get('code_range')} 
-            for item in cdt_topic_activation_results if not item.get('error')
-        ]
-        
-        # CDT Subtopic Details (Includes raw_data within 'codes' list)
-        cdt_subtopic_details = cdt_topic_activation_results
+        # Apply final formatting/parsing to CDT topic results using dental_manager
+        # This adds the 'parsed_result' field based on the original 'raw_result'
+        logger.info(f"Formatting CDT subtopic results...")
+        formatted_cdt_subtopic_results = cdt_topic_activation_results # Default to original
+        try:
+            # Ensure cdt_topic_activation_results is a list of dicts before passing
+            if isinstance(cdt_topic_activation_results, list):
+                # This function now ADDS 'parsed_result' instead of replacing 'raw_result'
+                formatted_cdt_subtopic_results = dental_manager.transform_json_list(cdt_topic_activation_results)
+            else:
+                logger.warning("CDT topic activation results are not a list, skipping subtopic formatting.")
+        except Exception as fmt_err:
+             logger.error(f"Error formatting CDT subtopic results: {fmt_err}", exc_info=True)
+             # On error, we still use the unformatted results
 
-        formated_response = dental_manager.transform_json_list(cdt_subtopic_details)
-        # ICD Classifier Results
-        icd_classifier_response = icd_classification_results # Use the original full result
-        
-        # ICD Topic Details (Includes raw_data within 'codes' list)
-        icd_topic_response = icd_topic_details
-        
-        # Ensure ICD_topic_response has a 'code' field at the top level
-        if icd_topic_response and isinstance(icd_topic_response, dict):
-            # If the 'code' field isn't already present (from the updated SubtopicRegistry)
-            if 'code' not in icd_topic_response:
-                # Try to extract from codes list if available
-                if icd_topic_response.get('codes') and len(icd_topic_response.get('codes', [])) > 0:
-                    first_code = icd_topic_response['codes'][0]
-                    if isinstance(first_code, dict) and 'code' in first_code:
-                        icd_topic_response['code'] = first_code['code']
-                    elif isinstance(first_code, str):
-                        icd_topic_response['code'] = first_code
-                else:
-                    # No codes available, so set to null explicitly
-                    icd_topic_response['code'] = None
-                    
-                    # If raw text contains "CODE: none", make it explicitly clear
-                    if 'raw_topic_data' in icd_topic_response:
-                        raw_text = icd_topic_response['raw_topic_data']
-                        if isinstance(raw_text, str) and 'CODE: none' in raw_text.lower():
-                            icd_topic_response['code'] = None
+        # Prepare the final response including Questioner and Inspector results
+        response_data = AnalysisStep6Output(
+            record_id=record_id,
+            original_scenario=payload.scenario,
+            cleaned_scenario=cleaned_data.get("cleaned_scenario", "Cleaning failed"),
+            standardized_scenario=cleaned_scenario_text,
+            cdt_classification_results=cdt_results, 
+            icd_classification_results=icd_results,
+            cdt_topic_activation_results=formatted_cdt_subtopic_results, # Use the potentially formatted results
+            icd_topic_activation_results=icd_topic_details,
+            questioner_data=questioner_data,      # Add questioner results
+            inspector_results=inspector_results   # Add inspector results
+        )
+        return response_data
 
-        # Final response structure
-        final_response = {
-            "record_id": record_id, # Include the record ID
-            "scenario": cleaned_scenario_text,
-            "CDT_classifier": cdt_classifier_response,
-            "CDT_topic": cdt_topic_summary,
-            "CDT_subtopic": formated_response,
-            "ICD_classifier": icd_classifier_response,
-            "ICD_topic_result": icd_topic_response,
-            "questioner_data": questioner_data, # Add questioner results
-            "inspector_results": inspector_results # Add inspector results
-        }
-
-        logger.info("Response construction complete.")
-        return final_response
-
+    except HTTPException as http_exc: # Re-raise HTTP exceptions
+        raise http_exc
     except Exception as e:
-        logger.error(f"Error during scenario processing: {e}", exc_info=True)
-        # Return error in a consistent structure if possible
-        return {
-            "error": f"Internal server error: {str(e)}",
-            "record_id": record_id, # Return record_id even if error occurred after saving
-            "details": traceback.format_exc() if 'traceback' in locals() else "Traceback not available"
-        }
+        logger.error(f"Error during scenario analysis (clean & classify & activate): {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error during analysis: {str(e)}")
 
-# Add a root endpoint for basic checks
-@app.get("/")
-async def read_root():
-    return {"message": "Welcome to the Dental Scenario Analysis API"}
-
-# --- Add Custom Code Endpoint (from app.py.bak) ---
+# --- Add Custom Code Endpoint --- 
 @app.post("/api/add-custom-code")
 async def add_custom_code(
     request: CustomCodeRequest,
@@ -624,59 +523,51 @@ async def add_custom_code(
 ):
     """Process and add a custom code for a given scenario, associated with the user."""
     try:
-        logger.info(f"User {user_id}: --- Adding Custom Code for Record {request.record_id} --- ")
-        logger.info(f"User {user_id}: Custom code: {request.code}")
-        # logger.info(f"User {user_id}: Scenario: {request.scenario[:75]}...")
+        logger.info(f"--- Adding Custom Code for Record {request.record_id} by User {user_id} --- ")
+        logger.info(f"Custom code: {request.code}")
         
-        # Run the custom code analysis - Assuming Add_code_data is synchronous
-        # If it becomes async, use await asyncio.to_thread(Add_code_data, ...)
+        # Run the custom code analysis 
+        # Assuming Add_code_data is synchronous; wrap if async
         analysis_result = Add_code_data(request.scenario, request.code)
-        logger.info(f"User {user_id}: Add_code_data result: {analysis_result}")
+        logger.info(f"Add_code_data result: {analysis_result}")
 
-        # !!! IMPORTANT: Add the analysis result to the dental_code_analysis table !!!
-        # We need to call db.add_code_analysis here, passing the user_id
+        # Save analysis to the separate dental_code_analysis table
         try:
-            # Assuming Add_code_data returns the string analysis result to store
             db.add_code_analysis(
                 scenario=request.scenario,
                 cdt_codes=request.code,
-                response=analysis_result, # Store the full response from Add_code_data
+                response=analysis_result, # Store the full response
                 user_id=user_id
             )
-            logger.info(f"User {user_id}: Custom code analysis saved to dental_code_analysis table.")
+            logger.info(f"Custom code analysis saved to dental_code_analysis table.")
         except Exception as db_err:
-            # Log the error but potentially continue, depending on desired behavior
-            logger.error(f"User {user_id}: Failed to save custom code analysis to DB: {db_err}", exc_info=True)
-            # Maybe raise HTTPException here if saving is critical
+            logger.error(f"Failed to save custom code analysis to DB: {db_err}", exc_info=True)
+            # Depending on requirements, might raise HTTPException here
 
-        # Parse the analysis result to extract components (similar to app.py.bak)
+        # Parse the result (adjust parsing logic if Add_code_data format changes)
         explanation = ""
         doubt = "None"
-        
-        # Basic parsing logic - adjust if Add_code_data format is different
-        if "Explanation:" in analysis_result:
-            explanation = analysis_result.split("Explanation:")[1].strip()
-            if "Doubt:" in explanation:
-                parts = explanation.split("Doubt:")
-                explanation = parts[0].strip()
-                doubt = parts[1].strip()
+        is_applicable = False # Default
+        if isinstance(analysis_result, str):
+            if "Explanation:" in analysis_result:
+                explanation = analysis_result.split("Explanation:")[1].strip()
+                if "Doubt:" in explanation:
+                    parts = explanation.split("Doubt:")
+                    explanation = parts[0].strip()
+                    doubt = parts[1].strip()
+            else:
+                explanation = analysis_result # Assume entire result is explanation
+            is_applicable = "applicable? yes" in analysis_result.lower()
         else:
-            explanation = analysis_result # Assume entire result is explanation if keyword missing
-        
-        # Check if the code is likely applicable based on the analysis result
-        # Using a case-insensitive check for robustness
-        is_applicable = "applicable? yes" in analysis_result.lower()
-        
-        
-        # Format the response in the expected structure
+            explanation = "Invalid analysis result format received."
+
+        # Format response (mimicking inspector structure for consistency)
         code_data = {
             "code": request.code,
             "explanation": explanation,
             "doubt": doubt,
             "isApplicable": is_applicable
         }
-        
-        # Mimic the inspector structure for frontend consistency
         inspector_like_results = {
             "cdt": {
                 "codes": [request.code] if is_applicable else [],
@@ -684,81 +575,77 @@ async def add_custom_code(
                 "explanation": explanation
             },
             "icd": { # Assuming custom codes are CDT only
-                "codes": [],
-                "rejected_codes": [],
-                "explanation": "N/A for custom CDT code analysis."
+                "codes": [], "rejected_codes": [], "explanation": "N/A"
             }
         }
         
         return {
             "status": "success",
             "message": "Custom code analysis completed",
-            "data": {
-                "code_data": code_data,
-                "inspector_results": inspector_like_results 
-            }
+            "data": {"code_data": code_data, "inspector_results": inspector_like_results}
         }
         
     except Exception as e:
         error_details = traceback.format_exc()
-        logger.error(f"User {user_id}: ❌ ERROR adding custom code: {str(e)}")
+        logger.error(f"❌ ERROR adding custom code for Record {request.record_id}: {str(e)}")
         logger.error(f"STACK TRACE: {error_details}")
-        # Use 401 if it's an auth error from the dependency, otherwise 500
         status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         if isinstance(e, HTTPException) and e.status_code == 401:
             status_code = e.status_code
-        raise HTTPException(status_code=status_code, detail=str(e)) # Re-raise as HTTPException
+        raise HTTPException(status_code=status_code, detail=str(e))
 
-# --- Add Store Code Status Endpoint (from app.py.bak) ---
+# --- Add Store Code Status Endpoint --- 
 @app.post("/api/store-code-status")
 async def store_code_status(
     request: CodeStatusRequest,
     user_id: str = Depends(get_current_user_id) # Inject user_id dependency
 ):
-    """Store the final status of selected and rejected codes based on user input, associated with the user."""
+    """Store the final status of selected and rejected codes based on user input."""
     try:
-        logger.info(f"User {user_id}: --- Storing Code Status for Record {request.record_id} --- ")
-        logger.info(f"User {user_id}: Selected CDT: {request.cdt_codes}")
-        logger.info(f"User {user_id}: Rejected CDT: {request.rejected_cdt_codes}")
-        logger.info(f"User {user_id}: Selected ICD: {request.icd_codes}")
-        logger.info(f"User {user_id}: Rejected ICD: {request.rejected_icd_codes}")
+        logger.info(f"--- Storing Code Status for Record {request.record_id} by User {user_id} --- ")
+        logger.info(f"Accepted CDT: {request.cdt_codes}")
+        logger.info(f"Rejected CDT: {request.rejected_cdt_codes}")
+        logger.info(f"Accepted ICD: {request.icd_codes}")
+        logger.info(f"Rejected ICD: {request.rejected_icd_codes}")
         
-        # Call the new function to save selections to the dedicated table, passing user_id
+        # Save selections to the dedicated table
         saved_selection = db.save_code_selections(
             record_id=request.record_id,
             accepted_cdt=request.cdt_codes,
             rejected_cdt=request.rejected_cdt_codes,
             accepted_icd=request.icd_codes,
             rejected_icd=request.rejected_icd_codes,
-            user_id=user_id # Pass the user_id
+            user_id=user_id
         )
 
         if not saved_selection:
-            logger.error(f"User {user_id}: Failed to save code selections for record ID: {request.record_id}")
+            logger.error(f"Failed to save code selections for record ID: {request.record_id}")
             raise HTTPException(status_code=500, detail="Failed to save code selections to database.")
 
-        logger.info(f"User {user_id}: Code status updated in the database for {request.record_id}")
-        
+        logger.info(f"Code status updated in the database for {request.record_id}")
         return {
             "status": "success",
             "message": "Code status updated successfully",
-            "saved_selection": saved_selection # Return the data saved to the new table
+            "saved_selection": saved_selection
         }
         
     except Exception as e:
         error_details = traceback.format_exc()
-        logger.error(f"User {user_id}: ❌ ERROR storing code status: {str(e)}")
+        logger.error(f"❌ ERROR storing code status for Record {request.record_id}: {str(e)}")
         logger.error(f"STACK TRACE: {error_details}")
-        # Use 401 if it's an auth error from the dependency, otherwise 500
         status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         if isinstance(e, HTTPException) and e.status_code == 401:
             status_code = e.status_code
-        raise HTTPException(status_code=status_code, detail=str(e)) # Re-raise as HTTPException
+        raise HTTPException(status_code=status_code, detail=str(e))
+
+# Add a root endpoint for basic checks
+@app.get("/")
+async def read_root():
+    return {"message": "Welcome to the Dental Scenario Analysis API"}
 
 # --- Application Runner ---
 if __name__ == "__main__":
     host = "0.0.0.0"
-    port = 8000
-    logger.info(f"Starting Uvicorn server on {host}:{port}")
-    # Note: reload=True is great for development but should be False in production
+    port = 8001
+    logger.info(f"Starting Uvicorn server for Cleaning & Auth API on {host}:{port}")
     uvicorn.run("app:app", host=host, port=port, reload=True)
