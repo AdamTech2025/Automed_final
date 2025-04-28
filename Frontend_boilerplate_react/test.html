@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RCM Pro - Medical Coding Suite</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Custom Font */
+        body, html { font-family: 'Inter', sans-serif; }
+        /* Custom Animations */
+        @keyframes slideIn {
+            from { transform: translateX(-100%); }
+            to { transform: translateX(0); }
+        }
+        @keyframes slideOut {
+            from { transform: translateX(0); }
+            to { transform: translateX(-100%); }
+        }
+        .sidebar-open { animation: slideIn 0.3s ease-out; }
+        .sidebar-close { animation: slideOut 0.3s ease-out; }
+        /* Smooth Transitions */
+        .hover-scale { transition: transform 0.2s; }
+        .hover-scale:hover { transform: scale(1.05); }
+        .hover-card { transition: all 0.2s; }
+        .hover-card:hover { background-color: #EFF6FF; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); }
+        .dark .hover-card:hover { background-color: #334155; }
+        /* Mild Button Gradient */
+        .gradient-btn { background: linear-gradient(to right, #60A5FA, #93C5FD); }
+        .dark .gradient-btn { background: linear-gradient(to right, #2DD4BF, #5EEAD4); }
+        /* Tooltip Styling */
+        .tooltip { position: relative; }
+        .tooltip .tooltip-text {
+            visibility: hidden;
+            width: 120px;
+            background-color: #374151;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -60px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .tooltip:hover .tooltip-text { visibility: visible; opacity: 1; }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-slate-800 font-sans transition-colors duration-300" id="themeBody">
+    <!-- Main Container -->
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <div class="w-64 bg-blue-100 dark:bg-slate-700 text-gray-800 dark:text-gray-200 p-4 fixed h-full z-20 transition-transform duration-300" id="sidebar">
+            <div class="flex items-center justify-between mb-6">
+                <h1 class="text-2xl font-bold tracking-tight">RCM Pro</h1>
+                <button id="sidebarToggle" class="text-gray-800 dark:text-gray-200"><i class="fas fa-times"></i></button>
+            </div>
+            <nav>
+                <ul>
+                    <li class="mb-4"><a href="#" class="flex items-center p-2 rounded hover:bg-blue-200 dark:hover:bg-slate-600 font-medium leading-relaxed" aria-label="Dashboard"><i class="fas fa-home mr-2"></i> Dashboard</a></li>
+                    <li class="mb-4"><a href="#" class="flex items-center p-2 rounded hover:bg-blue-200 dark:hover:bg-slate-600 font-medium leading-relaxed" aria-label="Patients"><i class="fas fa-user-injured mr-2"></i> Patients</a></li>
+                    <li class="mb-4"><a href="#" class="flex items-center p-2 rounded hover:bg-blue-200 dark:hover:bg-slate-600 font-medium leading-relaxed" aria-label="Coding"><i class="fas fa-file-medical mr-2"></i> Coding</a></li>
+                    <li class="mb-4"><a href="#" class="flex items-center p-2 rounded hover:bg-blue-200 dark:hover:bg-slate-600 font-medium leading-relaxed" aria-label="Billing"><i class="fas fa-dollar-sign mr-2"></i> Billing</a></li>
+                    <li class="mb-4"><a href="#" class="flex items-center p-2 rounded hover:bg-blue-200 dark:hover:bg-slate-600 font-medium leading-relaxed" aria-label="Settings"><i class="fas fa-cog mr-2"></i> Settings</a></li>
+                </ul>
+            </nav>
+            <div class="absolute bottom-4">
+                <button id="themeToggle" class="flex items-center p-2 rounded hover:bg-blue-200 dark:hover:bg-slate-600 font-medium leading-relaxed" aria-label="Toggle Theme">
+                    <i class="fas fa-moon mr-2"></i> Dark Mode
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex-1 p-4 md:p-8 transition-all duration-300" id="mainContent">
+            <!-- Header -->
+            <header class="flex justify-between items-center mb-6">
+                <div class="flex items-center space-x-4">
+                    <button id="menuToggle" class="text-gray-800 dark:text-gray-200"><i class="fas fa-bars text-2xl"></i></button>
+                    <h2 class="text-2xl font-bold tracking-tight text-gray-800 dark:text-gray-200">Medical Coding Suite</h2>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="relative w-64 hidden md:block">
+                        <input type="text" placeholder="Search patients or codes..." class="w-full border rounded-lg p-2 pl-10 bg-gray-200 dark:bg-slate-600 dark:text-gray-200 dark:border-slate-500 font-light leading-relaxed" aria-label="Search">
+                        <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
+                    </div>
+                    <div class="relative flex items-center space-x-2 cursor-pointer" id="profileToggle">
+                        <img src="https://via.placeholder.com/32" alt="User Avatar" class="w-8 h-8 rounded-full">
+                        <span class="hidden md:block text-gray-800 dark:text-gray-200 font-medium">Dr. Smith</span>
+                        <div id="profileDropdown" class="hidden absolute top-12 right-0 bg-gray-200 dark:bg-slate-600 rounded-lg shadow-md z-10">
+                            <button id="logoutButton" class="w-full text-left px-4 py-2 text-gray-800 dark:text-gray-200 hover:bg-blue-100 dark:hover:bg-slate-500 rounded-lg font-medium" aria-label="Logout">Logout</button>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Main Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Input Section -->
+                <div class="bg-gray-200 dark:bg-slate-600 p-6 rounded-xl shadow-lg col-span-1 md:col-span-2">
+                    <h3 class="text-xl font-bold tracking-tight mb-4 text-gray-800 dark:text-gray-200">Input Clinical Notes</h3>
+                    <div class="mb-4">
+                        <label class="block text-gray-700 dark:text-gray-300 mb-2 font-medium">Raw Text Input</label>
+                        <textarea id="rawTextInput" class="w-full border rounded-lg p-3 bg-gray-100 dark:bg-slate-700 dark:text-gray-200 dark:border-slate-500 focus:ring-2 focus:ring-blue-400 font-light leading-relaxed" rows="5" placeholder="Enter clinical notes (e.g., Patient has tooth decay in molar, requires filling)" aria-label="Clinical Notes"></textarea>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-gray-700 dark:text-gray-300 mb-2 font-medium">Upload PDF</label>
+                        <div class="border-2 border-dashed border-gray-300 dark:border-slate-500 p-6 rounded-lg text-center hover:border-blue-400 transition-colors" id="dropZone">
+                            <input type="file" id="pdfUpload" accept=".pdf" class="hidden" aria-label="Upload PDF">
+                            <p id="uploadText" class="text-gray-500 dark:text-gray-400 font-light leading-relaxed">Drag and drop a PDF or <span class="text-blue-400 cursor-pointer hover:underline">browse</span></p>
+                            <p id="fileName" class="text-gray-500 dark:text-gray-400 mt-2 font-light"></p>
+                            <div id="uploadProgress" class="hidden w-full bg-gray-300 dark:bg-slate-500 rounded-full h-2.5 mt-2">
+                                <div class="bg-blue-400 h-2.5 rounded-full" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <button id="processButton" class="gradient-btn text-white px-6 py-2 rounded-lg hover-scale hover:shadow-lg focus:ring-2 focus:ring-blue-400 font-medium" aria-label="Process Input">Process Input</button>
+                </div>
+
+                <!-- Final Codes Section -->
+                <div class="bg-gray-200 dark:bg-slate-600 p-6 rounded-xl shadow-lg hover-card transition-all duration-200">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-bold tracking-tight text-gray-800 dark:text-gray-200">Final Codes</h3>
+                        <button id="copyCodesButton" class="gradient-btn text-white px-4 py-1 rounded-lg hover-scale hover:shadow-lg focus:ring-2 focus:ring-blue-400 flex items-center font-medium" aria-label="Copy All Codes">
+                            <i class="fas fa-copy mr-2"></i> Copy All
+                        </button>
+                    </div>
+                    <!-- Custom Code Input Form -->
+                    <div class="mb-4">
+                        <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Add Custom Code</h4>
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <input type="text" id="customCodeInput" class="flex-1 border rounded-lg p-2 bg-gray-100 dark:bg-slate-700 dark:text-gray-200 dark:border-slate-500 focus:ring-2 focus:ring-blue-400 font-light leading-relaxed" placeholder="Enter code (e.g., D0120)" aria-label="Custom Code">
+                            <select id="customCodeType" class="border rounded-lg p-2 bg-gray-100 dark:bg-slate-700 dark:text-gray-200 dark:border-slate-500 focus:ring-2 focus:ring-blue-400 font-light leading-relaxed" aria-label="Code Type">
+                                <option value="CDT">CDT</option>
+                                <option value="ICD-10">ICD-10</option>
+                            </select>
+                            <button id="addCustomCodeButton" class="gradient-btn text-white px-4 py-2 rounded-lg hover-scale hover:shadow-lg focus:ring-2 focus:ring-blue-400 font-medium" aria-label="Add Code">Add</button>
+                        </div>
+                    </div>
+                    <div id="codeOutput" class="space-y-4">
+                        <!-- CDT Codes -->
+                        <div class="border border-gray-300 dark:border-slate-500 p-4 rounded-lg bg-gray-100 dark:bg-slate-700 shadow-md">
+                            <div class="flex justify-between items-center mb-2">
+                                <h4 class="text-lg font-semibold text-gray-700 dark:text-gray-300">CDT Codes</h4>
+                                <button id="copyCdtCodes" class="text-gray-500 dark:text-gray-400 hover:text-blue-400 hover-scale" aria-label="Copy Selected CDT Codes">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                            <div id="cdtCodes" class="flex flex-wrap gap-2">
+                                <!-- Populated dynamically -->
+                            </div>
+                        </div>
+                        <!-- ICD-10 Codes -->
+                        <div class="border border-gray-300 dark:border-slate-500 p-4 rounded-lg bg-gray-100 dark:bg-slate-700 shadow-md">
+                            <div class="flex justify-between items-center mb-2">
+                                <h4 class="text-lg font-semibold text-gray-700 dark:text-gray-300">ICD-10 Codes</h4>
+                                <button id="copyIcdCodes" class="text-gray-500 dark:text-gray-400 hover:text-blue-400 hover-scale" aria-label="Copy Selected ICD-10 Codes">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                            <div id="icdCodes" class="flex flex-wrap gap-2">
+                                <!-- Populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Code Details Section -->
+                <div class="bg-gray-200 dark:bg-slate-600 p-6 rounded-xl shadow-lg hover-card transition-all duration-200 col-span-1 md:col-span-3">
+                    <h3 class="text-xl font-bold tracking-tight mb-4 text-gray-800 dark:text-gray-200">Code Details</h3>
+                    <div id="codeDetails" class="border border-gray-300 dark:border-slate-500 p-4 rounded-lg bg-gray-100 dark:bg-slate-700 shadow-md font-bold leading-relaxed text-gray-800 dark:text-gray-200">
+                        Click a code above to view details...
+                    </div>
+                </div>
+
+                <!-- Recent Codes Dashboard -->
+                <div class="bg-gray-200 dark:bg-slate-600 p-6 rounded-xl shadow-lg col-span-1 md:col-span-3">
+                    <h3 class="text-xl font-bold tracking-tight mb-4 text-gray-800 dark:text-green-200">Final Code Generation History</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead>
+                                <tr class="text-gray-600 dark:text-gray-400 font-medium">
+                                    <th class="p-2">Code</th>
+                                    <th class="p-2">Type</th>
+                                    <th class="p-2">Description</th>
+                                    <th class="p-2">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recentCodesTable" class="font-bold text-gray-800 dark:text-gray-200 leading-relaxed">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript for Interactivity -->
+    <script>
+        // Backend Response (Simulated)
+        const backendResponse = {
+            inspector_results: {
+                cdt: {
+                    codes: ["D0140", "D0708", "D0707", "D0703", "D0391", "D9410", "D9995"],
+                    rejected_codes: ["D0191", "D0999", "D9999"],
+                    explanation: " - *D0140 (Limited oral evaluation - problem focused):* Selected. The dentist performed an evaluation specifically addressing the patient's reported pain (\"slight non-localized dental pain\"). This evaluation utilized remotely captured diagnostic images and real-time communication (teledentistry) with the patient and hygienist. This aligns with a problem-focused evaluation. - *D0708 (Image capture only, intraoral - bitewing(s)):* Selected. The hygienist captured four bitewing images at the patient's home (offsite) using a portable unit. This code represents the capture component of these images, distinct from interpretation. Quantity (4) should be noted in the claim. - *D0707 (Image capture only, intraoral - periapical):* Selected. The hygienist captured one periapical image at the patient's home (offsite) using a portable unit. This code represents the capture component of this image. - *D0703 (Image capture only, 2D oral/facial photographic image obtained intraorally or extraorally):* Selected. The hygienist captured two intra-oral photographs at the patient's home (offsite). This code represents the capture component of these images. - *D0391 (Interpretation of diagnostic image by a practitioner not associated with capture of the image, including report):* Selected. The dentist, located remotely, interpreted the radiographic images (4 BW, 1 PA) and photographs captured by the hygienist at a different location (patient's home). This code accurately reflects the remote interpretation service. - *D9410 (House/institutional call):* Selected. The service was provided at the patient's home because the patient was unable to travel to the office. This code reflects the professional visit occurring outside the traditional office setting, involving the hygienist providing services on-site under the dentist's overall direction. - *D9995 (Teledentistry - synchronous; real-time encounter):* Selected. The scenario explicitly describes a real-time (synchronous) interaction involving the dentist, patient, and hygienist via electronic means for communication and viewing images. This code represents the teledentistry modality used for the consultation and evaluation. - *D0191 (Assessment of a patient):* Rejected. While an assessment occurred, D0140 (Limited oral evaluation - problem focused) is more specific and appropriate given the patient's complaint of pain and the use of diagnostic images for evaluation by the dentist. D0140 better describes the clinical evaluation performed than the more general D0191 assessment/screening code in this context. - *D0999 (Unspecified diagnostic procedure, by report):* Rejected. The diagnostic procedures performed (image capture, image interpretation, evaluation) are covered by specific codes (D0703, D0707, D0708, D0391, D0140). There is no unspecified diagnostic procedure requiring D0999. - *D9999 (Unspecified adjunctive procedure, by report):* Rejected. The specific actions and circumstances (image capture, interpretation, evaluation, house call, teledentistry) are adequately described by the selected specific CDT codes. Use of an unspecified code is not necessary or justified."
+                },
+                icd: {
+                    codes: [],
+                    rejected_codes: [],
+                    explanation: "The instructions specify that code selection must only come from the suggested answers provided in the Topic Analysis Results section. The provided Topic Analysis Results explicitly state \"RAW RESULT: No result\", indicating that no ICD-10-CM codes were suggested for this scenario. Therefore, adhering strictly to the instructions, no codes can be selected or recommended. While the patient reported \"slight non-localized dental pain,\" and the encounter involved teledentistry due to the patient being homebound, leading to a recommendation for an in-office follow-up, potential codes reflecting these elements (e.g., R52 for unspecified pain, K08.89 for other specified disorders of teeth, or relevant Z codes for encounter circumstances) cannot be chosen because they were not included in the (empty) list of suggested codes from the topic analysis. No definitive diagnosis was established during this encounter."
+                }
+            }
+        };
+
+        // Track Rejected Codes (Client-side)
+        let rejectedCodes = [...backendResponse.inspector_results.cdt.rejected_codes];
+        let rejectedIcdCodes = [...backendResponse.inspector_results.icd.rejected_codes];
+
+        // Code Descriptions (Simulated for display)
+        const codeDetailsMap = {
+            'D0140': {
+                type: 'CDT',
+                description: 'Limited oral evaluation - problem focused',
+                evidence: 'Patient reported slight non-localized dental pain, evaluated via teledentistry.'
+            },
+            'D0708': {
+                type: 'CDT',
+                description: 'Image capture only, intraoral - bitewing(s)',
+                evidence: 'Four bitewing images captured by hygienist at patient’s home.'
+            },
+            'D0707': {
+                type: 'CDT',
+                description: 'Image capture only, intraoral - periapical',
+                evidence: 'One periapical image captured by hygienist at patient’s home.'
+            },
+            'D0703': {
+                type: 'CDT',
+                description: 'Image capture only, 2D oral/facial photographic image',
+                evidence: 'Two intra-oral photographs captured by hygienist at patient’s home.'
+            },
+            'D0391': {
+                type: 'CDT',
+                description: 'Interpretation of diagnostic image by a practitioner not associated with capture',
+                evidence: 'Dentist remotely interpreted radiographic images and photographs.'
+            },
+            'D9410': {
+                type: 'CDT',
+                description: 'House/institutional call',
+                evidence: 'Service provided at patient’s home due to inability to travel.'
+            },
+            'D9995': {
+                type: 'CDT',
+                description: 'Teledentistry – synchronous; real-time encounter',
+                evidence: 'Dentist evaluated patient remotely in real-time.'
+            },
+            'D0191': {
+                type: 'CDT',
+                description: 'Assessment of a patient',
+                evidence: 'Rejected: D0140 is more specific for the evaluation performed.'
+            },
+            'D0999': {
+                type: 'CDT',
+                description: 'Unspecified diagnostic procedure, by report',
+                evidence: 'Rejected: Specific codes cover all diagnostic procedures.'
+            },
+            'D9999': {
+                type: 'CDT',
+                description: 'Unspecified adjunctive procedure, by report',
+                evidence: 'Rejected: Specific codes describe all actions and circumstances.'
+            }
+        };
+
+        // Sidebar Toggle
+        const sidebarToggle = document.getElementById('sidebarToggle');
+        const menuToggle = document.getElementById('menuToggle');
+        const sidebar = document.getElementById('sidebar');
+        const mainContent = document.getElementById('mainContent');
+        let isSidebarVisible = true;
+
+        sidebarToggle.addEventListener('click', toggleSidebar);
+        menuToggle.addEventListener('click', toggleSidebar);
+
+        function toggleSidebar() {
+            isSidebarVisible = !isSidebarVisible;
+            if (isSidebarVisible) {
+                sidebar.classList.remove('transform', '-translate-x-full', 'sidebar-close');
+                sidebar.classList.add('sidebar-open');
+                mainContent.classList.add('md:ml-64');
+            } else {
+                sidebar.classList.add('transform', '-translate-x-full', 'sidebar-close');
+                sidebar.classList.remove('sidebar-open');
+                mainContent.classList.remove('md:ml-64');
+            }
+        }
+
+        // Dark/Light Mode Toggle
+        const themeToggle = document.getElementById('themeToggle');
+        const body = document.getElementById('themeBody');
+        themeToggle.addEventListener('click', () => {
+            body.classList.toggle('dark');
+            const isDark = body.classList.contains('dark');
+            themeToggle.innerHTML = `<i class="fas ${isDark ? 'fa-sun' : 'fa-moon'} mr-2"></i> ${isDark ? 'Light' : 'Dark'} Mode`;
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+        });
+        if (localStorage.getItem('theme') === 'dark') {
+            body.classList.add('dark');
+            themeToggle.innerHTML = '<i class="fas fa-sun mr-2"></i> Light Mode';
+        }
+
+        // Profile Dropdown Toggle
+        const profileToggle = document.getElementById('profileToggle');
+        const profileDropdown = document.getElementById('profileDropdown');
+        profileToggle.addEventListener('click', () => {
+            profileDropdown.classList.toggle('hidden');
+        });
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!profileToggle.contains(e.target)) {
+                profileDropdown.classList.add('hidden');
+            }
+        });
+        // Logout Button (Placeholder)
+        const logoutButton = document.getElementById('logoutButton');
+        logoutButton.addEventListener('click', () => {
+            alert('Logging out...');
+            // Implement actual logout (e.g., clear session, redirect to login)
+        });
+
+        // PDF Upload Handling
+        const pdfUpload = document.getElementById('pdfUpload');
+        const dropZone = document.getElementById('dropZone');
+        const uploadText = document.getElementById('uploadText');
+        const fileName = document.getElementById('fileName');
+        const uploadProgress = document.getElementById('uploadProgress');
+        const browseLink = uploadText.querySelector('span');
+
+        browseLink.addEventListener('click', () => pdfUpload.click());
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-blue-400');
+        });
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('border-blue-400');
+        });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-blue-400');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type === 'application/pdf') {
+                handleFileUpload(file);
+            }
+        });
+
+        pdfUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                handleFileUpload(file);
+            }
+        });
+
+        function handleFileUpload(file) {
+            fileName.textContent = file.name;
+            uploadProgress.classList.remove('hidden');
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += 10;
+                uploadProgress.querySelector('div').style.width = `${progress}%`;
+                if (progress >= 100) {
+                    clearInterval(interval);
+                    uploadProgress.classList.add('hidden');
+                    processInput('Simulated PDF input');
+                }
+            }, 200);
+        }
+
+        // Copy All Codes Button
+        const copyCodesButton = document.getElementById('copyCodesButton');
+        copyCodesButton.addEventListener('click', () => {
+            const cdtCodes = backendResponse.inspector_results.cdt.codes;
+            const icdCodes = backendResponse.inspector_results.icd.codes;
+            const textToCopy = `CDT: ${cdtCodes.join(', ')}; ICD-10: ${icdCodes.length ? icdCodes.join(', ') : 'None'}`;
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                alert('All codes copied to clipboard!');
+            }).catch(() => {
+                alert('Failed to copy codes.');
+            });
+        });
+
+        // Copy Selected CDT Codes Button
+        const copyCdtCodes = document.getElementById('copyCdtCodes');
+        copyCdtCodes.addEventListener('click', () => {
+            const selectedCdtCodes = backendResponse.inspector_results.cdt.codes.filter(code => !rejectedCodes.includes(code));
+            if (selectedCdtCodes.length === 0) {
+                alert('No selected CDT codes to copy.');
+                return;
+            }
+            const textToCopy = selectedCdtCodes.join(', ');
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                alert(`Selected CDT codes copied: ${textToCopy}!`);
+            }).catch(() => {
+                alert('Failed to copy selected CDT codes.');
+            });
+        });
+
+        // Copy Selected ICD-10 Codes Button
+        const copyIcdCodes = document.getElementById('copyIcdCodes');
+        copyIcdCodes.addEventListener('click', () => {
+            const selectedIcdCodes = backendResponse.inspector_results.icd.codes.filter(code => !rejectedIcdCodes.includes(code));
+            if (selectedIcdCodes.length === 0) {
+                alert('No selected ICD-10 codes to copy.');
+                return;
+            }
+            const textToCopy = selectedIcdCodes.join(', ');
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                alert(`Selected ICD-10 codes copied: ${textToCopy}!`);
+            }).catch(() => {
+                alert('Failed to copy selected ICD-10 codes.');
+            });
+        });
+
+        // Custom Code Form Handling
+        const addCustomCodeButton = document.getElementById('addCustomCodeButton');
+        addCustomCodeButton.addEventListener('click', () => {
+            const customCodeInput = document.getElementById('customCodeInput');
+            const customCodeType = document.getElementById('customCodeType');
+            const code = customCodeInput.value.trim().toUpperCase();
+            const type = customCodeType.value;
+
+            if (!code) {
+                alert('Please enter a valid code.');
+                return;
+            }
+
+            // Add to backend response (client-side) and mark as Selected
+            if (type === 'CDT') {
+                backendResponse.inspector_results.cdt.codes.push(code);
+                rejectedCodes = rejectedCodes.filter(c => c !== code);
+            } else {
+                backendResponse.inspector_results.icd.codes.push(code);
+                rejectedIcdCodes = rejectedIcdCodes.filter(c => c !== code);
+            }
+
+            // Add simulated details for custom code
+            codeDetailsMap[code] = {
+                type: type,
+                description: `Custom ${type} code: ${code}`,
+                evidence: 'Manually entered by user.'
+            };
+
+            // Refresh UI
+            processInput('Custom code added');
+            customCodeInput.value = '';
+        });
+
+        // Process Input
+        const processButton = document.getElementById('processButton');
+        processButton.addEventListener('click', () => {
+            const rawText = document.getElementById('rawTextInput').value;
+            if (rawText) {
+                processInput(rawText);
+            } else {
+                alert('Please enter text or upload a PDF.');
+            }
+        });
+
+        function processInput(text) {
+            const cdtCodesContainer = document.getElementById('cdtCodes');
+            const icdCodesContainer = document.getElementById('icdCodes');
+            const recentCodesTable = document.getElementById('recentCodesTable');
+            
+            // Generate final codes from backend response
+            const cdtCodes = backendResponse.inspector_results.cdt.codes;
+            const icdCodes = backendResponse.inspector_results.icd.codes;
+            const allCodes = [...cdtCodes, ...icdCodes];
+            
+            cdtCodesContainer.innerHTML = cdtCodes.map(code => `
+                <button class="${rejectedCodes.includes(code) ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'} code-btn px-2 py-1 rounded tooltip font-semibold hover:bg-blue-50 hover:scale-105 transition-all duration-200" data-code="${code}" data-type="CDT">
+                    ${code}
+                    <span class="tooltip-text">${rejectedCodes.includes(code) ? 'Rejected' : 'Selected'}</span>
+                </button>
+            `).join('');
+            
+            icdCodesContainer.innerHTML = icdCodes.length ? icdCodes.map(code => `
+                <button class="${rejectedIcdCodes.includes(code) ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'} code-btn px-2 py-1 rounded tooltip font-semibold hover:bg-blue-50 hover:scale-105 transition-all duration-200" data-code="${code}" data-type="ICD-10">
+                    ${code}
+                    <span class="tooltip-text">${rejectedIcdCodes.includes(code) ? 'Rejected' : 'Selected'}</span>
+                </button>
+            `).join('') : '<p class="text-gray-500 dark:text-gray-400 font-light">No ICD-10 codes assigned.</p>';
+
+            // Update recent codes table
+            recentCodesTable.innerHTML = '';
+            allCodes.forEach(code => {
+                const row = document.createElement('tr');
+                row.className = 'border-t border-gray-300 dark:border-slate-500';
+                row.innerHTML = `
+                    <td class="p-2">${code}</td>
+                    <td class="p-2">${cdtCodes.includes(code) ? 'CDT' : 'ICD-10'}</td>
+                    <td class="p-2">${codeDetailsMap[code].description}</td>
+                    <td class="p-2">
+                        <button class="text-blue-400 hover:text-blue-500 view-btn font-medium" data-code="${code}">View</button>
+                        <button class="text-green-400 hover:text-green-500 ml-2 font-medium">Add to Claim</button>
+                    </td>
+                `;
+                recentCodesTable.insertBefore(row, recentCodesTable.firstChild);
+            });
+
+            bindCodeButtons();
+            bindViewButtons();
+        }
+
+        // Bind Code Buttons
+        function bindCodeButtons() {
+            const codeButtons = document.querySelectorAll('.code-btn');
+            const codeDetails = document.getElementById('codeDetails');
+            codeButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const code = button.dataset.code;
+                    const type = button.dataset.type;
+                    const explanation = type === 'CDT' 
+                        ? backendResponse.inspector_results.cdt.explanation.split(' - ').find(exp => exp.includes(code)) || 'No detailed explanation available.'
+                        : backendResponse.inspector_results.icd.explanation;
+
+                    // Toggle Selected/Rejected
+                    if (type === 'CDT') {
+                        if (rejectedCodes.includes(code)) {
+                            rejectedCodes = rejectedCodes.filter(c => c !== code);
+                        } else {
+                            rejectedCodes.push(code);
+                        }
+                    } else {
+                        if (rejectedIcdCodes.includes(code)) {
+                            rejectedIcdCodes = rejectedIcdCodes.filter(c => c !== code);
+                        } else {
+                            rejectedIcdCodes.push(code);
+                        }
+                    }
+
+                    // Refresh UI to update colors and tooltips
+                    processInput('Updated code status');
+
+                    codeDetails.innerHTML = `
+                        <p><strong class="font-semibold">Code:</strong> ${code}</p>
+                        <p><strong class="font-semibold">Type:</strong> ${type}</p>
+                        <p><strong class="font-semibold">Description:</strong> ${codeDetailsMap[code].description}</p>
+                        <p><strong class="font-semibold">Evidence:</strong> ${codeDetailsMap[code].evidence}</p>
+                        <p><strong class="font-semibold">Explanation:</strong> ${explanation}</p>
+                    `;
+                });
+            });
+        }
+
+        // Bind View Buttons in Recent Codes
+        function bindViewButtons() {
+            const viewButtons = document.querySelectorAll('.view-btn');
+            const codeDetails = document.getElementById('codeDetails');
+            viewButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const code = button.dataset.code;
+                    const type = codeDetailsMap[code].type;
+                    const explanation = type === 'CDT' 
+                        ? backendResponse.inspector_results.cdt.explanation.split(' - ').find(exp => exp.includes(code)) || 'No detailed explanation available.'
+                        : backendResponse.inspector_results.icd.explanation;
+                    codeDetails.innerHTML = `
+                        <p><strong class="font-semibold">Code:</strong> ${code}</p>
+                        <p><strong class="font-semibold">Type:</strong> ${type}</p>
+                        <p><strong class="font-semibold">Description:</strong> ${codeDetailsMap[code].description}</p>
+                        <p><strong class="font-semibold">Evidence:</strong> ${codeDetailsMap[code].evidence}</p>
+                        <p><strong class="font-semibold">Explanation:</strong> ${explanation}</p>
+                    `;
+                });
+            });
+        }
+
+        // Auto-save Text Input
+        const rawTextInput = document.getElementById('rawTextInput');
+        rawTextInput.addEventListener('input', () => {
+            localStorage.setItem('draftText', rawTextInput.value);
+        });
+        if (localStorage.getItem('draftText')) {
+            rawTextInput.value = localStorage.getItem('draftText');
+        }
+
+        // Initialize with backend data
+        processInput('Initial scenario');
+    </script>
+</body>
+</html>

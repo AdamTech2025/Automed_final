@@ -1,4 +1,4 @@
-import { FaTooth, FaCogs, FaCheck, FaTimes, FaPaperPlane, FaRobot, FaCopy, FaSpinner, FaPlus } from 'react-icons/fa';
+import { FaTooth, FaCogs, FaCheck, FaTimes, FaPaperPlane, FaRobot, FaCopy, FaSpinner, FaPlus, FaBars, FaMoon, FaSun, FaSearch, FaHome, FaUserInjured, FaFileAlt, FaDollarSign } from 'react-icons/fa';
 import { analyzeDentalScenario, submitSelectedCodes, addCustomCode } from '../../interceptors/services.js';
 import { useState, useEffect, useMemo } from 'react';
 import Questioner from './Questioner.jsx';
@@ -6,7 +6,7 @@ import { useTheme } from '../../context/ThemeContext';
 import Loader from '../Modal/Loading.jsx';
 
 const Home = () => {
-  const { isDark } = useTheme();
+  const { isDark, toggleTheme } = useTheme();
   const [scenario, setScenario] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -17,6 +17,10 @@ const Home = () => {
   const [expandedTopics, setExpandedTopics] = useState({});
   const [newCode, setNewCode] = useState('');
   const [loadingProgress, setLoadingProgress] = useState(0);
+  const [sidebarVisible, setSidebarVisible] = useState(true);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   // Check if there are questions in the result
   useEffect(() => {
@@ -370,7 +374,7 @@ const Home = () => {
           // Add a brief highlight effect
           element.classList.add('bg-yellow-100');
           setTimeout(() => {
-            element.classList.remove('bg-yellow-100');
+            element.classList.remove('bg-red-100');
           }, 1500);
         } else {
           console.log(`Could not find element with ID code-${code}`);
@@ -381,166 +385,19 @@ const Home = () => {
     }
   };
 
-  const renderCodeSection = (topicKey) => {
-    if (!formattedSubtopicData?.[topicKey]) return null;
-    
-    const topicData = formattedSubtopicData[topicKey];
-    const isExpanded = expandedTopics[topicKey];
-    
-    // Extract name from the key (assuming format "Name (Range)")
-    const topicName = topicKey.split('(')[0].trim();
-    
-    // Skip if no valid codes
-    if (!topicData || topicData.length === 0) return null;
-    
-    // Skip if all codes are "none"
-    const hasValidCodes = topicData.some(code => code && code.code && code.code !== 'none' && code.code.toLowerCase() !== 'none');
-    if (!hasValidCodes) return null;
-    
-    return (
-      <div className="mb-6">
-        <div 
-          className={`flex items-center justify-between p-4 ${topicKey.includes('custom_codes') ? 
-            (isDark ? 'bg-blue-900/30' : 'bg-blue-50') : 
-            (isDark ? 'bg-gray-800' : 'bg-gray-50')
-          } rounded-lg cursor-pointer hover:${isDark ? 'bg-gray-700' : 'bg-gray-100'} transition-colors`}
-          onClick={() => toggleTopic(topicKey)}
-        >
-          <h3 className="text-lg font-semibold">{topicName}</h3>
-          <div className="transform transition-transform duration-300">
-            {isExpanded ? '▼' : '▶'}
-          </div>
-        </div>
-        
-        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${
-          isExpanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'
-        }`}>
-          {topicData.map((codeData, index) => {
-            if (!codeData || !codeData.code || codeData.code === 'none' || codeData.code.toLowerCase() === 'none') return null;
-
-            const isAccepted = selectedCodes.accepted.includes(codeData.code);
-            const isDenied = selectedCodes.denied.includes(codeData.code);
-            
-            return (
-              <div 
-                key={`topic-${index}-${topicKey}-${codeData.code}`}
-                className={`mt-4 transition-all duration-300 ease-in-out ${
-                  isAccepted ? (isDark ? 'bg-green-900/30 border-green-700' : 'bg-green-50 border-green-200') : 
-                  isDenied ? (isDark ? 'bg-red-900/30 border-red-700' : 'bg-red-50 border-red-200') : 
-                  (isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200')
-                }`}
-              >
-                <div 
-                  id={`code-${codeData.code}`} 
-                  className={`p-4 rounded-lg shadow-sm border transition-colors duration-300 ${
-                  isAccepted ? (isDark ? 'border-green-700' : 'border-green-300') : 
-                  isDenied ? (isDark ? 'border-red-700' : 'border-red-300') : 
-                  topicKey.includes('custom_codes') && 'isApplicable' in codeData ? 
-                    (codeData.isApplicable ? 
-                      (isDark ? 'border-green-700' : 'border-green-300') : 
-                      (isDark ? 'border-red-700' : 'border-red-300')
-                    ) :
-                  (isDark ? 'border-gray-700' : 'border-gray-200')
-                }`}
-                >
-                  <div className="flex justify-between items-center mb-2">
-                    <span className={`font-mono px-2 py-1 rounded ${
-                      isAccepted ? (isDark ? 'bg-green-900 text-green-200' : 'bg-green-100 text-green-800') : 
-                      isDenied ? (isDark ? 'bg-red-900 text-red-200' : 'bg-red-100 text-red-800') : 
-                      topicKey.includes('custom_codes') && 'isApplicable' in codeData ? 
-                        (codeData.isApplicable ? 
-                          (isDark ? 'bg-green-900 text-green-200' : 'bg-green-100 text-green-800') : 
-                          (isDark ? 'bg-red-900 text-red-200' : 'bg-red-100 text-red-800')
-                        ) :
-                      (isDark ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-800')
-                    }`}>
-                      {codeData.code}
-                    </span>
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleCodeSelection(codeData.code, 'accept');
-                        }}
-                        className={`p-2 rounded-full transition-all duration-200 ${
-                          isAccepted 
-                            ? 'bg-green-500 text-white scale-110' 
-                            : (isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-600') + ' hover:bg-green-500 hover:text-white hover:scale-110'
-                        }`}
-                      >
-                        <FaCheck />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleCodeSelection(codeData.code, 'deny');
-                        }}
-                        className={`p-2 rounded-full transition-all duration-200 ${
-                          isDenied 
-                            ? 'bg-red-500 text-white scale-110' 
-                            : (isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-600') + ' hover:bg-red-500 hover:text-white hover:scale-110'
-                        }`}
-                      >
-                        <FaTimes />
-                      </button>
-                    </div>
-                  </div>
-                  <p className={`text-sm mb-1 ${
-                    isAccepted ? (isDark ? 'text-green-300' : 'text-green-700') : 
-                    isDenied ? (isDark ? 'text-red-300' : 'text-red-700') : 
-                    topicKey.includes('custom_codes') && 'isApplicable' in codeData ? 
-                      (codeData.isApplicable ? 
-                        (isDark ? 'text-green-300' : 'text-green-700') : 
-                        (isDark ? 'text-red-300' : 'text-red-700')
-                      ) :
-                    (isDark ? 'text-gray-300' : 'text-gray-600')
-                  }`}>
-                    <span className="font-medium">Explanation:</span> {codeData.explanation || 'N/A'}
-                  </p>
-                  <p className={`text-sm ${
-                    isAccepted ? (isDark ? 'text-green-300' : 'text-green-700') : 
-                    isDenied ? (isDark ? 'text-red-300' : 'text-red-700') : 
-                    topicKey.includes('custom_codes') && 'isApplicable' in codeData ? 
-                      (codeData.isApplicable ? 
-                        (isDark ? 'text-green-300' : 'text-green-700') : 
-                        (isDark ? 'text-red-300' : 'text-red-700')
-                      ) :
-                    (isDark ? 'text-gray-300' : 'text-gray-600')
-                  }`}>
-                    <span className="font-medium">Doubt:</span> {codeData.doubt || 'N/A'}
-                  </p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
-
   const renderInspectorResults = () => {
     if (!result?.inspector_results) return null;
 
-    // Get the actual inspector results object (already direct)
     const inspectorData = result.inspector_results;
-
     const cdtCodes = inspectorData.cdt?.codes || [];
     const icdCodes = inspectorData.icd?.codes || [];
-    const cdtExplanation = inspectorData.cdt?.explanation || '';
-    const icdExplanation = inspectorData.icd?.explanation || '';
-
-    // Count CDT code occurrences
-    const cdtCodeCounts = cdtCodes.reduce((acc, code) => {
-      acc[code] = (acc[code] || 0) + 1;
-      return acc;
-    }, {});
 
     return (
       <div className={`mt-8 p-4 ${isDark ? 'bg-blue-900/30 border-blue-700' : 'bg-blue-50 border-blue-200'} rounded-lg border ai-final-analysis-content relative`}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center">
             <FaRobot className={`${isDark ? 'text-blue-400' : 'text-blue-500'} mr-2`} />
-            <h3 className={`text-lg font-semibold ${isDark ? 'text-blue-400' : 'text-blue-700'}`}>AI Final Analysis</h3>
+            <h3 className={`text-sm font-semibold ${isDark ? 'text-blue-400' : 'text-blue-700'}`}>AI Final Analysis</h3>
           </div>
           <button
             onClick={handleCopyCodes}
@@ -551,17 +408,17 @@ const Home = () => {
         </div>
         
         <div className="mb-4">
-          <h4 className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'} mb-2`}>CDT Codes:</h4>
+          <h4 className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'} mb-2 text-sm`}>CDT Codes:</h4>
           <div className="flex flex-wrap gap-2">
-            {Object.entries(cdtCodeCounts).map(([code, count]) => {
+            {cdtCodes.map((code, index) => {
               const isAccepted = selectedCodes.accepted.includes(code);
               const isDenied = selectedCodes.denied.includes(code);
               
               return (
                 <span 
-                  key={`cdt-code-${code}`}
+                  key={`${code}-${index}`}
                   onClick={() => scrollToCode(code)}
-                  className={`cursor-pointer px-3 py-1 rounded-full text-sm transition-all duration-200 ${
+                  className={`cursor-pointer px-2 py-1 rounded-full text-xs transition-all duration-200 ${
                     isAccepted 
                       ? (isDark ? 'bg-green-900/60 text-green-200 border-green-700' : 'bg-green-100 text-green-800 border border-green-300') 
                       : isDenied 
@@ -569,21 +426,21 @@ const Home = () => {
                         : (isDark ? 'bg-blue-800/60 text-blue-200' : 'bg-blue-100 text-blue-800')
                   }`}
                 >
-                  {code}{count > 1 ? ` (${count} Times)` : ''}
+                  {code}
                 </span>
               );
             })}
           </div>
-          <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'} mt-2`}>{cdtExplanation}</p>
+          <p className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'} mt-2`}>{inspectorData.cdt?.explanation}</p>
         </div>
 
         <div className="mb-4">
-          <h4 className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'} mb-2`}>ICD Codes:</h4>
+          <h4 className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'} mb-2 text-sm`}>ICD Codes:</h4>
           <div className="flex flex-wrap gap-2">
             {icdCodes.map((code, index) => (
               <span 
                 key={`icd-code-${index}-${code}`}
-                className={`px-3 py-1 rounded-full text-sm ${
+                className={`px-2 py-1 rounded-full text-xs ${
                   isDark ? 'bg-purple-900/60 text-purple-200' : 'bg-purple-100 text-purple-800'
                 }`}
               >
@@ -591,7 +448,7 @@ const Home = () => {
               </span>
             ))}
           </div>
-          <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'} mt-2`}>{icdExplanation}</p>
+          <p className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'} mt-2`}>{inspectorData.icd?.explanation}</p>
         </div>
       </div>
     );
@@ -601,13 +458,29 @@ const Home = () => {
   const renderSelectedCodes = () => {
     if (selectedCodes.accepted.length === 0) return null;
     
-    const handleCopySelectedCodes = () => {
-      const acceptedText = selectedCodes.accepted.length > 0 
-        ? `Accepted: ${selectedCodes.accepted.join(', ')}` 
-        : '';
+    const handleCopySelectedCodes = (type = 'all') => {
+      const cdtCodes = result?.inspector_results?.cdt?.codes || [];
+      const icdCodes = result?.inspector_results?.icd?.codes || [];
       
-      navigator.clipboard.writeText(acceptedText);
-      alert('Selected codes copied to clipboard!');
+      let textToCopy = '';
+      
+      if (type === 'cdt') {
+        const selectedCDT = selectedCodes.accepted.filter(code => cdtCodes.includes(code));
+        textToCopy = selectedCDT.join(', ');
+      } else if (type === 'icd') {
+        const selectedICD = selectedCodes.accepted.filter(code => icdCodes.includes(code));
+        textToCopy = selectedICD.join(', ');
+      } else {
+        const selectedCDT = selectedCodes.accepted.filter(code => cdtCodes.includes(code));
+        const selectedICD = selectedCodes.accepted.filter(code => icdCodes.includes(code));
+        textToCopy = `CDT Codes: ${selectedCDT.join(', ')}\nICD Codes: ${selectedICD.join(', ')}`;
+      }
+      
+      navigator.clipboard.writeText(textToCopy).then(() => {
+        alert('Selected codes copied to clipboard!');
+      }).catch(err => {
+        console.error('Failed to copy codes: ', err);
+      });
     };
     
     return (
@@ -615,7 +488,7 @@ const Home = () => {
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Your Selections</h3>
           <button
-            onClick={handleCopySelectedCodes}
+            onClick={() => handleCopySelectedCodes()}
             className={`${isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-500 hover:text-blue-700'} transition-colors flex items-center`}
           >
             <FaCopy className="mr-1" /> Copy All
@@ -643,100 +516,31 @@ const Home = () => {
     );
   };
 
-  const handleAddCode = async () => {
+  const handleAddCustomCode = async () => {
     if (!newCode.trim()) {
       setError("Please enter a valid code");
       return;
     }
+
+    const codeType = document.getElementById('codeType').value; // Get the selected code type
+    const codes = result?.inspector_results?.[codeType.toLowerCase()]?.codes || [];
     
-    if (!result?.record_id) {
-      setError("No active analysis session. Please analyze a scenario first.");
+    if (codes.includes(newCode)) {
+      setError("This code already exists");
       return;
     }
 
-    setLoading(true);
-    setError(null);
-    
     try {
-      const response = await addCustomCode(newCode, scenario, result.record_id);
-      console.log('Custom code response:', response);
+      // Update the inspector results with the new code
+      const updatedResult = { ...result };
+      updatedResult.inspector_results[codeType.toLowerCase()].codes.push(newCode);
+      setResult(updatedResult);
+      setNewCode('');
       
-      // Update the result with the new code
-      if (response.data && response.data.code_data) {
-        // Create a copy of the current result
-        const updatedResult = JSON.parse(JSON.stringify(result));
-        
-        // Add the new code to the appropriate topic or create a new topic
-        const codeData = response.data.code_data;
-        
-        // Use the formattedSubtopicData logic for consistency
-        const customTopicKey = "Custom Codes (N/A)"; // Define a key for custom codes
-        
-        // Ensure CDT_subtopic exists
-        if (!updatedResult.CDT_subtopic) {
-          updatedResult.CDT_subtopic = [];
-        }
-        
-        // Find or create the custom topic entry in the original array format
-        let customTopicEntry = updatedResult.CDT_subtopic.find(t => t.topic === "Custom Codes");
-        if (!customTopicEntry) {
-          customTopicEntry = { topic: "Custom Codes", code_range: "N/A", codes: [] };
-          updatedResult.CDT_subtopic.push(customTopicEntry);
-        }
-        
-        // Extract applicability status from the response data directly
-        const isApplicable = codeData.isApplicable;
-        
-        // Extract reason from the structured explanation
-        let reason = "N/A";
-        if (codeData.explanation) {
-          const reasonMatch = codeData.explanation.match(/\*\*Reason\*\*:\s*([\s\S]*)/i);
-          reason = reasonMatch ? reasonMatch[1].trim() : codeData.explanation; // Fallback to full explanation if pattern fails
-        }
-        
-        // Add the new code data with parsed information
-        customTopicEntry.codes.push({
-          code: codeData.code,
-          explanation: reason, // Use the extracted reason
-          doubt: codeData.doubt || "None",
-          isApplicable: isApplicable, // Store applicability directly
-          raw_data: codeData.explanation // Store the original structured explanation as raw_data
-        });
-        
-        // Always add custom codes to the inspector results regardless of applicability
-        if (updatedResult.inspector_results && updatedResult.inspector_results.cdt) {
-          const inspectorData = updatedResult.inspector_results;
-          
-          // Ensure codes array exists
-          if (!inspectorData.cdt.codes) inspectorData.cdt.codes = [];
-          
-          // Add the code if not already present
-          if (!inspectorData.cdt.codes.includes(codeData.code)) {
-            inspectorData.cdt.codes.push(codeData.code);
-          }
-        }
-        
-        // Update the result state
-        setResult(updatedResult);
-        
-        // Open the custom codes dropdown and keep it open until user closes it
-        if (customTopicKey) {
-          setExpandedTopics(prev => ({
-            ...prev,
-            [customTopicKey]: true
-          }));
-        }
-        
-        // Clear the input
-        setNewCode('');
-      } else {
-        setError("Received invalid response format from server");
-      }
+      // Automatically select the new code
+      handleCodeSelection(newCode, 'accept');
     } catch (err) {
-      console.error('Error adding custom code:', err);
       setError(err.message || 'Failed to add custom code');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -806,8 +610,339 @@ const Home = () => {
     );
   };
 
+  const handleFileUpload = (file) => {
+    setUploadedFile(file);
+    let progress = 0;
+    const interval = setInterval(() => {
+      progress += 10;
+      setUploadProgress(progress);
+      if (progress >= 100) {
+        clearInterval(interval);
+        setUploadProgress(0);
+        handleSubmit(new Event('submit')); // Simulate form submission
+      }
+    }, 200);
+  };
+
   return (
-    <div className={`flex flex-col transition-colors`}>
+    <div className="flex min-h-screen">
+      {/* Sidebar - removed fixed positioning */}
+      <div className={`w-64 ${isDark ? 'bg-slate-700' : 'bg-blue-100'} text-gray-800 dark:text-gray-200 transition-transform duration-300 ${
+        sidebarVisible ? '' : 'hidden'
+      }`}>
+        <div className="sticky top-0 h-screen overflow-y-auto">
+          <div className="flex flex-col h-full">
+            <div className="flex items-center justify-between p-4">
+              <h1 className="text-2xl font-bold tracking-tight">RCM Pro</h1>
+              <button onClick={() => setSidebarVisible(false)} className="text-gray-800 dark:text-gray-200">
+                <FaTimes />
+              </button>
+            </div>
+            <nav className="flex-1 p-4">
+              <ul className="space-y-4">
+                <li>
+                  <a href="#" className="flex items-center p-2 rounded hover:bg-blue-200 dark:hover:bg-slate-600 font-medium leading-relaxed">
+                    <FaHome className="mr-2" /> Dashboard
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="flex items-center p-2 rounded hover:bg-blue-200 dark:hover:bg-slate-600 font-medium leading-relaxed">
+                    <FaUserInjured className="mr-2" /> Patients
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="flex items-center p-2 rounded hover:bg-blue-200 dark:hover:bg-slate-600 font-medium leading-relaxed">
+                    <FaFileAlt className="mr-2" /> Coding
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="flex items-center p-2 rounded hover:bg-blue-200 dark:hover:bg-slate-600 font-medium leading-relaxed">
+                    <FaDollarSign className="mr-2" /> Billing
+                  </a>
+                </li>
+              </ul>
+            </nav>
+            <div className="p-4 mt-auto">
+              <button 
+                onClick={toggleTheme}
+                className="flex items-center p-2 rounded hover:bg-blue-200 dark:hover:bg-slate-600 font-medium leading-relaxed w-full"
+              >
+                {isDark ? <FaSun className="mr-2" /> : <FaMoon className="mr-2" />}
+                {isDark ? 'Light Mode' : 'Dark Mode'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content - adjusted margin */}
+      <div className="flex-1">
+        {/* Header */}
+        <header className="sticky top-0 bg-white dark:bg-slate-800 z-10 flex justify-between items-center p-4 shadow-md">
+          <div className="flex items-center space-x-4">
+            <button onClick={() => setSidebarVisible(!sidebarVisible)} className="text-gray-800 dark:text-gray-200">
+              <FaBars className="text-xl" />
+            </button>
+            <h2 className="text-xl font-bold tracking-tight text-gray-800 dark:text-gray-200">Medical Coding Suite</h2>
+          </div>
+        </header>
+
+        {/* Main Grid - added padding */}
+        <div className="p-4 md:p-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Input Section */}
+            <div className={`${isDark ? 'bg-slate-600' : 'bg-gray-200'} p-6 rounded-xl shadow-lg col-span-1 md:col-span-2`}>
+              <h3 className="text-lg font-bold tracking-tight mb-4 text-gray-800 dark:text-gray-200">Input Clinical Notes</h3>
+              <div className="mb-4">
+                <label className={`block ${isDark ? 'text-gray-300' : 'text-gray-700'} mb-2 text-sm font-medium`}>Raw Text Input</label>
+                <textarea
+                  value={scenario}
+                  onChange={(e) => setScenario(e.target.value)}
+                  className={`w-full border rounded-lg p-3 ${
+                    isDark ? 'bg-slate-700 text-gray-200 border-slate-500' : 'bg-gray-100 text-gray-900 border-gray-300'
+                  } focus:ring-2 focus:ring-blue-400 text-sm font-light leading-relaxed`}
+                  rows="5"
+                  placeholder="Enter clinical notes (e.g., Patient has tooth decay in molar, requires filling)"
+                />
+              </div>
+              <div className="mb-4">
+                <label className={`block ${isDark ? 'text-gray-300' : 'text-gray-700'} mb-2 text-sm font-medium`}>Upload PDF</label>
+                <div 
+                  className={`border-2 border-dashed ${
+                    isDark ? 'border-slate-500' : 'border-gray-300'
+                  } p-6 rounded-lg text-center hover:border-blue-400 transition-colors`}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const file = e.dataTransfer.files[0];
+                    if (file && file.type === 'application/pdf') {
+                      handleFileUpload(file);
+                    }
+                  }}
+                >
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleFileUpload(file);
+                    }}
+                  />
+                  <p className={`${isDark ? 'text-gray-400' : 'text-gray-500'} text-sm font-light leading-relaxed`}>
+                    Drag and drop a PDF or <span className="text-blue-400 cursor-pointer hover:underline">browse</span>
+                  </p>
+                  {uploadedFile && (
+                    <p className={`${isDark ? 'text-gray-400' : 'text-gray-500'} mt-2 text-sm font-light`}>
+                      {uploadedFile.name}
+                    </p>
+                  )}
+                  {uploadProgress > 0 && uploadProgress < 100 && (
+                    <div className="w-full bg-gray-300 dark:bg-slate-500 rounded-full h-2 mt-2">
+                      <div
+                        className="bg-blue-400 h-2 rounded-full"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={handleSubmit}
+                disabled={loading}
+                className={`${
+                  isDark ? 'bg-gradient-to-r from-teal-400 to-teal-500' : 'bg-gradient-to-r from-blue-400 to-blue-500'
+                } text-white px-4 py-2 text-sm rounded-lg hover:scale-105 hover:shadow-lg focus:ring-2 focus:ring-blue-400 font-medium transition-all duration-200`}
+              >
+                {loading ? (
+                  <>
+                    <FaSpinner className="animate-spin inline mr-2" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <FaCogs className="inline mr-2" />
+                    Process Input
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Final Codes Section */}
+            <div className={`${isDark ? 'bg-slate-600' : 'bg-gray-200'} p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200`}>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-bold tracking-tight text-gray-800 dark:text-gray-200">Final Codes</h3>
+                <button
+                  onClick={() => handleCopySelectedCodes()}
+                  className={`${
+                    isDark ? 'bg-gradient-to-r from-teal-400 to-teal-500' : 'bg-gradient-to-r from-blue-400 to-blue-500'
+                  } text-white px-3 py-1 text-sm rounded-lg hover:scale-105 hover:shadow-lg focus:ring-2 focus:ring-blue-400 flex items-center font-medium`}
+                >
+                  <FaCopy className="mr-2" /> Copy Selected
+                </button>
+              </div>
+
+              {/* Custom Code Input Form */}
+              <div className="mb-4">
+                <h4 className={`text-sm font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'} mb-2`}>Add Custom Code</h4>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={newCode}
+                    onChange={(e) => setNewCode(e.target.value)}
+                    className={`flex-1 border rounded-lg p-2 text-sm ${
+                      isDark ? 'bg-slate-700 text-gray-200 border-slate-500' : 'bg-gray-100 text-gray-900 border-gray-300'
+                    } focus:ring-2 focus:ring-blue-400 font-light leading-relaxed`}
+                    placeholder="Enter code (e.g., D0120)"
+                  />
+                  <select
+                    id="codeType"
+                    className={`border rounded-lg p-2 text-sm ${
+                      isDark ? 'bg-slate-700 text-gray-200 border-slate-500' : 'bg-gray-100 text-gray-900 border-gray-300'
+                    } focus:ring-2 focus:ring-blue-400 font-light leading-relaxed`}
+                  >
+                    <option value="CDT">CDT</option>
+                    <option value="ICD">ICD-10</option>
+                  </select>
+                  <button
+                    onClick={handleAddCustomCode}
+                    className={`${
+                      isDark ? 'bg-gradient-to-r from-teal-400 to-teal-500' : 'bg-gradient-to-r from-blue-400 to-blue-500'
+                    } text-white px-3 py-1 text-sm rounded-lg hover:scale-105 hover:shadow-lg focus:ring-2 focus:ring-blue-400 font-medium`}
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+
+              {/* Code Output */}
+              <div className="space-y-4">
+                {/* CDT Codes */}
+                <div className={`border ${
+                  isDark ? 'border-slate-500 bg-slate-700' : 'border-gray-300 bg-gray-100'
+                } p-4 rounded-lg shadow-md`}>
+                  <div className="flex justify-between items-center mb-2">
+                    <h4 className={`text-lg font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>CDT Codes</h4>
+                    <button
+                      onClick={() => handleCopySelectedCodes('cdt')}
+                      className={`${isDark ? 'text-gray-400 hover:text-blue-400' : 'text-gray-500 hover:text-blue-400'} hover:scale-105 transition-all duration-200`}
+                    >
+                      <FaCopy />
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {result?.inspector_results?.cdt?.codes.map((code, index) => (
+                      <span
+                        key={`${code}-${index}`}
+                        onClick={() => handleCodeSelection(code, selectedCodes.accepted.includes(code) ? 'deny' : 'accept')}
+                        className={`cursor-pointer px-2 py-1 rounded-full text-xs transition-all duration-200 hover:scale-105 ${
+                          selectedCodes.accepted.includes(code)
+                            ? (isDark ? 'bg-green-900/60 text-green-200 border-green-700' : 'bg-green-100 text-green-800 border border-green-300')
+                            : selectedCodes.denied.includes(code)
+                            ? (isDark ? 'bg-red-900/60 text-red-200 border-red-700' : 'bg-red-100 text-red-800 border border-red-300')
+                            : (isDark ? 'bg-blue-800/60 text-blue-200' : 'bg-blue-100 text-blue-800')
+                        } hover:shadow-lg`}
+                      >
+                        {code}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* ICD Codes */}
+                <div className={`border ${
+                  isDark ? 'border-slate-500 bg-slate-700' : 'border-gray-300 bg-gray-100'
+                } p-4 rounded-lg shadow-md`}>
+                  <div className="flex justify-between items-center mb-2">
+                    <h4 className={`text-lg font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>ICD-10 Codes</h4>
+                    <button
+                      onClick={() => handleCopySelectedCodes('icd')}
+                      className={`${isDark ? 'text-gray-400 hover:text-blue-400' : 'text-gray-500 hover:text-blue-400'} hover:scale-105 transition-all duration-200`}
+                    >
+                      <FaCopy />
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {result?.inspector_results?.icd?.codes.map((code, index) => (
+                      <span
+                        key={`icd-code-${index}-${code}`}
+                        onClick={() => handleCodeSelection(code, selectedCodes.accepted.includes(code) ? 'deny' : 'accept')}
+                        className={`cursor-pointer px-2 py-1 rounded-full text-xs transition-all duration-200 hover:scale-105 ${
+                          selectedCodes.accepted.includes(code)
+                            ? (isDark ? 'bg-green-900/60 text-green-200 border-green-700' : 'bg-green-100 text-green-800 border border-green-300')
+                            : selectedCodes.denied.includes(code)
+                            ? (isDark ? 'bg-red-900/60 text-red-200 border-red-700' : 'bg-red-100 text-red-800 border border-red-300')
+                            : (isDark ? 'bg-purple-900/60 text-purple-200' : 'bg-purple-100 text-purple-800')
+                        } hover:shadow-lg`}
+                      >
+                        {code}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Code Details Section */}
+            <div className={`${isDark ? 'bg-slate-600' : 'bg-gray-200'} p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 col-span-1 md:col-span-3`}>
+              <h3 className="text-lg font-bold tracking-tight mb-4 text-gray-800 dark:text-gray-200">Code Details</h3>
+              <div className={`border ${
+                isDark ? 'border-slate-500 bg-slate-700' : 'border-gray-300 bg-gray-100'
+              } p-4 rounded-lg shadow-md font-bold leading-relaxed text-gray-800 dark:text-gray-200`}>
+                Click a code above to view details...
+              </div>
+            </div>
+
+            {/* Recent Codes Dashboard */}
+            <div className={`${isDark ? 'bg-slate-600' : 'bg-gray-200'} p-6 rounded-xl shadow-lg col-span-1 md:col-span-3`}>
+              <h3 className="text-lg font-bold tracking-tight mb-4 text-gray-800 dark:text-green-200">Final Code Generation History</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className={`${isDark ? 'text-gray-400' : 'text-gray-600'} font-medium`}>
+                      <th className="p-2">Code</th>
+                      <th className="p-2">Type</th>
+                      <th className="p-2">Description</th>
+                      <th className="p-2">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className={`font-bold ${isDark ? 'text-gray-200' : 'text-gray-800'} leading-relaxed`}>
+                    {result?.inspector_results?.cdt?.codes.map((code) => (
+                      <tr key={code} className={`border-t ${isDark ? 'border-slate-500' : 'border-gray-300'}`}>
+                        <td className="p-2">{code}</td>
+                        <td className="p-2">CDT</td>
+                        <td className="p-2">{/* Add description from your data */}</td>
+                        <td className="p-2">
+                          <button className={`text-blue-400 hover:text-blue-500 font-medium`} onClick={() => scrollToCode(code)}>
+                            View
+                          </button>
+                          <button className="text-green-400 hover:text-green-500 ml-2 font-medium">
+                            Add to Claim
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {result?.inspector_results?.icd?.codes.map((code) => (
+                      <tr key={code} className={`border-t ${isDark ? 'border-slate-500' : 'border-gray-300'}`}>
+                        <td className="p-2">{code}</td>
+                        <td className="p-2">ICD-10</td>
+                        <td className="p-2">{/* Add description from your data */}</td>
+                        <td className="p-2">
+                          <button className={`text-blue-400 hover:text-blue-500 font-medium`}>View</button>
+                          <button className="text-green-400 hover:text-green-500 ml-2 font-medium">
+                            Add to Claim
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Questioner Modal */}
       {result && (
         <Questioner
@@ -833,14 +968,12 @@ const Home = () => {
             </div>
             <h3 className="text-white text-2xl font-bold mt-6 text-center">Analyzing your scenario...</h3>
             <div className="w-full bg-blue-800/30 h-2 my-4 rounded-full overflow-hidden">
-              <div 
+              <div
                 className="bg-gradient-to-r from-blue-500 to-blue-300 h-full rounded-full transition-all duration-1000 ease-linear"
-                style={{width: `${loadingProgress}%`}}
-              ></div>
+                style={{ width: `${loadingProgress}%` }}
+              />
             </div>
-            <p className="text-blue-100 mt-3 text-center text-sm">
-            ({Math.round(loadingProgress)}% complete)
-            </p>
+            <p className="text-blue-100 mt-3 text-center text-sm">({Math.round(loadingProgress)}% complete)</p>
             <p className="text-blue-100 mt-4 text-center">
               Our AI typically takes about 5 minutes to think. While you wait, you can start a new analysis in a separate tab.
             </p>
@@ -856,166 +989,6 @@ const Home = () => {
           </div>
         </div>
       )}
-
-      {/* Main content container */}
-      <div className="flex-grow flex items-center justify-center p-4">
-        <div className={`w-full p-4 md:p-6 ${isDark ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg transition-colors`}>
-          {/* Header */}
-          <div className={`${isDark ? 'bg-blue-900' : 'bg-blue-500'} text-white p-4 rounded-lg mb-6 transition-colors`}>
-            <h2 className="text-xl md:text-2xl font-semibold flex items-center">
-              <FaTooth className="mr-2" /> Dental Scenario
-            </h2>
-          </div>
-
-          {/* Form */}
-          <div className="p-4">
-            <form id="dental-form" className="space-y-4" onSubmit={handleSubmit}>
-              <div>
-                <label
-                  htmlFor="scenario"
-                  className={`block ${isDark ? 'text-gray-200' : 'text-gray-700'} font-medium mb-2 text-sm md:text-base`}
-                >
-                  Enter dental scenario to analyze:
-                </label>
-                <textarea
-                  id="scenario"
-                  name="scenario"
-                  rows="6"
-                  className={`w-full p-3 border ${
-                    isDark ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-white border-gray-300 text-gray-900'
-                  } rounded-lg focus:outline-none ${
-                    isDark ? 'focus:border-blue-400' : 'focus:border-blue-500'
-                  } text-sm md:text-base transition-colors`}
-                  placeholder="Describe the dental procedure or diagnosis..."
-                  value={scenario}
-                  onChange={(e) => setScenario(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  required
-                ></textarea>
-              </div>
-              <div className="flex justify-end">
-                <button
-                  type="submit"
-                  className={`${
-                    isDark ? 'bg-blue-700 hover:bg-blue-600' : 'bg-blue-600 hover:bg-blue-700'
-                  } text-white px-4 py-2 md:px-6 md:py-2 rounded-lg shadow-md disabled:${
-                    isDark ? 'bg-gray-700' : 'bg-gray-400'
-                  } text-sm md:text-base transition-all duration-300 flex items-center justify-center`}
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <>
-                      <FaSpinner className="animate-spin mr-2" />
-                      Analyzing...
-                    </>
-                  ) : (
-                    <>
-                      <FaCogs className="inline mr-2" />
-                      Analyze
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-
-            {/* Inspector Results Section */}
-            {renderInspectorResults()}
-            
-            {/* Selected Codes Section */}
-            {renderSelectedCodes()}
-
-            {/* Result */}
-            {result && !showQuestioner && (
-              <div className="mt-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Analysis Results</h3>
-                  <div className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                    Selected: {selectedCodes.accepted.length}
-                  </div>
-                </div>
-
-                {/* ICD Topic Section */}
-                {formattedICDTopicData && Object.keys(formattedICDTopicData).length > 0 && (
-                  <div className="mb-6">
-                    {Object.keys(formattedICDTopicData).map((topicKey, index) => (
-                      <div key={`icd-topic-container-${index}`}>{renderICDCodeSection(topicKey)}</div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Code Sections */}
-                {formattedSubtopicData && Object.keys(formattedSubtopicData).length > 0 ? (
-                  Object.keys(formattedSubtopicData).map((topicKey, index) => (
-                    <div key={`topic-container-${index}-${topicKey}`}>{renderCodeSection(topicKey)}</div>
-                  ))
-                ) : (
-                  <div className={`mt-4 p-4 ${isDark ? 'bg-gray-700' : 'bg-gray-50'} rounded-lg`}>
-                    <p className={`${isDark ? 'text-gray-300' : 'text-gray-600'}`}>No subtopic code sections available for this analysis.</p>
-                  </div>
-                )}
-
-                {/* Add Code Section */}
-                <div className={`mt-6 p-4 ${isDark ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'} rounded-lg border`}>
-                  <h3 className="text-lg font-semibold mb-3">Add Custom Code</h3>
-                  <div className="flex items-center mb-2">
-                    <input
-                      type="text"
-                      placeholder="Enter CDT code (e.g., D1120)"
-                      className={`w-full p-2 border ${
-                        isDark ? 'bg-gray-800 border-gray-600 text-gray-100' : 'bg-white border-gray-300 text-gray-900'
-                      } rounded-lg focus:outline-none ${
-                        isDark ? 'focus:border-blue-400' : 'focus:border-blue-500'
-                      } text-sm md:text-base`}
-                      value={newCode}
-                      onChange={(e) => setNewCode(e.target.value)}
-                      disabled={loading}
-                    />
-                    <button
-                      onClick={handleAddCode}
-                      className={`ml-2 px-4 py-2 ${
-                        isDark ? 'bg-blue-700 hover:bg-blue-600' : 'bg-blue-600 hover:bg-blue-700'
-                      } text-white rounded-lg shadow-md transition-all duration-300 disabled:${
-                        isDark ? 'bg-gray-700' : 'bg-gray-400'
-                      } flex items-center`}
-                      disabled={loading || !newCode.trim() || !result?.record_id}
-                    >
-                      {loading ? 'Analyzing...' : 'Analyze Code'}
-                    </button>
-                  </div>
-                  <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'} mt-1`}>
-                    Add a custom CDT code to check if it&apos;s applicable to this scenario.
-                    The AI will analyze and provide a recommendation.
-                  </p>
-                </div>
-
-                {/* Submit Button */}
-                <div className="mt-6 flex justify-end">
-                  <button
-                    onClick={handleSubmitCodes}
-                    disabled={submitting || selectedCodes.accepted.length === 0}
-                    className={`px-4 py-2 rounded-lg shadow-md flex items-center transition-all duration-300 text-white ${
-                      selectedCodes.accepted.length > 0
-                        ? (isDark ? 'bg-green-700 hover:bg-green-600' : 'bg-green-600 hover:bg-green-700')
-                        : (isDark ? 'bg-gray-600' : 'bg-gray-400') + ' cursor-not-allowed'
-                    } text-white`}
-                  >
-                    <FaPaperPlane className="mr-2" />
-                    {submitting ? 'Submitting...' : `Submit ${selectedCodes.accepted.length} Accepted Code(s)`}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Error */}
-            {error && (
-              <div className={`mt-4 p-4 ${isDark ? 'bg-red-900/30' : 'bg-red-100'} rounded-lg`}>
-                <h3 className={`font-semibold ${isDark ? 'text-red-300' : 'text-red-800'} text-sm md:text-base`}>Error:</h3>
-                <p className={`text-xs md:text-sm ${isDark ? 'text-red-200' : 'text-red-700'}`}>{error}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
     </div>
   );
 };
