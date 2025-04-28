@@ -58,12 +58,12 @@ const Signup = () => {
       const verificationData = { email, otp };
       const response = await verifySignupOtp(verificationData);
       if (response.access_token) {
-        localStorage.setItem('user', JSON.stringify({ 
-            name: name,
-            email: email
-        }));
-        localStorage.setItem('accessToken', response.access_token);
-        login();
+        const userData = {
+          name: name,
+          email: email,
+          role: 'user'
+        };
+        login(userData, response.access_token);
       } else {
         throw new Error(response.detail || 'Verification response missing token.');
       }

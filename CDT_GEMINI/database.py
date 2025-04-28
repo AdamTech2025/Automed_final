@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 import json
 import logging
-from typing import Union
+from typing import Union, Optional
 
 load_dotenv()
 
@@ -201,8 +201,46 @@ class MedicalCodingDB:
             logger.error(f"Error retrieving user by email {email}: {str(e)}", exc_info=True)
             return None
 
+    def get_user_details_by_id(self, user_id: str):
+        """Retrieve a user record by their ID, including the role."""
+        self.ensure_connection()
+        try:
+            # Select all fields including the new 'role' field
+            result = self.supabase.table("Users").select("id, name, email, phone, is_email_verified, created_at, role").eq("id", user_id).limit(1).execute()
+            if result.data:
+                logger.info(f"User details found for ID: {user_id}")
+                # Exclude sensitive fields before returning if necessary, e.g., password, OTP
+                user_data = result.data[0]
+                user_data.pop('hashed_password', None) 
+                user_data.pop('otp', None)
+                user_data.pop('otp_expires_at', None)
+                return user_data
+            else:
+                logger.info(f"No user found with ID: {user_id}")
+                return None
+        except Exception as e:
+            logger.error(f"Error retrieving user by ID {user_id}: {str(e)}", exc_info=True)
+            return None
+
+    def get_all_users_details(self):
+        """Retrieve all user records, including role, excluding sensitive fields."""
+        self.ensure_connection()
+        try:
+            # Include 'role' in the select statement
+            result = self.supabase.table("Users").select("id, name, email, phone, is_email_verified, created_at, role").execute()
+            if result.data:
+                logger.info(f"Retrieved {len(result.data)} user records.")
+                # Sensitive fields are already excluded by the select statement
+                return result.data
+            else:
+                logger.info("No users found in the database.")
+                return []
+        except Exception as e:
+            logger.error(f"Error retrieving all users: {str(e)}", exc_info=True)
+            return [] # Return empty list on error
+
     def create_user(self, user_data: dict):
-        """Insert a new user record (initially unverified)."""
+        """Insert a new user record (initially unverified), defaulting role to 'user'."""
         self.ensure_connection()
         try:
             if not user_data.get('name') or not user_data.get('email'):
@@ -216,12 +254,16 @@ class MedicalCodingDB:
                 "email": user_data['email'],
                 "hashed_password": user_data['hashed_password'], # Store the hashed password
                 "phone": user_data.get('phone'), # Optional
-                "is_email_verified": False # Default to false
+                "is_email_verified": False, # Default to false
+                "role": user_data.get('role', 'user') # Add role, default to 'user'
             }
             result = self.supabase.table("Users").insert(data_to_insert).execute()
             if result.data:
-                logger.info(f"New user created successfully with email: {user_data['email']}")
-                return result.data
+                logger.info(f"New user created successfully with email: {user_data['email']} and role: {data_to_insert['role']}")
+                # Return the full user data including the ID and generated fields
+                # Need to fetch the created user data again potentially, or assume insert returns it
+                # Supabase insert usually returns the inserted data in result.data[0]
+                return result.data # Return the list containing the dict
             else:
                 logger.error(f"Supabase insert operation did not return data for email: {user_data['email']}")
                 return None
@@ -285,6 +327,34 @@ class MedicalCodingDB:
         except Exception as e:
             logger.error(f"Error verifying email for user ID {user_id}: {str(e)}", exc_info=True)
             return False
+
+    def get_user_analyses(self, user_id: Optional[str] = None):
+        """Retrieve analysis records. If user_id is provided, retrieve for that user. 
+           If user_id is None, retrieve all analysis records.
+        """
+        self.ensure_connection()
+        query = self.supabase.table("dental_report").select(
+            "id, user_question, created_at, user_id" # Select necessary fields including user_id for grouping
+        )
+        
+        log_msg_user_part = f"for user ID: {user_id}" if user_id else "for all users"
+
+        if user_id:
+            query = query.eq("user_id", user_id)
+            
+        query = query.order("created_at", desc=True)
+        
+        try:
+            result = query.execute()
+            if result.data:
+                 logger.info(f"Retrieved {len(result.data)} analysis records {log_msg_user_part}")
+                 return result.data
+            else:
+                 logger.info(f"No analysis records found {log_msg_user_part}")
+                 return []
+        except Exception as e:
+            logger.error(f"Error retrieving analyses {log_msg_user_part}: {str(e)}", exc_info=True)
+            return [] # Return empty list on error
 
     def save_code_selections(self, record_id, accepted_cdt, rejected_cdt, accepted_icd, rejected_icd, user_id: Union[str, None] = None):
         """Insert or update code selections in the code_selections table."""

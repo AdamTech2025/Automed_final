@@ -7,7 +7,7 @@ from typing import Union
 from database import MedicalCodingDB  # Import your DB class
 from .auth_utils import (
     generate_otp, send_otp_email, calculate_otp_expiry, 
-    get_password_hash, verify_password, create_access_token
+    get_password_hash, verify_password, create_access_token, get_current_user
 )
 
 logger = logging.getLogger(__name__)
@@ -41,6 +41,7 @@ class LoginResponse(BaseModel):
     token_type: str
     name: str
     email: EmailStr
+    role: str
 
 # --- Routes ---
 @router.post("/signup/send-otp", status_code=status.HTTP_200_OK)
@@ -170,8 +171,9 @@ async def signup_verify_otp(request: VerifyOtpRequest):
                  detail="Failed to update user verification status."
              )
 
-        # Generate JWT token
-        access_token = create_access_token(data={"sub": user["email"]}) # Use email as subject
+        # Generate JWT token including role
+        token_data = {"sub": user["email"], "role": user.get("role", "user")} # Default to user role if missing
+        access_token = create_access_token(data=token_data)
 
         logger.info(f"Email {request.email} verified successfully. JWT token generated.")
         return {"access_token": access_token, "token_type": "bearer"}
@@ -225,13 +227,16 @@ async def login_for_access_token(request: LoginRequest):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Generate JWT token
-    access_token = create_access_token(data={"sub": user["email"]}) # Use email as subject
+    # Generate JWT token including role
+    token_data = {"sub": user["email"], "role": user.get("role", "user")} # Default to user role if missing
+    access_token = create_access_token(data=token_data)
+    
     logger.info(f"Login successful for {request.email}. Token generated.")
     # Return the new response structure
     return {
         "access_token": access_token, 
         "token_type": "bearer",
         "name": user.get("name", ""), # Include name (with fallback)
-        "email": user["email"] # Include email
+        "email": user["email"], # Include email
+        "role": user.get("role", "user") # Include role
     } 

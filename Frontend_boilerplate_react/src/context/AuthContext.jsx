@@ -47,13 +47,19 @@ export const AuthProvider = ({ children }) => {
   // 1. Be called after services.js has already set localStorage (normal case)
   // 2. Be called with userData and token to set localStorage itself (alternative usage)
   const login = (userData = null, token = null) => {
-    console.log("AuthContext: login function called", { providedData: !!userData, providedToken: !!token });
+    console.log("AuthContext: login function called", { providedData: userData, providedToken: !!token });
     
     // If user data and token were passed directly, store them in localStorage
     if (userData && token) {
       localStorage.setItem('accessToken', token);
-      localStorage.setItem('user', JSON.stringify(userData));
-      console.log("AuthContext: Stored in localStorage:", { token, userData });
+      // Ensure userData includes name, email, and role
+      const userToStore = { 
+        name: userData.name, 
+        email: userData.email,
+        role: userData.role // Extract role
+      };
+      localStorage.setItem('user', JSON.stringify(userToStore));
+      console.log("AuthContext: Stored in localStorage:", { token, userToStore });
     }
     
     // Read from localStorage (either what was just set or what was set by services.js)
@@ -66,11 +72,18 @@ export const AuthProvider = ({ children }) => {
         const parsedUser = JSON.parse(storedUser);
         console.log("AuthContext: Parsed user:", parsedUser);
         
+        // Ensure user state includes the role
+        const userWithRole = { 
+          name: parsedUser.name, 
+          email: parsedUser.email, 
+          role: parsedUser.role // Ensure role is included
+        };
+
         // Update state
         setIsAuthenticated(true);
-        setUser(parsedUser);
+        setUser(userWithRole);
         
-        console.log("AuthContext: State updated:", { isAuthenticated: true, user: parsedUser });
+        console.log("AuthContext: State updated:", { isAuthenticated: true, user: userWithRole });
         
         // Navigate to dashboard after successful login state update
         navigate('/dashboard');
