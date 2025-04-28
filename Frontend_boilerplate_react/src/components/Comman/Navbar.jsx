@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { FaTooth, FaSun, FaMoon, FaQuestion, FaPlus, FaUserCircle, FaSignOutAlt } from 'react-icons/fa';
+import { FaTooth, FaSun, FaMoon, FaPlus, FaUserCircle, FaSignOutAlt, FaUsers } from 'react-icons/fa';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 
@@ -92,6 +92,20 @@ const Navbar = () => {
         </button>
 
         {isAuthenticated && user ? (
+          <>
+          {/* Conditionally render Admin Dashboard link */} 
+          {user.role === 'admin' && (
+             <Link 
+                to="/admin/dashboard"
+                className={`${isDark ? 'text-gray-300 hover:text-purple-300' : 'text-gray-600 hover:text-purple-700'} 
+                           flex items-center transition-colors p-2 rounded-md text-sm sm:text-base`}
+                title="Admin Dashboard"
+              >
+                <FaUsers className="mr-1" />
+                <span className="hidden sm:inline">Admin</span>
+             </Link>
+          )}
+
           <div className="relative" ref={dropdownRef}>
             <button 
               onClick={() => setShowDropdown(!showDropdown)}
@@ -120,6 +134,7 @@ const Navbar = () => {
               </div>
             )}
           </div>
+          </>
         ) : (
           <Link 
             to="/"

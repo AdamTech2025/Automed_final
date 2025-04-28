@@ -514,8 +514,8 @@ async def analyze_scenario_endpoint(
         try:
             # Ensure cdt_topic_activation_results is a list of dicts before passing
             if isinstance(cdt_topic_activation_results, list):
-                # This function now ADDS 'parsed_result' instead of replacing 'raw_result'
-                formatted_cdt_subtopic_results = dental_manager.transform_json_list(cdt_topic_activation_results)
+                 # This function now ADDS 'parsed_result' instead of replacing 'raw_result'
+                 formatted_cdt_subtopic_results = dental_manager.transform_json_list(cdt_topic_activation_results)
             else:
                 logger.warning("CDT topic activation results are not a list, skipping subtopic formatting.")
         except Exception as fmt_err:

@@ -148,3 +148,49 @@ export const loginUser = async (credentials) => {
     throw error.response?.data || { message: 'Login failed', detail: 'Could not connect or unexpected error' };
   }
 };
+
+// --- Admin Services ---
+
+export const getAllUsersActivity = async (signal) => {
+  try {
+    console.log("services.js: Attempting to fetch all user activity (Admin)");
+    const response = await apiInstance.get('/api/admin/all-users', {
+      signal: signal // Pass the AbortController signal
+    });
+    console.log("services.js: Received all users activity response:", response.data);
+    // Expected response: { users: [ { id, name, email, phone, is_email_verified, created_at, role, analysis_count }, ... ] }
+    return response.data;
+  } catch (error) {
+    console.error("Get All Users Activity error:", error);
+    if (error.name === 'CanceledError' || error.name === 'AbortError') {
+      const abortError = new Error('Request was cancelled');
+      abortError.name = 'AbortError';
+      throw abortError;
+    }
+    // Rethrow specific backend error or a generic one
+    throw error.response?.data || { message: 'Failed to fetch user activity', detail: 'Could not connect or permission denied' };
+  }
+};
+
+// Get activity for a specific user
+export const getUserActivity = async (userId, signal) => {
+  try {
+    console.log(`services.js: Attempting to fetch activity for user ID: ${userId}`);
+    const response = await apiInstance.get(`/api/user/${userId}/activity`, {
+      signal: signal // Pass the AbortController signal
+    });
+    console.log(`services.js: Received activity for user ${userId}:`, response.data);
+    // Adjust the expected response structure based on your backend
+    // Example: { user: { name, email, ... }, activity: [ { action, timestamp, ... }, ... ] }
+    return response.data;
+  } catch (error) {
+    console.error(`Get User Activity (ID: ${userId}) error:`, error);
+    if (error.name === 'CanceledError' || error.name === 'AbortError') {
+      const abortError = new Error('Request was cancelled');
+      abortError.name = 'AbortError';
+      throw abortError;
+    }
+    // Rethrow specific backend error or a generic one
+    throw error.response?.data || { message: `Failed to fetch activity for user ${userId}`, detail: 'Could not connect or permission denied' };
+  }
+};
