@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { FaTooth, FaSun, FaMoon, FaPlus, FaUserCircle, FaSignOutAlt, FaUsers } from 'react-icons/fa';
+import { FaTooth, FaSun, FaMoon, FaPlus, FaUserCircle, FaSignOutAlt, FaUsers, FaBars } from 'react-icons/fa';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import PropTypes from 'prop-types';
 
-const Navbar = () => {
+const Navbar = ({ toggleSidebar }) => {
   const { isDark, toggleTheme } = useTheme();
   const { isAuthenticated, user, logout } = useAuth();
   const [showDropdown, setShowDropdown] = useState(false);
@@ -52,15 +53,19 @@ const Navbar = () => {
   const userInitial = user?.name ? user.name[0].toUpperCase() : '?';
 
   return (
-    <nav className="w-full p-4 shadow-md flex flex-col sm:flex-row items-center justify-between transition-colors">
+    <nav className="w-full p-4 shadow-md flex flex-col sm:flex-row items-center justify-between bg-[var(--color-bg-card)] dark:bg-[var(--color-bg-secondary)] transition-colors">
       <div className="flex items-center mb-4 sm:mb-0">
+        <button 
+          onClick={toggleSidebar} 
+          className={`${isDark ? 'text-gray-300 hover:text-blue-300' : 'text-gray-700 hover:text-blue-700'} mr-4 p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`} 
+          aria-label="Toggle sidebar"
+        >
+          <FaBars className="text-xl" />
+        </button>
         <FaTooth className={`${isDark ? 'text-blue-400' : 'text-blue-600'} text-2xl md:text-3xl mr-2`} />
-        <Link to="/" className={`${isDark ? 'text-blue-400' : 'text-blue-600'} font-bold text-lg md:text-xl`}>
-          Dental Code Extractor Pro
-        </Link>
       </div>
       
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center flex-wrap gap-2 space-x-4">
         <button
           onClick={handleNewAnalysis}
           className={`${isDark ? 'text-gray-300 hover:text-blue-300' : 'text-gray-600 hover:text-blue-700'} 
@@ -118,10 +123,10 @@ const Navbar = () => {
             </button>
             {showDropdown && (
               <div 
-                className={`absolute right-0 mt-2 w-48 ${isDark ? 'bg-gray-700' : 'bg-white'} rounded-md shadow-lg py-1 z-50`}
+                className={`absolute right-0 mt-2 w-48 bg-[var(--color-bg-card)] dark:bg-[var(--color-bg-secondary)] rounded-md shadow-lg py-1 z-50 border border-[var(--color-border)] dark:border-slate-600`}
               >
-                <div className={`px-4 py-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'} border-b ${isDark ? 'border-gray-600' : 'border-gray-200'}`}>
-                  <p className="font-medium truncate">{user.name}</p>
+                <div className={`px-4 py-2 text-sm text-[var(--color-text-secondary)] border-b border-[var(--color-border)] dark:border-slate-600`}>
+                  <p className="font-medium truncate text-[var(--color-text-primary)]">{user.name}</p>
                   <p className="text-xs truncate">{user.email}</p>
                 </div>
                 <button
@@ -148,6 +153,11 @@ const Navbar = () => {
       </div>
     </nav>
   );
+};
+
+// Add prop type validation
+Navbar.propTypes = {
+  toggleSidebar: PropTypes.func.isRequired,
 };
 
 export default Navbar;

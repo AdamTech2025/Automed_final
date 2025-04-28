@@ -324,45 +324,68 @@ async def analyze_scenario_endpoint(
              logger.warning(f"Skipping ICD topic activation task due to missing/invalid classification result: {icd_results}")
 
         # Create activation tasks
-        cdt_activation_task = None
-        icd_activation_task = None
-        
-        # Corrected Indentation for Task Creation (relative to outer try block)
+        tasks_to_gather = []
+
+        # CDT Task
         if cdt_code_ranges_to_activate:
             cdt_ranges_str = ",".join(sorted(list(cdt_code_ranges_to_activate)))
             logger.info(f"Creating activation task for CDT ranges: {cdt_ranges_str}")
-            cdt_activation_task = topic_registry.activate_all(cleaned_scenario_text, cdt_ranges_str)
+            # Assuming activate_all returns a coroutine
+            cdt_task = topic_registry.activate_all(cleaned_scenario_text, cdt_ranges_str)
+            tasks_to_gather.append(cdt_task)
         else:
             async def _dummy_cdt_task(): return []
-            cdt_activation_task = _dummy_cdt_task()
-            
-            if icd_category_to_activate:
-                logger.info(f"Creating activation task for ICD category: {icd_category_to_activate}")
-                icd_activation_task = topic_registry.activate_all(cleaned_scenario_text, icd_category_to_activate)
-            else:
-                async def _dummy_icd_task(): return []
-                icd_activation_task = _dummy_icd_task()
+            tasks_to_gather.append(_dummy_cdt_task()) # Add the coroutine
+
+        # ICD Task
+        if icd_category_to_activate:
+            logger.info(f"Creating activation task for ICD category: {icd_category_to_activate}")
+            # Assuming activate_all returns a coroutine
+            icd_task = topic_registry.activate_all(cleaned_scenario_text, icd_category_to_activate)
+            tasks_to_gather.append(icd_task)
+        else:
+            async def _dummy_icd_task(): return []
+            tasks_to_gather.append(_dummy_icd_task()) # Add the coroutine
 
         # Run activations concurrently using asyncio.gather
         logger.info(f"Starting parallel activation of CDT and ICD topics")
-        cdt_registry_results, icd_registry_results = await asyncio.gather(
-            cdt_activation_task,
-            icd_activation_task
-        )
+        # Gather all tasks in the list
+        results = await asyncio.gather(*tasks_to_gather)
         logger.info(f"Finished gathering topic activation results.")
-        
-        # Process CDT results (already a list from activate_all)
+
+        # Unpack results carefully based on what was added
+        cdt_registry_results = []
+        icd_registry_results = [] # Should be list containing one dict or empty list
+
+        result_index = 0
+        if cdt_code_ranges_to_activate:
+            cdt_registry_results = results[result_index]
+            result_index += 1
+        else:
+            # Skip the dummy CDT result (which is [])
+            result_index += 1
+
+        if icd_category_to_activate:
+            # The result from activate_all should be a list (even if one item)
+            icd_registry_results = results[result_index]
+            result_index += 1
+        else:
+            # Skip the dummy ICD result (which is [])
+            result_index +=1
+
+        # Process CDT results (already a list from activate_all or dummy)
         cdt_topic_activation_results = cdt_registry_results if isinstance(cdt_registry_results, list) else []
         logger.info(f"Processed {len(cdt_topic_activation_results)} CDT topic results.")
         logger.debug(f"CDT Activation Results: {cdt_topic_activation_results}")
-        
-        # Process ICD results (should be a list with 0 or 1 item from activate_all)
+
+        # Process ICD results (should be a list with 0 or 1 item from activate_all or dummy)
+        icd_topic_details = {} # Reset for clarity
         if isinstance(icd_registry_results, list) and icd_registry_results:
-            icd_topic_details = icd_registry_results[0]  # Get the first (and only) result
+            # If activate_all returned a list with the result
+            icd_topic_details = icd_registry_results[0]
             logger.info(f"Successfully processed ICD topic: {icd_topic_details.get('topic')}")
-        elif icd_category_to_activate: # Log warning only if we expected a result
-            logger.warning(f"No result found for activated ICD category: {icd_category_to_activate}")
-            # Ensure icd_topic_details is a dict even on error for consistency
+        elif icd_category_to_activate: # Log warning only if we expected a result but got none
+            logger.warning(f"No result found for activated ICD category: {icd_category_to_activate}. Registry result: {icd_registry_results}")
             icd_topic_details = {"error": f"Activation result missing for ICD category {icd_category_to_activate}", "topic": "Error", "code_range": icd_category_to_activate}
         else:
             # If no category was activated, keep icd_topic_details as an empty dict
