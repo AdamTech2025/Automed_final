@@ -1,6 +1,6 @@
-import { FaCogs, FaCopy, FaSpinner, FaPlus } from 'react-icons/fa';
+import { FaCogs, FaCopy, FaSpinner, FaPlus, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import { analyzeDentalScenario, addCustomCode } from '../../interceptors/services.js';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import Questioner from './Questioner.jsx';
 import { useTheme } from '../../context/ThemeContext';
 import Loader from '../Modal/Loading.jsx';
@@ -25,7 +25,11 @@ const Home = () => {
   const [uploadedFile, setUploadedFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [activeCodeDetail, setActiveCodeDetail] = useState(null);
+  const [isAddingCode, setIsAddingCode] = useState(false);
   const [expandedHistoryRows, setExpandedHistoryRows] = useState({});
+  const [allCodeDetailsMap, setAllCodeDetailsMap] = useState({});
+  const [showFullCdtExplanation, setShowFullCdtExplanation] = useState(false);
+  const [showFullIcdExplanation, setShowFullIcdExplanation] = useState(false);
 
   // Check if there are questions in the result
   useEffect(() => {
@@ -83,9 +87,12 @@ const Home = () => {
   }, []);
 
   // Consolidate all code details into a map for easier lookup
-  const allCodeDetailsMap = useMemo(() => {
+  useEffect(() => {
     const detailsMap = {};
-    if (!result) return detailsMap;
+    if (!result) {
+      setAllCodeDetailsMap({});
+      return;
+    }
 
     // 1. Process CDT Topic Activation Results for detailed explanations
     if (result.cdt_topic_activation_results && Array.isArray(result.cdt_topic_activation_results)) {
@@ -144,7 +151,7 @@ const Home = () => {
     const getInspectorExplanation = (code, explanationString) => {
       // Escape the code before inserting into regex
       const escapedCode = escapeRegex(code);
-      // Simplified regex: Require exactly two asterisks **CODE(...)**: Selected.
+      // Simplified regex: Require exactly two asterisks **CODE(...)**: Selected. - Fixed lint errors
       const regex = new RegExp(`- \*\*${escapedCode}\s*\([^)]*\)\*\*:\s*Selected\.\s*(.*?)(?=\s*-\s*\*\*|$)`, 'i');
       const match = explanationString.match(regex);
       // console.log(`Regex for ${code}:`, regex, `Match:`, match); // Debugging log
@@ -207,9 +214,9 @@ const Home = () => {
        }
      });
 
-
-    console.log("Generated allCodeDetailsMap:", detailsMap);
-    return detailsMap;
+    console.log("Generated allCodeDetailsMap from result:", detailsMap);
+    setAllCodeDetailsMap(detailsMap);
+    return;
   }, [result]);
 
   const handleSubmit = async (e) => {
@@ -284,7 +291,7 @@ const Home = () => {
       return;
     }
 
-    const codeType = document.getElementById('codeType').value;
+    const codeType = document.getElementById('codeType').value; // Read the selected code type
 
     // Check if code already exists (client-side check before API call)
     if (selectedCodes.accepted.includes(newCode) || selectedCodes.denied.includes(newCode)) {
@@ -293,42 +300,53 @@ const Home = () => {
        return;
     }
 
-    // Call the API to add the custom code
-    setLoading(true);
+    setIsAddingCode(true);
     try {
-      const response = await addCustomCode(newCode, scenario, result?.record_id);
+      // Ensure result and record_id exist before proceeding
+      if (!result?.record_id) {
+        message.error("Cannot add custom code without a processed scenario record ID.");
+        setIsAddingCode(false);
+        return;
+      }
+
+      const response = await addCustomCode(newCode, scenario, result.record_id, codeType);
       console.log("Add Custom Code API response:", response);
 
       // OPTIONAL: Update UI based on response.data if backend returns updated state
       // For now, just add it client-side assuming success
-      if (response.status === 'success') {
+      if (response.status === 'success' && response.data?.code_data) {
+        const { code, isApplicable, explanation, doubt } = response.data.code_data;
+
         setSelectedCodes(prev => ({
           ...prev,
-          accepted: [...prev.accepted, newCode]
+          accepted: isApplicable ? [...prev.accepted, code] : prev.accepted.filter(c => c !== code),
+          denied: !isApplicable ? [...prev.denied, code] : prev.denied.filter(c => c !== code)
         }));
-        // Update details map (assuming backend doesn't return full updated map)
-        const customDetail = {
-          code: newCode,
-          type: codeType,
-          explanation: response.data?.code_data?.explanation || 'Manually added custom code.',
-          doubt: response.data?.code_data?.doubt || 'N/A',
-          topic: 'Custom',
-          subtopic: null
-        };
-        // This won't update the map derived from useMemo directly.
-        // A more robust solution might involve triggering a re-fetch or merging the response.
 
-        handleShowCodeDetail(newCode);
-        message.success(response.message || `Added custom code: ${newCode}`);
+        // Update the details map state with the new custom code info
+        setAllCodeDetailsMap(prevMap => ({
+          ...prevMap,
+          [code]: {
+            code: code,
+            type: codeType, // Use the type read from dropdown
+            explanation: explanation || 'Custom code explanation.',
+            doubt: doubt || 'N/A',
+            topic: 'Custom Code',
+            subtopic: null
+          }
+        }));
+
+        setActiveCodeDetail(code);
+        message.success(response.message || `Processed custom code: ${code}`);
         setNewCode('');
       } else {
-         message.error(response.message || 'Failed to add custom code via API.');
+        message.error(response.message || 'Failed to process custom code analysis.');
       }
     } catch (apiError) {
       console.error("Error calling addCustomCode API:", apiError);
       message.error(apiError.message || 'An error occurred while adding the custom code.');
     } finally {
-        setLoading(false);
+      setIsAddingCode(false);
     }
   };
 
@@ -344,6 +362,14 @@ const Home = () => {
         handleSubmit(new Event('submit')); // Simulate form submission
       }
     }, 200);
+  };
+
+  // Helper function to count code occurrences
+  const countCodes = (codes) => {
+    return codes.reduce((acc, code) => {
+      acc[code] = (acc[code] || 0) + 1;
+      return acc;
+    }, {});
   };
 
   return (
@@ -428,7 +454,21 @@ const Home = () => {
           <div className="flex justify-between items-center">
             <h3 className="text-lg font-bold tracking-tight text-[var(--color-text-primary)]">Final Codes</h3>
             <button
-              className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white px-3 py-1 text-sm rounded-lg hover:scale-105 hover:shadow-lg focus:ring-2 focus:ring-[var(--color-primary)] flex items-center font-medium"
+              onClick={() => {
+                const finalAcceptedCdt = (result?.inspector_results?.cdt?.codes || []).filter(code => selectedCodes.accepted.includes(code));
+                const finalAcceptedIcd = (result?.inspector_results?.icd?.codes || []).filter(code => selectedCodes.accepted.includes(code));
+                const allAccepted = [...finalAcceptedCdt, ...finalAcceptedIcd];
+                if (allAccepted.length === 0) {
+                  message.warning('No accepted codes to copy.');
+                  return;
+                }
+                const textToCopy = allAccepted.join(', ');
+                navigator.clipboard.writeText(textToCopy)
+                  .then(() => message.success(`Copied: ${textToCopy}`))
+                  .catch(() => message.error('Failed to copy codes.'));
+              }}
+              disabled={!((result?.inspector_results?.cdt?.codes || []).some(code => selectedCodes.accepted.includes(code)) || (result?.inspector_results?.icd?.codes || []).some(code => selectedCodes.accepted.includes(code)))}
+              className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white px-3 py-1 text-sm rounded-lg hover:scale-105 hover:shadow-lg focus:ring-2 focus:ring-[var(--color-primary)] flex items-center font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FaCopy className="mr-2" /> Copy Selected
             </button>
@@ -454,9 +494,16 @@ const Home = () => {
               </select>
               <button
                 onClick={handleAddCustomCode}
-                className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white px-3 py-1 text-sm rounded-lg hover:scale-105 hover:shadow-lg focus:ring-2 focus:ring-[var(--color-primary)] font-medium"
+                className="inline-flex items-center justify-center bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white px-4 py-2 text-xs rounded-lg hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-[var(--color-primary)] font-medium transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed min-w-[60px]"
+                disabled={isAddingCode || loading}
               >
-                Add
+                {isAddingCode ? (
+                  <FaSpinner className="animate-spin h-3 w-3" />
+                ) : (
+                  <>
+                    <FaPlus className="-ml-1 mr-1 h-3 w-3" /> Add
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -487,7 +534,7 @@ const Home = () => {
                 </button>
               </div>
               <div className="flex flex-wrap gap-2">
-                {result?.inspector_results?.cdt?.codes.map((code, index) => (
+                {result?.inspector_results?.cdt?.codes && Object.entries(countCodes(result.inspector_results.cdt.codes)).map(([code, count], index) => (
                   <span
                     key={`${code}-${index}`}
                     onClick={() => {
@@ -503,7 +550,7 @@ const Home = () => {
                           : 'bg-[var(--color-input-bg)] text-[var(--color-text-secondary)] border-[var(--color-border)]'
                       }`}
                   >
-                    {code}
+                    {code}{count > 1 ? ` (${count} times)` : ''}
                   </span>
                 ))}
               </div>
@@ -557,6 +604,53 @@ const Home = () => {
           </div>
         </div>
 
+        {/* Inspector Explanation Section */}
+        <div className="bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 col-span-1 md:col-span-3 space-y-4">
+          <h3 className="text-lg font-bold tracking-tight text-[var(--color-text-primary)]">Final Explanation</h3>
+          {/* CDT Explanation */}
+          {result?.inspector_results?.cdt?.explanation ? (
+            <div className="border border-[var(--color-border)] bg-[var(--color-input-bg)] p-4 rounded-lg shadow-inner">
+              <h4 className="text-md font-semibold text-[var(--color-text-primary)] mb-2">CDT Explanation</h4>
+              <p className="text-sm font-light leading-relaxed text-[var(--color-text-primary)] whitespace-pre-wrap">
+                {showFullCdtExplanation
+                  ? result.inspector_results.cdt.explanation
+                  : `${result.inspector_results.cdt.explanation.substring(0, 300)}${result.inspector_results.cdt.explanation.length > 300 ? '...' : ''}`}
+              </p>
+              {result.inspector_results.cdt.explanation.length > 300 && (
+                <button
+                  onClick={() => setShowFullCdtExplanation(!showFullCdtExplanation)}
+                  className="text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] hover:underline font-medium text-xs mt-2 inline-flex items-center"
+                >
+                  {showFullCdtExplanation ? 'Read Less' : 'Read More'}
+                  {showFullCdtExplanation ? <FaChevronUp className="ml-1 h-3 w-3" /> : <FaChevronDown className="ml-1 h-3 w-3" />}
+                </button>
+              )}
+            </div>
+          ) : (
+            !result?.inspector_results?.icd?.explanation && <p className="text-[var(--color-text-secondary)] text-sm">Final explanation details will appear here after processing.</p>
+          )}
+          {/* ICD Explanation */}
+          {result?.inspector_results?.icd?.explanation && (
+            <div className="border border-[var(--color-border)] bg-[var(--color-input-bg)] p-4 rounded-lg shadow-inner">
+              <h4 className="text-md font-semibold text-[var(--color-text-primary)] mb-2">ICD-10 Explanation</h4>
+               <p className="text-sm font-light leading-relaxed text-[var(--color-text-primary)] whitespace-pre-wrap">
+                 {showFullIcdExplanation
+                   ? result.inspector_results.icd.explanation
+                   : `${result.inspector_results.icd.explanation.substring(0, 300)}${result.inspector_results.icd.explanation.length > 300 ? '...' : ''}`}
+               </p>
+               {result.inspector_results.icd.explanation.length > 300 && (
+                 <button
+                   onClick={() => setShowFullIcdExplanation(!showFullIcdExplanation)}
+                   className="text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] hover:underline font-medium text-xs mt-2 inline-flex items-center"
+                 >
+                   {showFullIcdExplanation ? 'Read Less' : 'Read More'}
+                   {showFullIcdExplanation ? <FaChevronUp className="ml-1 h-3 w-3" /> : <FaChevronDown className="ml-1 h-3 w-3" />}
+                 </button>
+               )}
+            </div>
+          )}
+        </div>
+
         {/* Code Details Section */}
         <div className="bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 col-span-1 md:col-span-3">
           <h3 className="text-lg font-bold tracking-tight mb-4 text-[var(--color-text-primary)]">Code Details</h3>
@@ -588,13 +682,13 @@ const Home = () => {
               </thead>
               <tbody className="font-bold text-[var(--color-text-primary)] leading-relaxed">
                 {result?.inspector_results?.cdt?.codes.map((code, index) => {
-                  const details = allCodeDetailsMap[code] || { description: 'Details not found.' };
-                  const rowKey = `history-${code}-${index}`;
+                  const details = allCodeDetailsMap[code] || { type: 'CDT', explanation: 'Details not found in map.' }; // Add fallback type
+                  const rowKey = `history-cdt-${code}-${index}`; // Ensure unique keys if code repeats
                   const isExpanded = expandedHistoryRows[rowKey] || false;
                   const explanation = details.explanation || 'N/A';
                   const needsReadMore = explanation.length > 100;
                   return (
-                    <tr key={`history-${code}-${index}`} className="hover:bg-[var(--color-bg-primary)] transition-colors duration-150">
+                    <tr key={rowKey} className="hover:bg-[var(--color-bg-primary)] transition-colors duration-150">
                       <td className="p-2 font-medium">{code}</td>
                       <td className="p-2">{details.type}</td>
                       <td className="p-2 text-xs font-light max-w-md">
@@ -634,13 +728,13 @@ const Home = () => {
                   );
                 })}
                 {result?.inspector_results?.icd?.codes.map((code, index) => {
-                  const details = allCodeDetailsMap[code] || { description: 'Details not found.' };
-                  const rowKey = `history-${code}-${index}`;
+                  const details = allCodeDetailsMap[code] || { type: 'ICD-10', explanation: 'Details not found in map.' }; // Add fallback type
+                  const rowKey = `history-icd-${code}-${index}`; // Ensure unique keys
                   const isExpanded = expandedHistoryRows[rowKey] || false;
                   const explanation = details.explanation || 'N/A';
                   const needsReadMore = explanation.length > 100;
                   return (
-                    <tr key={`history-${code}-${index}`} className="hover:bg-[var(--color-bg-primary)] transition-colors duration-150">
+                    <tr key={rowKey} className="hover:bg-[var(--color-bg-primary)] transition-colors duration-150">
                       <td className="p-2 font-medium">{code}</td>
                       <td className="p-2">{details.type}</td>
                       <td className="p-2 text-xs font-light max-w-md">
