@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, status
+﻿from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File
 from pydantic import BaseModel, EmailStr
 import uvicorn
 import logging
@@ -7,6 +7,23 @@ from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 from typing import Dict, Any, List, Optional
 import json
+from fastapi.responses import JSONResponse
+from werkzeug.utils import secure_filename
+import openai
+
+# Import helper functions from extractor
+from extractor import (
+    extract_text_from_txt,
+    extract_text_from_pdf,
+    extract_text_from_image,
+    extract_text_from_audio,
+    allowed_file,
+    check_char_limit,
+    split_into_scenarios,
+    UPLOAD_FOLDER,
+    ALLOWED_EXTENSIONS,
+    MAX_CHAR_LIMIT
+)
 
 # Import the data cleaner
 from data_cleaner import DentalScenarioProcessor
@@ -249,6 +266,99 @@ class AllUsersActivityResponse(BaseModel):
     users: List[AdminUserSummary]
 
 # --- End Request Models ---
+
+# File upload response model
+class FileUploadResponse(BaseModel):
+    message: str
+    filename: str
+    scenarios: List[str]
+
+@app.post("/upload", response_model=FileUploadResponse)
+async def upload_file(file: UploadFile = File(...)):
+    """
+    Handles file upload, extracts text, splits into scenarios using AI,
+    and returns the scenarios as JSON.
+    """
+    logging.info("Received request to /upload endpoint.")
+    
+    if not file:
+        raise HTTPException(status_code=400, detail="No file uploaded")
+
+    if not allowed_file(file.filename):
+        raise HTTPException(
+            status_code=400, 
+            detail=f"File type not allowed. Allowed types: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
+
+    # Create upload folder if it doesn't exist
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    
+    filename = secure_filename(file.filename)
+    file_path = os.path.join(UPLOAD_FOLDER, filename)
+    extracted_text = None
+
+    try:
+        # Save uploaded file
+        logging.info(f"Saving uploaded file: {filename} to {file_path}")
+        with open(file_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+
+        file_type = filename.rsplit('.', 1)[1].lower()
+
+        # --- Text Extraction ---
+        logging.info(f"Starting text extraction for file type: {file_type}")
+        if file_type == 'txt':
+            extracted_text = extract_text_from_txt(file_path)
+        elif file_type == 'pdf':
+            extracted_text = extract_text_from_pdf(file_path)
+        elif file_type in ['png', 'jpg', 'jpeg']:
+            extracted_text = extract_text_from_image(file_path)
+        elif file_type in ['mp3', 'wav']:
+            extracted_text = extract_text_from_audio(file_path)
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file type for processing")
+
+        # --- Character Limit Check ---
+        check_char_limit(extracted_text or "")
+
+        # --- AI Scenario Splitting ---
+        logging.info("Calling AI scenario splitting function...")
+        scenarios = split_into_scenarios(extracted_text)
+
+        logging.info(f"Successfully processed file {filename}. Returning {len(scenarios)} scenarios.")
+        
+        return FileUploadResponse(
+            message='File successfully processed.',
+            filename=filename,
+            scenarios=scenarios
+        )
+
+    except ValueError as ve:
+        logging.error(f"Configuration or Value Error during processing: {ve}", exc_info=True)
+        raise HTTPException(status_code=400, detail=str(ve))
+    
+    except (IOError, ConnectionError) as file_err:
+        logging.error(f"File Processing or Connection Error: {file_err}", exc_info=True)
+        err_msg = f'Error communicating with external API: {str(file_err)}' if isinstance(file_err, ConnectionError) else f'Error processing file: {str(file_err)}'
+        raise HTTPException(status_code=500, detail=err_msg)
+    
+    except openai.OpenAIError as oai_err:
+        logging.error(f"OpenAI API Error: {oai_err}", exc_info=True)
+        raise HTTPException(status_code=502, detail=f'An API error occurred with OpenAI: {str(oai_err)}')
+    
+    except Exception as e:
+        logging.error(f"Unexpected server error during upload processing: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail='An unexpected server error occurred.')
+
+    finally:
+        # --- Cleanup ---
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                logging.info(f"Temporary file removed: {file_path}")
+            except Exception as e_rem:
+                logging.error(f"Error removing temporary file {file_path}: {e_rem}", exc_info=True)
 
 @app.post("/api/analyze", response_model=AnalysisStep6Output)
 async def analyze_scenario_endpoint(
