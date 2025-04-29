@@ -30,6 +30,7 @@ const Home = () => {
   const [allCodeDetailsMap, setAllCodeDetailsMap] = useState({});
   const [showFullCdtExplanation, setShowFullCdtExplanation] = useState(false);
   const [showFullIcdExplanation, setShowFullIcdExplanation] = useState(false);
+  const [customCodes, setCustomCodes] = useState({ cdt: [], icd: [] }); // State for custom codes
 
   // Check if there are questions in the result
   useEffect(() => {
@@ -151,7 +152,7 @@ const Home = () => {
     const getInspectorExplanation = (code, explanationString) => {
       // Escape the code before inserting into regex
       const escapedCode = escapeRegex(code);
-      // Simplified regex: Require exactly two asterisks **CODE(...)**: Selected. - Fixed lint errors
+      // Simplified regex: Require exactly two asterisks **CODE(...)**: Selected. - Fixed lint errors (Attempt 4)
       const regex = new RegExp(`- \*\*${escapedCode}\s*\([^)]*\)\*\*:\s*Selected\.\s*(.*?)(?=\s*-\s*\*\*|$)`, 'i');
       const match = explanationString.match(regex);
       // console.log(`Regex for ${code}:`, regex, `Match:`, match); // Debugging log
@@ -216,7 +217,6 @@ const Home = () => {
 
     console.log("Generated allCodeDetailsMap from result:", detailsMap);
     setAllCodeDetailsMap(detailsMap);
-    return;
   }, [result]);
 
   const handleSubmit = async (e) => {
@@ -317,10 +317,11 @@ const Home = () => {
       if (response.status === 'success' && response.data?.code_data) {
         const { code, isApplicable, explanation, doubt } = response.data.code_data;
 
+        // Update selection state
         setSelectedCodes(prev => ({
           ...prev,
-          accepted: isApplicable ? [...prev.accepted, code] : prev.accepted.filter(c => c !== code),
-          denied: !isApplicable ? [...prev.denied, code] : prev.denied.filter(c => c !== code)
+          accepted: isApplicable ? [...prev.accepted.filter(c => c !== code), code] : prev.accepted.filter(c => c !== code),
+          denied: !isApplicable ? [...prev.denied.filter(c => c !== code), code] : prev.denied.filter(c => c !== code)
         }));
 
         // Update the details map state with the new custom code info
@@ -328,15 +329,28 @@ const Home = () => {
           ...prevMap,
           [code]: {
             code: code,
-            type: codeType, // Use the type read from dropdown
-            explanation: explanation || 'Custom code explanation.',
+            type: codeType === 'ICD' ? 'ICD-10' : 'CDT', // Use the type read from dropdown
+            explanation: explanation || 'Custom code analysis result.', // Use the explanation from API
             doubt: doubt || 'N/A',
             topic: 'Custom Code',
-            subtopic: null
+            subtopic: null,
+            isApplicable: isApplicable, // Store applicability
+            custom: true // Mark as custom code
           }
         }));
 
-        setActiveCodeDetail(code);
+        // Add to custom codes state
+        setCustomCodes(prevCustom => {
+          const newCustom = { ...prevCustom };
+          const targetList = codeType === 'ICD' ? 'icd' : 'cdt';
+          // Avoid duplicates in custom list
+          if (!newCustom[targetList].includes(code)) {
+            newCustom[targetList] = [...newCustom[targetList], code];
+          }
+          return newCustom;
+        });
+
+        setActiveCodeDetail(code); // Show details for the new code
         message.success(response.message || `Processed custom code: ${code}`);
         setNewCode('');
       } else {
@@ -553,6 +567,27 @@ const Home = () => {
                     {code}{count > 1 ? ` (${count} times)` : ''}
                   </span>
                 ))}
+                {/* Render Custom CDT Codes */}
+                {customCodes.cdt.map((code, index) => (
+                  <span
+                    key={`custom-cdt-${code}-${index}`}
+                    onClick={() => {
+                      handleCodeSelection(code, selectedCodes.accepted.includes(code) ? 'deny' : 'accept');
+                      setActiveCodeDetail(code);
+                    }}
+                    className={`cursor-pointer px-2 py-1 rounded-full text-xs transition-all duration-200 hover:scale-105 hover:shadow-lg border
+                      bg-yellow-100 dark:bg-yellow-900/60 text-yellow-900 dark:text-yellow-200 border-yellow-300 dark:border-yellow-700 // Custom style
+                      ${
+                        selectedCodes.accepted.includes(code)
+                          ? '!bg-green-100 dark:!bg-green-900/60 !text-green-900 dark:!text-green-200 !border-green-300 dark:!border-green-700' // Override if accepted
+                          : selectedCodes.denied.includes(code)
+                          ? '!bg-red-100 dark:!bg-red-900/60 !text-red-900 dark:!text-red-200 !border-red-300 dark:!border-red-700' // Override if denied
+                          : '' // Default custom style if neither accepted/denied yet
+                      }`}
+                  >
+                    {code} ✨
+                  </span>
+                ))}
               </div>
             </div>
 
@@ -597,6 +632,27 @@ const Home = () => {
                       }`}
                   >
                     {code}
+                  </span>
+                ))}
+                {/* Render Custom ICD Codes */}
+                 {customCodes.icd.map((code, index) => (
+                  <span
+                    key={`custom-icd-${code}-${index}`}
+                    onClick={() => {
+                      handleCodeSelection(code, selectedCodes.accepted.includes(code) ? 'deny' : 'accept');
+                      setActiveCodeDetail(code);
+                    }}
+                    className={`cursor-pointer px-2 py-1 rounded-full text-xs transition-all duration-200 hover:scale-105 hover:shadow-lg border
+                      bg-yellow-100 dark:bg-yellow-900/60 text-yellow-900 dark:text-yellow-200 border-yellow-300 dark:border-yellow-700 // Custom style
+                      ${
+                        selectedCodes.accepted.includes(code)
+                          ? '!bg-green-100 dark:!bg-green-900/60 !text-green-900 dark:!text-green-200 !border-green-300 dark:!border-green-700' // Override if accepted
+                          : selectedCodes.denied.includes(code)
+                          ? '!bg-red-100 dark:!bg-red-900/60 !text-red-900 dark:!text-red-200 !border-red-300 dark:!border-red-700' // Override if denied
+                          : '' // Default custom style if neither accepted/denied yet
+                      }`}
+                  >
+                    {code} ✨
                   </span>
                 ))}
               </div>
@@ -656,13 +712,42 @@ const Home = () => {
           <h3 className="text-lg font-bold tracking-tight mb-4 text-[var(--color-text-primary)]">Code Details</h3>
           <div className="border border-[var(--color-border)] bg-[var(--color-input-bg)] p-4 rounded-lg shadow-inner min-h-[100px] text-sm font-light leading-relaxed text-[var(--color-text-primary)]">
             {activeCodeDetail && allCodeDetailsMap[activeCodeDetail] ? (
-              <div className="space-y-2">
-                <p><strong className="font-medium text-[var(--color-text-secondary)]">Code:</strong> {allCodeDetailsMap[activeCodeDetail].code}</p>
-                <p><strong className="font-medium text-[var(--color-text-secondary)]">Type:</strong> {allCodeDetailsMap[activeCodeDetail].type}</p>
-                <p><strong className="font-medium text-[var(--color-text-secondary)]">Explanation:</strong> {allCodeDetailsMap[activeCodeDetail].explanation}</p>
-              </div>
+              (() => { // Use IIFE to handle conditional rendering logic
+                const details = allCodeDetailsMap[activeCodeDetail];
+                if (details.custom) {
+                  // Custom code formatting
+                  const explanation = details.explanation || '';
+                  const applicable = details.isApplicable;
+                  // Basic parsing assuming format: "...- **Applicable?** Yes/No - **Reason**: ..."
+                  const reasonMatch = explanation.match(/- \*\*Reason\*\*:\s*(.*)/s);
+                  const reason = reasonMatch ? reasonMatch[1].trim() : explanation; // Fallback to full explanation
+
+                  return (
+                    <div className="space-y-2">
+                      <p><strong className="font-medium text-[var(--color-text-secondary)]">Code:</strong> {details.code} ✨</p>
+                      <p><strong className="font-medium text-[var(--color-text-secondary)]">Type:</strong> {details.type} (Custom)</p>
+                      <p>
+                        <strong className="font-medium text-[var(--color-text-secondary)]">Applicable: </strong>
+                        <span className={applicable ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-red-600 dark:text-red-400 font-semibold'}>
+                          {applicable ? 'Yes' : 'No'}
+                        </span>
+                      </p>
+                      <p><strong className="font-medium text-[var(--color-text-secondary)]">Reason:</strong> {reason}</p>
+                    </div>
+                  );
+                } else {
+                  // Standard code formatting
+                  return (
+                    <div className="space-y-2">
+                      <p><strong className="font-medium text-[var(--color-text-secondary)]">Code:</strong> {details.code}</p>
+                      <p><strong className="font-medium text-[var(--color-text-secondary)]">Type:</strong> {details.type}</p>
+                      <p><strong className="font-medium text-[var(--color-text-secondary)]">Explanation:</strong> {details.explanation}</p>
+                    </div>
+                  );
+                }
+              })()
             ) : (
-              <p className="text-[var(--color-text-secondary)]">Click a code in the &apos;Verify Codes&apos; section or &apos;View Details&apos; in the summary table to see details here.</p>
+              <p className="text-[var(--color-text-secondary)]">Click a code in the &apos;Final Codes&apos; section or &apos;View Details&apos; in the summary table to see details here.</p>
             )}
           </div>
         </div>
