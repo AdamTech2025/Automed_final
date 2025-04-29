@@ -1,9 +1,17 @@
 import { FaCogs, FaCopy, FaSpinner, FaPlus } from 'react-icons/fa';
-import { analyzeDentalScenario } from '../../interceptors/services.js';
+import { analyzeDentalScenario, addCustomCode } from '../../interceptors/services.js';
 import { useState, useEffect, useMemo } from 'react';
 import Questioner from './Questioner.jsx';
 import { useTheme } from '../../context/ThemeContext';
 import Loader from '../Modal/Loading.jsx';
+import { message } from 'antd';
+
+// Helper function to escape regex special characters
+const escapeRegex = (string) => {
+  // Escape characters with special meaning in regex.
+  // Handles cases like '.' in ICD codes (e.g., K08.89)
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+}
 
 const Home = () => {
   useTheme();
@@ -12,11 +20,12 @@ const Home = () => {
   const [result, setResult] = useState(null);
   const [selectedCodes, setSelectedCodes] = useState({ accepted: [], denied: [] });
   const [showQuestioner, setShowQuestioner] = useState(false);
-  const [expandedTopics, setExpandedTopics] = useState({});
   const [newCode, setNewCode] = useState('');
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [uploadedFile, setUploadedFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [activeCodeDetail, setActiveCodeDetail] = useState(null);
+  const [expandedHistoryRows, setExpandedHistoryRows] = useState({});
 
   // Check if there are questions in the result
   useEffect(() => {
@@ -62,8 +71,8 @@ const Home = () => {
       setScenario('');
       setResult(null);
       setSelectedCodes({ accepted: [], denied: [] });
-      setExpandedTopics({});
       setNewCode('');
+      setActiveCodeDetail(null);
     };
 
     window.addEventListener('newAnalysis', resetForm);
@@ -73,136 +82,135 @@ const Home = () => {
     };
   }, []);
 
-  // Transform CDT_subtopic array into the object format needed by the component
-  const formattedSubtopicData = useMemo(() => {
-    if (!result?.CDT_subtopic) {
-      return {};
-    }
-    
-    console.log("Raw CDT_subtopic data:", result.CDT_subtopic);
-    const formatted = {};
-    
-    result.CDT_subtopic.forEach(topic => {
-      // Use a combination of topic name and code range as the key if possible
-      const key = `${topic.topic || 'Unknown'} (${topic.code_range || 'N/A'})`;
-      const allCodes = [];
-      
-      // First try to extract specific codes from subtopics_data
-      if (topic.raw_result && topic.raw_result.subtopics_data && Array.isArray(topic.raw_result.subtopics_data)) {
-        topic.raw_result.subtopics_data.forEach(subtopic => {
-          // The raw_result can be an array or an object with raw_result property
-          let rawResultsToProcess = [];
-          
-          if (Array.isArray(subtopic.raw_result)) {
-            // Direct array of results
-            rawResultsToProcess = subtopic.raw_result;
-          } else if (typeof subtopic.raw_result === 'object' && subtopic.raw_result !== null) {
-            // Get any specific entries that might contain codes
-            rawResultsToProcess = [subtopic.raw_result];
-          }
-            
-          rawResultsToProcess.forEach(codeEntry => {
-            // Check if this is a direct entry with specific_codes
-            if (codeEntry && Array.isArray(codeEntry.specific_codes) && codeEntry.specific_codes.length > 0) {
-              codeEntry.specific_codes.forEach(code => {
-                if (code) {
-                  allCodes.push({
-                    code: code,
-                    explanation: codeEntry.explanation || 'No explanation provided',
-                    doubt: codeEntry.doubt || 'None'
-                  });
-                }
-              });
+  // Consolidate all code details into a map for easier lookup
+  const allCodeDetailsMap = useMemo(() => {
+    const detailsMap = {};
+    if (!result) return detailsMap;
+
+    // 1. Process CDT Topic Activation Results for detailed explanations
+    if (result.cdt_topic_activation_results && Array.isArray(result.cdt_topic_activation_results)) {
+      result.cdt_topic_activation_results.forEach(topic => {
+        const topicName = topic.topic || 'Unknown Topic';
+        if (topic.raw_result?.subtopics_data && Array.isArray(topic.raw_result.subtopics_data)) {
+          topic.raw_result.subtopics_data.forEach(subtopic => {
+            const subtopicName = subtopic.topic || 'Unknown Subtopic';
+            // Check the new structure with parsed_result
+            if (subtopic.parsed_result && Array.isArray(subtopic.parsed_result)) {
+               subtopic.parsed_result.forEach(parsedEntry => {
+                  if (parsedEntry?.specific_codes && Array.isArray(parsedEntry.specific_codes)) {
+                     parsedEntry.specific_codes.forEach(code => {
+                        if (code && !detailsMap[code]) { // Prioritize first explanation found
+                           detailsMap[code] = {
+                              code: code,
+                              type: 'CDT',
+                              explanation: parsedEntry.explanation || 'No explanation provided.',
+                              doubt: parsedEntry.doubt || 'None',
+                              topic: topicName,
+                              subtopic: subtopicName
+                           };
+                        }
+                     });
+                  }
+               });
             }
           });
-        });
-      }
-      
-      // If we found specific codes, use them
-      if (allCodes.length > 0) {
-        console.log(`Found ${allCodes.length} specific codes for ${key}`);
-        formatted[key] = allCodes;
-      }
-      // Fall back to the original codes array if present and no specific codes found
-      else if (Array.isArray(topic.codes) && topic.codes.length > 0) {
-        console.log(`Using fallback codes for ${key}: ${topic.codes.length} codes`);
-        formatted[key] = topic.codes;
+        }
+      });
+    }
+
+    // 2. Process ICD Topic Activation Result
+    const icdTopic = result.icd_topic_activation_results;
+    if (icdTopic?.raw_result?.code && icdTopic.raw_result.code !== 'none') {
+       const code = icdTopic.raw_result.code;
+       if (!detailsMap[code]) {
+          detailsMap[code] = {
+             code: code,
+             type: 'ICD-10',
+             explanation: icdTopic.raw_result.explanation || 'No explanation provided.',
+             doubt: icdTopic.raw_result.doubt || 'None',
+             topic: icdTopic.topic || 'ICD Topic',
+             subtopic: null
+          };
+       }
+    }
+
+    // 3. Add info for codes from Inspector results if not already mapped
+    const inspectorCdtCodes = result.inspector_results?.cdt?.codes || [];
+    const inspectorIcdCodes = result.inspector_results?.icd?.codes || [];
+    const inspectorCdtExplanation = result.inspector_results?.cdt?.explanation || '';
+    const inspectorIcdExplanation = result.inspector_results?.icd?.explanation || '';
+
+    // Function to extract explanation for a specific code from the inspector string
+    const getInspectorExplanation = (code, explanationString) => {
+      // Escape the code before inserting into regex
+      const escapedCode = escapeRegex(code);
+      // Simplified regex: Require exactly two asterisks **CODE(...)**: Selected.
+      const regex = new RegExp(`- \*\*${escapedCode}\s*\([^)]*\)\*\*:\s*Selected\.\s*(.*?)(?=\s*-\s*\*\*|$)`, 'i');
+      const match = explanationString.match(regex);
+      // console.log(`Regex for ${code}:`, regex, `Match:`, match); // Debugging log
+      return match ? match[1].trim() : 'Explanation from final inspection result.'; // Fallback explanation
+    };
+
+    inspectorCdtCodes.forEach(code => {
+      if (code && !detailsMap[code]) {
+        detailsMap[code] = {
+          code: code,
+          type: 'CDT',
+          explanation: getInspectorExplanation(code, inspectorCdtExplanation),
+          doubt: 'N/A',
+          topic: 'Final Selection (Inspector)',
+          subtopic: null
+        };
       }
     });
-    
-    console.log("Final formatted subtopic data:", formatted);
-    return formatted;
-  }, [result?.CDT_subtopic]);
 
-  // Add a formatted ICD topic data state (after the formattedSubtopicData useMemo)
-  const formattedICDTopicData = useMemo(() => {
-    if (!result?.ICD_topic_result) {
-      return null;
-    }
-    
-    const icdTopicResult = result.ICD_topic_result;
-    
-    // Create a topic key similar to CDT topics format
-    const categoryNumber = icdTopicResult.code_range || "N/A";
-    const topicKey = `${icdTopicResult.topic || 'Unknown'} (${categoryNumber})`;
-    
-    // Format the ICD topic data to have a similar structure to CDT topics
-    let formattedICDData = {};
-    
-    // Access data from raw_result if it exists, otherwise check direct properties
-    const rawResult = icdTopicResult.raw_result || {};
-    const code = rawResult.code || icdTopicResult.code;
-    const explanation = rawResult.explanation || icdTopicResult.explanation || 'No explanation provided';
-    const doubt = rawResult.doubt || icdTopicResult.doubt || 'None';
-    const rawData = rawResult.raw_data || rawResult.raw_result || '';
-    
-    // Create a codes array with a single entry if the code exists
-    if (code) {
-      formattedICDData[topicKey] = [{
-        code: code,
-        explanation: explanation,
-        doubt: doubt,
-        raw_data: rawData
-      }];
-    } else {
-      // Still create an entry for "No applicable code" but with clear indication
-      formattedICDData[topicKey] = [{
-        code: 'none', // explicitly set to 'none' to match topic service response
-        explanation: explanation,
-        doubt: doubt,
-        raw_data: rawData
-      }];
-    }
-    
-    return formattedICDData;
-  }, [result?.ICD_topic_result]);
+    inspectorIcdCodes.forEach(code => {
+      if (code && !detailsMap[code]) {
+        detailsMap[code] = {
+          code: code,
+          type: 'ICD-10',
+          // ICD inspector explanation might be general, not per-code
+          explanation: inspectorIcdExplanation || 'Explanation from final inspection result.',
+          doubt: 'N/A',
+          topic: 'Final Selection (Inspector)',
+          subtopic: null
+        };
+      }
+    });
 
-  // Initialize expanded topics state based on the formatted data
-  useEffect(() => {
-    const initialExpandedState = {};
-    
-    // Handle CDT subtopics
-    if (formattedSubtopicData && Object.keys(formattedSubtopicData).length > 0) {
-      console.log("Formatted Subtopics data:", formattedSubtopicData);
-      Object.keys(formattedSubtopicData).forEach(topicKey => {
-        initialExpandedState[topicKey] = false;
-      });
-    }
-    
-    // Also handle ICD topic
-    if (formattedICDTopicData && Object.keys(formattedICDTopicData).length > 0) {
-      console.log("Formatted ICD Topic data:", formattedICDTopicData);
-      Object.keys(formattedICDTopicData).forEach(topicKey => {
-        initialExpandedState[topicKey] = false; // Default to collapsed
-      });
-    }
-    
-    if (Object.keys(initialExpandedState).length > 0) {
-      setExpandedTopics(initialExpandedState);
-    } else {
-      setExpandedTopics({}); // Reset if no data
-    }
-  }, [formattedSubtopicData, formattedICDTopicData]); // Add dependency on ICD data
+    // 4. Add rejected codes from inspector if not present
+    const rejectedCdt = result.inspector_results?.cdt?.rejected_codes || [];
+    const rejectedIcd = result.inspector_results?.icd?.rejected_codes || [];
+
+     rejectedCdt.forEach(code => {
+       if (code && !detailsMap[code]) {
+         detailsMap[code] = {
+           code: code,
+           type: 'CDT',
+           explanation: 'Code was suggested but rejected during final inspection.',
+           doubt: 'N/A',
+           topic: 'Rejected Suggestion',
+           subtopic: null
+         };
+       }
+     });
+     rejectedIcd.forEach(code => {
+       if (code && !detailsMap[code]) {
+         detailsMap[code] = {
+           code: code,
+           type: 'ICD-10',
+           explanation: 'Code was suggested but rejected during final inspection.',
+           doubt: 'N/A',
+           topic: 'Rejected Suggestion',
+           subtopic: null
+         };
+       }
+     });
+
+
+    console.log("Generated allCodeDetailsMap:", detailsMap);
+    return detailsMap;
+  }, [result]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -215,8 +223,10 @@ const Home = () => {
       console.log('Analysis results received:', response);
       console.log('Record ID:', response?.record_id);
       setResult(response);
+      message.success('Analysis complete!');
     } catch (err) {
       console.error('Error analyzing scenario:', err);
+      message.error('Analysis failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -267,90 +277,58 @@ const Home = () => {
     }
   };
 
-  const scrollToCode = (code) => {
-    // Find the topic containing the code using formattedSubtopicData
-    let foundTopicKey = null;
-    let codeIndex = -1;
-    
-    console.log("Looking for code:", code);
-    console.log("Available topics:", Object.keys(formattedSubtopicData));
-    
-    // Search through the formatted data
-    if (formattedSubtopicData) {
-      Object.keys(formattedSubtopicData).forEach(topicKey => {
-        const topicCodes = formattedSubtopicData[topicKey];
-        if (topicCodes && Array.isArray(topicCodes)) {
-          topicCodes.forEach((codeData, index) => {
-            // Check both direct code equality and specific_codes arrays
-            const codeMatch = 
-              (codeData && codeData.code === code) || 
-              (codeData && Array.isArray(codeData.specific_codes) && codeData.specific_codes.includes(code));
-              
-            if (codeMatch) {
-              console.log(`Found code ${code} in topic ${topicKey}`);
-              foundTopicKey = topicKey;
-              codeIndex = index;
-            }
-          });
-        }
-      });
-    }
-
-    if (foundTopicKey) {
-      console.log(`Found code ${code} in topic ${foundTopicKey} at index ${codeIndex}`);
-      
-      // Expand the topic if it's not already expanded
-      if (!expandedTopics[foundTopicKey]) {
-        setExpandedTopics(prev => ({
-          ...prev,
-          [foundTopicKey]: true
-        }));
-      }
-
-      // Wait a short time for the expansion animation to complete before scrolling
-      setTimeout(() => {
-        // Scroll to the code
-        const element = document.getElementById(`code-${code}`);
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          // Add a brief highlight effect
-          element.classList.add('bg-yellow-100');
-          setTimeout(() => {
-            element.classList.remove('bg-red-100');
-          }, 1500);
-        } else {
-          console.log(`Could not find element with ID code-${code}`);
-        }
-      }, 300);
-    } else {
-      console.log(`Could not find topic containing code ${code}`);
-    }
-  };
 
   const handleAddCustomCode = async () => {
     if (!newCode.trim()) {
+      message.warning("Please enter a code.");
       return;
     }
 
-    const codeType = document.getElementById('codeType').value; // Get the selected code type
-    const codes = result?.inspector_results?.[codeType.toLowerCase()]?.codes || [];
-    
-    if (codes.includes(newCode)) {
-      return;
+    const codeType = document.getElementById('codeType').value;
+
+    // Check if code already exists (client-side check before API call)
+    if (selectedCodes.accepted.includes(newCode) || selectedCodes.denied.includes(newCode)) {
+       message.warning(`${newCode} has already been processed.`);
+       setNewCode('');
+       return;
     }
 
+    // Call the API to add the custom code
+    setLoading(true);
     try {
-      // Update the inspector results with the new code
-      const updatedResult = { ...result };
-      updatedResult.inspector_results[codeType.toLowerCase()].codes.push(newCode);
-      setResult(updatedResult);
-      setNewCode('');
-      
-      // Automatically select the new code
-      handleCodeSelection(newCode, 'accept');
-    } catch (err) {
-      // Handle potential errors, e.g., logging
-      console.error("Error adding custom code:", err);
+      const response = await addCustomCode(newCode, scenario, result?.record_id);
+      console.log("Add Custom Code API response:", response);
+
+      // OPTIONAL: Update UI based on response.data if backend returns updated state
+      // For now, just add it client-side assuming success
+      if (response.status === 'success') {
+        setSelectedCodes(prev => ({
+          ...prev,
+          accepted: [...prev.accepted, newCode]
+        }));
+        // Update details map (assuming backend doesn't return full updated map)
+        const customDetail = {
+          code: newCode,
+          type: codeType,
+          explanation: response.data?.code_data?.explanation || 'Manually added custom code.',
+          doubt: response.data?.code_data?.doubt || 'N/A',
+          topic: 'Custom',
+          subtopic: null
+        };
+        // This won't update the map derived from useMemo directly.
+        // A more robust solution might involve triggering a re-fetch or merging the response.
+
+        handleShowCodeDetail(newCode);
+        message.success(response.message || `Added custom code: ${newCode}`);
+        setNewCode('');
+      } else {
+         message.error(response.message || 'Failed to add custom code via API.');
+      }
+    } catch (apiError) {
+      console.error("Error calling addCustomCode API:", apiError);
+      message.error(apiError.message || 'An error occurred while adding the custom code.');
+    } finally {
+        setLoading(false);
     }
   };
 
@@ -490,7 +468,20 @@ const Home = () => {
               <div className="flex justify-between items-center mb-2">
                 <h4 className="text-lg font-semibold text-[var(--color-text-primary)]">CDT Codes</h4>
                 <button
-                  className="text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] hover:scale-105 transition-all duration-200"
+                  onClick={() => {
+                    const acceptedCdtCodes = (result?.inspector_results?.cdt?.codes || []).filter(code => selectedCodes.accepted.includes(code));
+                    if (acceptedCdtCodes.length === 0) {
+                      message.warning('No accepted CDT codes to copy.');
+                      return;
+                    }
+                    const textToCopy = acceptedCdtCodes.join(', ');
+                    navigator.clipboard.writeText(textToCopy)
+                      .then(() => message.success(`Copied CDT: ${textToCopy}`))
+                      .catch(() => message.error('Failed to copy CDT codes.'));
+                  }}
+                  disabled={!(result?.inspector_results?.cdt?.codes || []).some(code => selectedCodes.accepted.includes(code))}
+                  className="text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed p-1"
+                  aria-label="Copy Accepted CDT Codes"
                 >
                   <FaCopy />
                 </button>
@@ -499,7 +490,10 @@ const Home = () => {
                 {result?.inspector_results?.cdt?.codes.map((code, index) => (
                   <span
                     key={`${code}-${index}`}
-                    onClick={() => handleCodeSelection(code, selectedCodes.accepted.includes(code) ? 'deny' : 'accept')}
+                    onClick={() => {
+                      handleCodeSelection(code, selectedCodes.accepted.includes(code) ? 'deny' : 'accept');
+                      setActiveCodeDetail(code);
+                    }}
                     className={`cursor-pointer px-2 py-1 rounded-full text-xs transition-all duration-200 hover:scale-105 hover:shadow-lg border
                       ${
                         selectedCodes.accepted.includes(code)
@@ -520,7 +514,20 @@ const Home = () => {
               <div className="flex justify-between items-center mb-2">
                 <h4 className="text-lg font-semibold text-[var(--color-text-primary)]">ICD-10 Codes</h4>
                 <button
-                  className="text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] hover:scale-105 transition-all duration-200"
+                  onClick={() => {
+                    const acceptedIcdCodes = (result?.inspector_results?.icd?.codes || []).filter(code => selectedCodes.accepted.includes(code));
+                    if (acceptedIcdCodes.length === 0) {
+                      message.warning('No accepted ICD-10 codes to copy.');
+                      return;
+                    }
+                    const textToCopy = acceptedIcdCodes.join(', ');
+                    navigator.clipboard.writeText(textToCopy)
+                      .then(() => message.success(`Copied ICD-10: ${textToCopy}`))
+                      .catch(() => message.error('Failed to copy ICD-10 codes.'));
+                  }}
+                  disabled={!(result?.inspector_results?.icd?.codes || []).some(code => selectedCodes.accepted.includes(code))}
+                  className="text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed p-1"
+                  aria-label="Copy Accepted ICD-10 Codes"
                 >
                   <FaCopy />
                 </button>
@@ -529,7 +536,10 @@ const Home = () => {
                 {result?.inspector_results?.icd?.codes.map((code, index) => (
                   <span
                     key={`icd-code-${index}-${code}`}
-                    onClick={() => handleCodeSelection(code, selectedCodes.accepted.includes(code) ? 'deny' : 'accept')}
+                    onClick={() => {
+                      handleCodeSelection(code, selectedCodes.accepted.includes(code) ? 'deny' : 'accept');
+                      setActiveCodeDetail(code);
+                    }}
                     className={`cursor-pointer px-2 py-1 rounded-full text-xs transition-all duration-200 hover:scale-105 hover:shadow-lg border
                       ${
                         selectedCodes.accepted.includes(code)
@@ -550,8 +560,16 @@ const Home = () => {
         {/* Code Details Section */}
         <div className="bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 col-span-1 md:col-span-3">
           <h3 className="text-lg font-bold tracking-tight mb-4 text-[var(--color-text-primary)]">Code Details</h3>
-          <div className="border border-[var(--color-border)] bg-[var(--color-input-bg)] p-4 rounded-lg shadow-md font-bold leading-relaxed text-[var(--color-text-primary)]">
-            &nbsp; {/* Placeholder content */}
+          <div className="border border-[var(--color-border)] bg-[var(--color-input-bg)] p-4 rounded-lg shadow-inner min-h-[100px] text-sm font-light leading-relaxed text-[var(--color-text-primary)]">
+            {activeCodeDetail && allCodeDetailsMap[activeCodeDetail] ? (
+              <div className="space-y-2">
+                <p><strong className="font-medium text-[var(--color-text-secondary)]">Code:</strong> {allCodeDetailsMap[activeCodeDetail].code}</p>
+                <p><strong className="font-medium text-[var(--color-text-secondary)]">Type:</strong> {allCodeDetailsMap[activeCodeDetail].type}</p>
+                <p><strong className="font-medium text-[var(--color-text-secondary)]">Explanation:</strong> {allCodeDetailsMap[activeCodeDetail].explanation}</p>
+              </div>
+            ) : (
+              <p className="text-[var(--color-text-secondary)]">Click a code in the &apos;Verify Codes&apos; section or &apos;View Details&apos; in the summary table to see details here.</p>
+            )}
           </div>
         </div>
 
@@ -569,34 +587,98 @@ const Home = () => {
                 </tr>
               </thead>
               <tbody className="font-bold text-[var(--color-text-primary)] leading-relaxed">
-                {result?.inspector_results?.cdt?.codes.map((code) => (
-                  <tr key={code} className="border-t border-[var(--color-border)]">
-                    <td className="p-2">{code}</td>
-                    <td className="p-2">CDT</td>
-                    <td className="p-2">{/* Add description from your data */}</td>
-                    <td className="p-2">
-                      <button className="text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] font-medium" onClick={() => scrollToCode(code)}>
-                        View
-                      </button>
-                      <button className="text-green-400 hover:text-green-500 ml-2 font-medium">
-                        Add to Claim
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {result?.inspector_results?.icd?.codes.map((code) => (
-                  <tr key={code} className="border-t border-[var(--color-border)]">
-                    <td className="p-2">{code}</td>
-                    <td className="p-2">ICD-10</td>
-                    <td className="p-2">{/* Add description from your data */}</td>
-                    <td className="p-2">
-                      <button className="text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] font-medium">View</button>
-                      <button className="text-green-400 hover:text-green-500 ml-2 font-medium">
-                        Add to Claim
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {result?.inspector_results?.cdt?.codes.map((code, index) => {
+                  const details = allCodeDetailsMap[code] || { description: 'Details not found.' };
+                  const rowKey = `history-${code}-${index}`;
+                  const isExpanded = expandedHistoryRows[rowKey] || false;
+                  const explanation = details.explanation || 'N/A';
+                  const needsReadMore = explanation.length > 100;
+                  return (
+                    <tr key={`history-${code}-${index}`} className="hover:bg-[var(--color-bg-primary)] transition-colors duration-150">
+                      <td className="p-2 font-medium">{code}</td>
+                      <td className="p-2">{details.type}</td>
+                      <td className="p-2 text-xs font-light max-w-md">
+                        {needsReadMore && !isExpanded ? (
+                          <>
+                            {explanation.substring(0, 100)}...
+                            <button
+                              onClick={() => setExpandedHistoryRows(prev => ({ ...prev, [rowKey]: true }))}
+                              className="text-blue-500 dark:text-blue-400 hover:underline ml-1 text-xs"
+                            >
+                              Read More
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            {explanation}
+                            {needsReadMore && isExpanded && (
+                              <button
+                                onClick={() => setExpandedHistoryRows(prev => ({ ...prev, [rowKey]: false }))}
+                                className="text-blue-500 dark:text-blue-400 hover:underline ml-1 text-xs"
+                              >
+                                Read Less
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </td>
+                      <td className="p-2">
+                        <button
+                          className="text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] hover:underline font-medium text-xs"
+                          onClick={() => setActiveCodeDetail(code)}
+                        >
+                          View Details
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {result?.inspector_results?.icd?.codes.map((code, index) => {
+                  const details = allCodeDetailsMap[code] || { description: 'Details not found.' };
+                  const rowKey = `history-${code}-${index}`;
+                  const isExpanded = expandedHistoryRows[rowKey] || false;
+                  const explanation = details.explanation || 'N/A';
+                  const needsReadMore = explanation.length > 100;
+                  return (
+                    <tr key={`history-${code}-${index}`} className="hover:bg-[var(--color-bg-primary)] transition-colors duration-150">
+                      <td className="p-2 font-medium">{code}</td>
+                      <td className="p-2">{details.type}</td>
+                      <td className="p-2 text-xs font-light max-w-md">
+                        {needsReadMore && !isExpanded ? (
+                          <>
+                            {explanation.substring(0, 100)}...
+                            <button
+                              onClick={() => setExpandedHistoryRows(prev => ({ ...prev, [rowKey]: true }))}
+                              className="text-blue-500 dark:text-blue-400 hover:underline ml-1 text-xs"
+                            >
+                              Read More
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            {explanation}
+                            {needsReadMore && isExpanded && (
+                              <button
+                                onClick={() => setExpandedHistoryRows(prev => ({ ...prev, [rowKey]: false }))}
+                                className="text-blue-500 dark:text-blue-400 hover:underline ml-1 text-xs"
+                              >
+                                Read Less
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </td>
+                      <td className="p-2">
+                        <button
+                          className="text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] hover:underline font-medium text-xs"
+                          onClick={() => setActiveCodeDetail(code)}
+                        >
+                          View Details
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
