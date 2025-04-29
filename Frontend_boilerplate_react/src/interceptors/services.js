@@ -81,12 +81,13 @@ export const submitQuestionAnswers = async (answers, recordId) => {
 };
 
 // Add custom code service
-export const addCustomCode = async (code, scenario, recordId) => {
+export const addCustomCode = async (code, scenario, recordId, codeType) => {
   try {
     const response = await apiInstance.post('/api/add-custom-code', {
       code,
       scenario,
-      record_id: recordId
+      record_id: recordId,
+      code_type: codeType
     });
     return response.data;
   } catch (error) {
