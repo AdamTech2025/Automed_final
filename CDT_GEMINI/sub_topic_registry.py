@@ -25,14 +25,14 @@ class SubtopicRegistry:
             "name": name,
             "is_async": inspect.iscoroutinefunction(activate_func)
         })
-        logger.info(f"Registered topic: {name} ({code_range}), Async: {self.subtopics[-1]['is_async']}")
+        # logger.info(f"Registered topic: {name} ({code_range}), Async: {self.subtopics[-1]['is_async']}") # Removed info log
     
     async def activate_all(self, scenario: str, code_ranges_str: str) -> List[Dict[str, Any]]:
         """Activate relevant subtopics in parallel and return their raw results or errors."""
         raw_results_list = []
         activated_subtopic_names = set() # Keep track of names for logging/potential future use
         code_ranges_set = set(cr.strip() for cr in code_ranges_str.split(',') if cr.strip())
-        logger.info(f"Activating topics for code ranges: {code_ranges_set}")
+        # logger.info(f"Activating topics for code ranges: {code_ranges_set}") # Removed info log
 
         relevant_subtopics = []
         for subtopic in self.subtopics:
@@ -46,7 +46,7 @@ class SubtopicRegistry:
         loop = asyncio.get_running_loop()
 
         async def run_subtopic(subtopic: Dict[str, Any]) -> Dict[str, Any]:
-            logger.info(f"--> Activating topic: {subtopic['name']} ({subtopic['code_range']}) | Async: {subtopic['is_async']}")
+            # logger.info(f"--> Activating topic: {subtopic['name']} ({subtopic['code_range']}) | Async: {subtopic['is_async']}") # Removed info log
             result_entry = {
                 "topic": subtopic["name"],
                 "code_range": subtopic["code_range"],
@@ -67,7 +67,7 @@ class SubtopicRegistry:
                         timeout=60  # Increased timeout to 60 seconds
                     )
                 
-                logger.info(f"<-- Finished activating topic: {subtopic['name']}")
+                # logger.info(f"<-- Finished activating topic: {subtopic['name']}") # Removed info log
                 result_entry["raw_result"] = result # Store the raw result
 
             except asyncio.TimeoutError:
@@ -84,10 +84,10 @@ class SubtopicRegistry:
         try:
             if relevant_subtopics:
                 tasks = [run_subtopic(subtopic) for subtopic in relevant_subtopics]
-                logger.info(f"Gathering results for {len(tasks)} topic tasks...")
+                # logger.info(f"Gathering results for {len(tasks)} topic tasks...") # Removed info log
                 # gathered_results will be a list of dictionaries like result_entry
                 gathered_results = await asyncio.gather(*tasks) 
-                logger.info("Finished gathering topic results.")
+                # logger.info("Finished gathering topic results.") # Removed info log
                 raw_results_list.extend(gathered_results) # Add all results (success or error)
             else:
                 logger.warning("No relevant subtopics found to activate.")
@@ -95,7 +95,7 @@ class SubtopicRegistry:
             # Log summary (optional)
             successful_activations = [r for r in raw_results_list if r["error"] is None]
             failed_activations = [r for r in raw_results_list if r["error"] is not None]
-            logger.info(f"Activation summary: {len(successful_activations)} successful, {len(failed_activations)} failed.")
+            # logger.info(f"Activation summary: {len(successful_activations)} successful, {len(failed_activations)} failed.") # Removed info log
 
             # Return the list containing raw results or errors for each activated subtopic
             return raw_results_list 

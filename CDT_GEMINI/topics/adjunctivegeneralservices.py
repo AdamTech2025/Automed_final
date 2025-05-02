@@ -97,11 +97,10 @@ class AdjunctiveGeneralServices:
         """Create the prompt template for analyzing adjunctive general services."""
         prompt_data = self.db.get_topic_prompt("adjunctive_general_services_prompt")
         instruction_data = self.db.get_instruction("instruction_prompt")
-        print("###***Prompt Data Successfully Retrived from Database***###, ", "adjunctive_general_services_prompt")
         if not prompt_data or not prompt_data.get("template"):
             raise ValueError("Failed to retrieve prompt 'adjunctive_general_services_prompt' from database")
         template = prompt_data["template"]
-        print(f"Template: {template}")
+        
         return PromptTemplate(
             template=f"""
             {template}

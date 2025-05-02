@@ -61,11 +61,10 @@ class PreventiveServices:
         """Create the prompt template for analyzing preventive services."""
         prompt_data = self.db.get_topic_prompt("preventive_prompt")
         instruction_data = self.db.get_instruction("instruction_prompt")
-        print("###***Prompt Data Successfully Retrived from Database***###, ", "preventive_services_prompt")
         if not prompt_data or not prompt_data.get("template"):
             raise ValueError("Failed to retrieve prompt 'preventive_services_prompt' from database")
         template = prompt_data["template"]
-        print(f"Template: {template}")
+        
         return PromptTemplate(
             template=f"""
             {template}

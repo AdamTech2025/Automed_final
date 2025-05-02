@@ -7,6 +7,7 @@ import Login from '../components/Comman/Login.jsx';
 import Signup from '../components/Comman/Signup.jsx';
 import AdminDashboard from '../components/Pages/AdminDashboard.jsx';
 import UserActivity from '../components/Pages/UserActivity.jsx';
+import Topics from '../components/Pages/Admin/Topics.jsx';
 import Extractor from '../components/Pages/Extractor.jsx';
 import { useAuth } from '../context/AuthContext';
 import PropTypes from 'prop-types';
@@ -101,6 +102,16 @@ const AppRoutes = () => {
         }
       >
         <Route index element={<AdminDashboard />} />
+      </Route>
+      <Route
+        path="/admin/prompt-management/topics"
+        element={
+          <AdminProtectedRoute>
+            <Layout />
+          </AdminProtectedRoute>
+        }
+      >
+        <Route index element={<Topics />} />
       </Route>
       <Route 
         path="/user/:userId/activity" 

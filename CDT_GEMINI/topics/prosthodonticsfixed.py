@@ -60,11 +60,10 @@ class FixedProsthodonticsServices:
         """Create the prompt template for analyzing fixed prosthodontics services."""
         prompt_data = self.db.get_topic_prompt("prosthodontics_fixed_prompt")           
         instruction_data = self.db.get_instruction("instruction_prompt")
-        print("###***Prompt Data Successfully Retrived from Database***###, ", "prosthodontics_fixed_prompt")
         if not prompt_data or not prompt_data.get("template"):
             raise ValueError("Failed to retrieve prompt 'prosthodontics_fixed_prompt' from database")
         template = prompt_data["template"]
-        print(f"Template: {template}")
+        
         return PromptTemplate(
             template=f"""
             {template}
