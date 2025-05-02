@@ -60,11 +60,10 @@ class RestorativeServices:
         """Create the prompt template for analyzing restorative services."""
         prompt_data = self.db.get_topic_prompt("restorative_prompt")
         instruction_data = self.db.get_instruction("instruction_prompt")
-        print("###***Prompt Data Successfully Retrived from Database***###, ", "restorative_prompt")
         if not prompt_data or not prompt_data.get("template"):
             raise ValueError("Failed to retrieve prompt 'restorative_prompt' from database")
         template = prompt_data["template"]
-        print(f"Template: {template}")
+        
         return PromptTemplate(
             template=f"""
             {template}

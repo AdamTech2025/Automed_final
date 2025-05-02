@@ -1,10 +1,14 @@
-import { NavLink } from 'react-router-dom'; // Use NavLink for active styling
+import { NavLink, useLocation } from 'react-router-dom'; // Use NavLink for active styling
 import PropTypes from 'prop-types';
 import { useTheme } from '../../context/ThemeContext';
-import { FaTimes, FaHome, FaUserInjured, FaFileAlt, FaDollarSign, FaSun, FaMoon } from 'react-icons/fa';
+import { FaTimes, FaHome, FaUserInjured, FaFileAlt, FaDollarSign, FaSun, FaMoon, FaUsersCog, FaTools, FaChevronDown, FaChevronUp, FaBroom, FaListUl, FaQuestionCircle, FaSearch } from 'react-icons/fa'; // Added dropdown icons and specific prompt icons
+import { useState } from 'react'; // Added useState
 
 const Sidebar = ({ isVisible, toggleSidebar }) => {
   const { isDark, toggleTheme } = useTheme();
+  const location = useLocation(); // Get current location
+  const isAdminRoute = location.pathname.startsWith('/admin'); // Check if it's an admin route
+  const [isPromptDropdownOpen, setIsPromptDropdownOpen] = useState(false); // State for prompt dropdown
 
   // Define active link style
   const activeClassName = isDark ? 'bg-slate-700 text-white' : 'bg-blue-100 text-blue-700';
@@ -43,51 +47,164 @@ const Sidebar = ({ isVisible, toggleSidebar }) => {
           {/* Navigation - Adjusted padding, font */}
           <nav className="flex-1 px-3 py-4 ">
             <ul className="space-y-2">
-              <li>
-                <NavLink 
-                  to="/dashboard" 
-                  onClick={toggleSidebar} // Close sidebar on link click
-                  className={({ isActive }) => 
-                    `flex items-center px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${isActive ? activeClassName : inactiveClassName}`
-                  }
-                >
-                  <FaHome className="mr-3 h-5 w-5" /> Dashboard
-                </NavLink>
-              </li>
-              <li>
-                <NavLink 
-                  to="/patients" // Assuming a future route
-                  onClick={toggleSidebar}
-                  className={({ isActive }) => 
-                    `flex items-center px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${isActive ? activeClassName : inactiveClassName}`
-                  }
-                >
-                  <FaUserInjured className="mr-3 h-5 w-5" /> Patients
-                </NavLink>
-              </li>
-              <li>
-                <NavLink 
-                  to="/coding" // Assuming a future route
-                  onClick={toggleSidebar}
-                  className={({ isActive }) => 
-                    `flex items-center px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${isActive ? activeClassName : inactiveClassName}`
-                  }
-                >
-                  <FaFileAlt className="mr-3 h-5 w-5" /> Coding
-                </NavLink>
-              </li>
-              <li>
-                <NavLink 
-                  to="/billing" // Assuming a future route
-                  onClick={toggleSidebar}
-                   className={({ isActive }) => 
-                    `flex items-center px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${isActive ? activeClassName : inactiveClassName}`
-                  }
-                >
-                  <FaDollarSign className="mr-3 h-5 w-5" /> Billing
-                </NavLink>
-              </li>
-              {/* Add other links as needed */}
+              {isAdminRoute ? (
+                <>
+                  {/* Admin Links */}
+                  {/* <li>
+                    <NavLink
+                      to="/admin/dashboard" // Keep a dashboard link for admin
+                      onClick={toggleSidebar}
+                      className={({ isActive }) =>
+                        `flex items-center px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${isActive ? activeClassName : inactiveClassName}`
+                      }
+                    >
+                      <FaHome className="mr-3 h-5 w-5" /> Admin Dashboard
+                    </NavLink>
+                  </li> */}
+                   <li className="mb-1">
+                    <NavLink
+                      to="/admin/dashboard"
+                      onClick={toggleSidebar}
+                      className={({ isActive }) =>
+                        `flex items-center px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${isActive ? activeClassName : inactiveClassName}`
+                      }
+                    >
+                      <FaUsersCog className="mr-3 h-5 w-5" /> User Activities
+                    </NavLink>
+                  </li>
+                  <li className="mb-1">
+                    <button
+                      onClick={() => setIsPromptDropdownOpen(!isPromptDropdownOpen)}
+                      className={`flex items-center justify-between w-full px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${inactiveClassName} focus:outline-none`}
+                    >
+                      <span className="flex items-center">
+                        <FaTools className="mr-3 h-5 w-5" /> Prompt Management
+                      </span>
+                      {isPromptDropdownOpen ? <FaChevronUp className="h-4 w-4" /> : <FaChevronDown className="h-4 w-4" />}
+                    </button>
+                    {isPromptDropdownOpen && (
+                      <ul className="mt-1 pl-6 space-y-1">
+                        <li>
+                          <NavLink
+                            to="/admin/prompt-management/data-cleaner"
+                            onClick={toggleSidebar}
+                            className={({ isActive }) =>
+                              `flex items-center px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${isActive ? activeClassName : inactiveClassName}`
+                            }
+                          >
+                            <FaBroom className="mr-2 h-4 w-4" /> Data Cleaner
+                          </NavLink>
+                        </li>
+                        <li>
+                          <NavLink
+                            to="/admin/prompt-management/topics"
+                            onClick={toggleSidebar}
+                            className={({ isActive }) =>
+                              `flex items-center px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${isActive ? activeClassName : inactiveClassName}`
+                            }
+                          >
+                            <FaListUl className="mr-2 h-4 w-4" /> Topics
+                          </NavLink>
+                        </li>
+                        <li>
+                          <NavLink
+                            to="/admin/prompt-management/subtopics"
+                            onClick={toggleSidebar}
+                            className={({ isActive }) =>
+                              `flex items-center px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${isActive ? activeClassName : inactiveClassName}`
+                            }
+                          >
+                            <FaListUl className="mr-2 h-4 w-4 opacity-70" /> Subtopics
+                          </NavLink>
+                        </li>
+                        <li>
+                          <NavLink
+                            to="/admin/prompt-management/questioner"
+                            onClick={toggleSidebar}
+                            className={({ isActive }) =>
+                              `flex items-center px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${isActive ? activeClassName : inactiveClassName}`
+                            }
+                          >
+                            <FaQuestionCircle className="mr-2 h-4 w-4" /> Questioner
+                          </NavLink>
+                        </li>
+                        <li>
+                          <NavLink
+                            to="/admin/prompt-management/cdt-inspector"
+                            onClick={toggleSidebar}
+                            className={({ isActive }) =>
+                              `flex items-center px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${isActive ? activeClassName : inactiveClassName}`
+                            }
+                          >
+                            <FaSearch className="mr-2 h-4 w-4" /> CDT Inspector
+                          </NavLink>
+                        </li>
+                        <li>
+                          <NavLink
+                            to="/admin/prompt-management/icd-inspector"
+                            onClick={toggleSidebar}
+                            className={({ isActive }) =>
+                              `flex items-center px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${isActive ? activeClassName : inactiveClassName}`
+                            }
+                          >
+                            <FaSearch className="mr-2 h-4 w-4 opacity-70" /> ICD Inspector
+                          </NavLink>
+                        </li>
+                      </ul>
+                    )}
+                  </li>
+                  {/* Add other admin links as needed */}
+                </>
+              ) : (
+                <>
+                  {/* Regular User Links */}
+                  <li className="mb-1">
+                    <NavLink
+                      to="/dashboard"
+                      onClick={toggleSidebar} // Close sidebar on link click
+                      className={({ isActive }) =>
+                        `flex items-center px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${isActive ? activeClassName : inactiveClassName}`
+                      }
+                    >
+                      <FaHome className="mr-3 h-5 w-5" /> Dashboard
+                    </NavLink>
+                  </li>
+                  <li className="mb-1">
+                    <NavLink
+                      to="/patients" // Assuming a future route
+                      onClick={toggleSidebar}
+                      className={({ isActive }) =>
+                        `flex items-center px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${isActive ? activeClassName : inactiveClassName}`
+                      }
+                    >
+                      <FaUserInjured className="mr-3 h-5 w-5" /> Patients
+                    </NavLink>
+                  </li>
+                  <li className="mb-1">
+                    <NavLink
+                      to="/coding" // Assuming a future route
+                      onClick={toggleSidebar}
+                      className={({ isActive }) =>
+                        `flex items-center px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${isActive ? activeClassName : inactiveClassName}`
+                      }
+                    >
+                      <FaFileAlt className="mr-3 h-5 w-5" /> Coding
+                    </NavLink>
+                  </li>
+                  <li className="mb-1">
+                    <NavLink
+                      to="/billing" // Assuming a future route
+                      onClick={toggleSidebar}
+                      className={({ isActive }) =>
+                        `flex items-center px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${isActive ? activeClassName : inactiveClassName}`
+                      }
+                    >
+                      <FaDollarSign className="mr-3 h-5 w-5" /> Billing
+                    </NavLink>
+                  </li>
+                  {/* Add other links as needed */}
+                 </>
+              )}
             </ul>
           </nav>
 

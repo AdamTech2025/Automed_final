@@ -196,6 +196,53 @@ export const getUserActivity = async (userId, signal) => {
   }
 };
 
+// --- Admin Prompt Management Services ---
+
+export const getTopicsPrompts = async (signal) => {
+  try {
+    console.log("services.js: Attempting to fetch all topic prompts (Admin)");
+    const response = await apiInstance.get('api/prompts/topics_prompts', {
+      signal: signal // Pass the AbortController signal
+    });
+    console.log("services.js: Received topic prompts response:", response.data);
+    // Expected response structure: { topics: [ { id, name, template, version, created_at }, ... ] }
+    return response.data;
+  } catch (error) {
+    console.error("Get Topics Prompts error:", error);
+    if (error.name === 'CanceledError' || error.name === 'AbortError') {
+      const abortError = new Error('Request was cancelled');
+      abortError.name = 'AbortError';
+      throw abortError;
+    }
+    // Rethrow specific backend error or a generic one
+    throw error.response?.data || { message: 'Failed to fetch topic prompts', detail: 'Could not connect or permission denied' };
+  }
+};
+
+export const updateTopicPrompt = async (topicId, template, signal) => {
+  try {
+    console.log(`services.js: Attempting to update prompt for topic ID: ${topicId}`);
+    const response = await apiInstance.put(`/api/prompts/topics_prompts/${topicId}`, 
+      { template: template }, // Send only the template in the body
+      {
+        signal: signal // Pass the AbortController signal
+      }
+    );
+    console.log(`services.js: Received update response for topic ${topicId}:`, response.data);
+    // Expected response could be the updated topic or a success message
+    return response.data; 
+  } catch (error) {
+    console.error(`Update Topic Prompt (ID: ${topicId}) error:`, error);
+    if (error.name === 'CanceledError' || error.name === 'AbortError') {
+      const abortError = new Error('Request was cancelled');
+      abortError.name = 'AbortError';
+      throw abortError;
+    }
+    // Rethrow specific backend error or a generic one
+    throw error.response?.data || { message: `Failed to update prompt for topic ${topicId}`, detail: 'Could not connect or permission denied' };
+  }
+};
+
 // File upload and extraction service
 export const uploadAndExtract = async (file) => {
   try {
