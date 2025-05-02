@@ -3,40 +3,48 @@ from database import MedicalCodingDB
 # Define the prompt template
 PROMPT = """
 
+You are an expert dental coding analyst specializing in ICD-10-CM coding for dental conditions. Analyze the given dental scenario and identify ONLY the single most appropriate ICD-10-CM code category number and provide a brief explanation.
 
-Based on the given dental scenario, determine which dental code range(s) should be applied for billing purposes. The primary goal is to maximize the doctor's revenue by ensuring every billable procedure is captured while keeping claims defensible to avoid any denial. You must use the predefined subtopic ranges provided exactly as given, but you may also include additional ranges if they seem relevant.
+# IMPORTANT INSTRUCTIONS:
+- Focus on identifying the SINGLE most relevant category number that best represents the primary clinical finding or condition.
+- Prioritize specificity over breadth - choose the most detailed category that fits the scenario.
+- ONLY output the Category Number, Explanation, and Doubt using the specified format.
 
+# ICD-10-CM CATEGORIES RELEVANT TO DENTISTRY:
+1. Dental Encounters (Z01.2x series: routine dental examinations)
+2. Dental Caries (K02.x series: including different sites, severity, and stages)
+3. Disorders of Teeth (K03.x-K08.x series: wear, deposits, embedded/impacted teeth)
+4. Disorders of Pulp and Periapical Tissues (K04.x series: pulpitis, necrosis, abscess)
+5. Diseases and Conditions of the Periodontium (K05.x-K06.x series: gingivitis, periodontitis)
+6. Alveolar Ridge Disorders (K08.2x series: atrophy, specific disorders)
+7. Findings of Lost Teeth (K08.1x, K08.4x series: loss due to extraction, trauma)
+8. Developmental Disorders of Teeth and Jaws (K00.x, K07.x series: anodontia, malocclusion)
+9. Treatment Complications (T81.x-T88.x series: infection, dehiscence, foreign body)
+10. Inflammatory Conditions of the Mucosa (K12.x series: stomatitis, cellulitis)
+11. TMJ Diseases and Conditions (M26.6x series: disorders, adhesions, arthralgia)
+12. Breathing, Speech, and Sleep Disorders (G47.x, F80.x, R06.x series: relevant to dental)
+13. Trauma and Related Conditions (S00.x-S09.x series: injuries to mouth, teeth, jaws)
+14. Oral Neoplasms (C00.x-C14.x series: malignant neoplasms of lip, oral cavity)
+15. Pathologies (D10.x-D36.x series: benign neoplasms, cysts, conditions)
+16. Medical Findings Related to Dental Treatment (E08.x-E13.x for diabetes, I10-I15 for hypertension)
+17. Social Determinants (Z55.x-Z65.x series: education, housing, social factors)
+18. Symptoms and Disorders Pertinent to Orthodontia Cases (G24.x, G50.x, M95.x: facial asymmetry)
 
-Instructions:
+# SCENARIO TO ANALYZE:
+{scenario}
 
-
-1) Scenario Analysis: Carefully analyze the entire scenario provided below to identify all relevant classifications and procedures.
-
-
-2) Subtopic Ranges: Rely strictly on the predefined dental code subtopic ranges provided in the prompt. Do not modify these ranges or add new.
-
-
-3) Flexible Reasoning: Use your own expert knowledge to include any additional code ranges that might be applicable—even if they are not directly mentioned in the scenario.
-
-
-4) Revenue Maximization: Prioritize capturing as many billable items as possible for the specific visit, ensuring that the coding is defensible and claim denial is minimized.
-
-
-5 ) If no code range applies, simply output “none.”
-
-
-Return your answer in this exact format:
-EXPLANATION: [provide a brief, concise explanation of why these code ranges are applicable]
-DOUBT: [list any uncertainties or alternative interpretations if they exist, or ask a question if you need more information to clarify]
-CODE RANGE: DXXXX-DXXXX, DXXXX-DXXXX, DXXXX-DXXXX"""
-
+# STRICT OUTPUT FORMAT - FOLLOW EXACTLY:
+CATEGORY_NUMBER: [Provide only the single most relevant category number, e.g., 4]
+EXPLANATION: [Brief explanation for why this category number is the most appropriate]
+DOUBT: [Any uncertainties or doubts about the category selection]
+"""
 
 
 def store_prompt():
     """Store the prompt template in the Supabase database."""
     db = MedicalCodingDB()
-    success = db.store_instruction(
-        name="instruction_prompt",
+    success = db.store_icd_classifier_prompt(
+        name="icd_classifier_prompt",
         template=PROMPT,
         version="1.0"
     )

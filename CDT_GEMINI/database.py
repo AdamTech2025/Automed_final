@@ -26,6 +26,200 @@ class MedicalCodingDB:
         if not self.supabase:
             self.connect()
 
+    def store_cdt_inspector_prompt(self, name: str, template: str, version: str = "1.0") -> bool:
+        """Store an cdt inspector prompt in the cdt_inspector_prompts table."""
+        self.ensure_connection()
+        try:
+            prompt_data = {
+                "name": name,
+                "template": template,
+                "version": version
+            }
+            result = self.supabase.table("cdt_inspector_prompts").upsert(
+                prompt_data,
+                on_conflict="name"
+            ).execute()
+            if result.data:
+                logger.info(f"✅ Inspector prompt '{name}' stored/updated successfully")
+                return True
+            else:
+                logger.error(f"❌ Failed to store inspector prompt '{name}'")
+                return False
+        except Exception as e:
+            logger.error(f"❌ Error storing inspector prompt '{name}': {str(e)}", exc_info=True)
+            return False
+        
+
+    def get_cdt_inspector_prompt(self, name: str) -> Optional[Dict]:
+        """Retrieve an inspector prompt by its name."""
+        self.ensure_connection()
+        try:
+            result = self.supabase.table("cdt_inspector_prompts").select("*").eq("name", name).limit(1).execute()
+            if result.data:
+                logger.info(f"✅ Retrieved cdt inspector prompt '{name}'")
+                return result.data[0]
+            else:
+                logger.warning(f"❌ No cdt inspector prompt found with name '{name}'")
+                return None
+        except Exception as e:
+            logger.error(f"❌ Error retrieving cdt inspector prompt '{name}': {str(e)}", exc_info=True)
+            return None
+        
+    def store_icd_inspector_prompt(self, name: str, template: str, version: str = "1.0") -> bool:
+        """Store an icd inspector prompt in the icd_inspector_prompts table."""
+        self.ensure_connection()
+        try:
+            prompt_data = {
+                "name": name,
+                "template": template,
+                "version": version
+            }
+            result = self.supabase.table("icd_inspector_prompts").upsert(
+                prompt_data,
+                on_conflict="name"
+            ).execute()
+            if result.data:
+                logger.info(f"✅ ICD inspector prompt '{name}' stored/updated successfully")
+                return True
+            else:
+                logger.error(f"❌ Failed to store ICD inspector prompt '{name}'")
+                return False
+        except Exception as e:
+            logger.error(f"❌ Error storing ICD inspector prompt '{name}': {str(e)}", exc_info=True)
+            return False
+    
+    def get_icd_inspector_prompt(self, name: str) -> Optional[Dict]:
+        """Retrieve an icd inspector prompt by its name."""
+        self.ensure_connection()
+        try:
+            result = self.supabase.table("cdt_inspector_prompts").select("*").eq("name", name).limit(1).execute()
+            if result.data:
+                logger.info(f"✅ Retrieved icd inspector prompt '{name}'")
+                return result.data[0]
+            else:
+                logger.warning(f"❌ No icd inspector prompt found with name '{name}'")
+                return None
+        except Exception as e:
+            logger.error(f"❌ Error retrieving icd inspector prompt '{name}': {str(e)}", exc_info=True)
+            return None
+        
+    
+    def store_datacleaner_prompt(self, name: str, template: str, version: str = "1.0") -> bool:
+        """Store an datacleaning prompt in the datacleaning_prompts table."""
+        self.ensure_connection()
+        try:
+            prompt_data = {
+                "name": name,
+                "template": template,
+                "version": version
+            }
+            result = self.supabase.table("data_cleaner_prompts").upsert(
+                prompt_data,
+                on_conflict="name"
+            ).execute()
+            if result.data:
+                logger.info(f"✅ Data cleaner prompt '{name}' stored/updated successfully")
+                return True
+            else:
+                logger.error(f"❌ Failed to store data cleaner prompt '{name}'")
+                return False
+        except Exception as e:
+            logger.error(f"❌ Error storing data cleaner prompt '{name}': {str(e)}", exc_info=True)
+            return False
+    
+    def get_datacleaner_prompt(self, name: str) -> Optional[Dict]:
+        """Retrieve an datacleaning prompt by its name."""
+        self.ensure_connection()
+        try:
+            result = self.supabase.table("data_cleaner_prompts").select("*").eq("name", name).limit(1).execute()
+            if result.data:
+                logger.info(f"✅ Retrieved data cleaner prompt '{name}'")
+                return result.data[0]
+            else:
+                logger.warning(f"❌ No data cleaner prompt found with name '{name}'")
+                return None
+        except Exception as e:
+            logger.error(f"❌ Error retrieving data cleaner prompt '{name}': {str(e)}", exc_info=True)
+            return None
+    
+    def store_questioner_prompt(self, name: str, template: str, version: str = "1.0") -> bool:
+        """Store an questioner prompt in the questioner_prompts table."""
+        self.ensure_connection()
+        try:
+            prompt_data = {
+                "name": name,
+                "template": template,
+                "version": version
+            }
+            result = self.supabase.table("questioner_prompts").upsert(
+                prompt_data,
+                on_conflict="name"
+            ).execute()
+            if result.data:
+                logger.info(f"✅ Questioner prompt '{name}' stored/updated successfully")
+                return True
+            else:
+                logger.error(f"❌ Failed to store questioner prompt '{name}'")
+                return False
+        except Exception as e:
+            logger.error(f"❌ Error storing questioner prompt '{name}': {str(e)}", exc_info=True)
+            return False
+    
+    def get_questioner_prompt(self, name: str) -> Optional[Dict]:
+        """Retrieve an questioner prompt by its name."""
+        self.ensure_connection()
+        try:
+            result = self.supabase.table("questioner_prompts").select("*").eq("name", name).limit(1).execute()
+            if result.data:
+                logger.info(f"✅ Retrieved questioner prompt '{name}'")
+                return result.data[0]
+            else:
+                logger.warning(f"❌ No questioner prompt found with name '{name}'")
+                return None
+        except Exception as e:
+            logger.error(f"❌ Error retrieving questioner prompt '{name}': {str(e)}", exc_info=True)
+            return None
+        
+
+    def store_icd_inspector_prompt(self, name: str, template: str, version: str = "1.0") -> bool:
+        """Store an icd inspector prompt in the icd_inspector_prompts table."""
+        self.ensure_connection()
+        try:
+            prompt_data = {
+                "name": name,
+                "template": template,
+                "version": version
+            }
+            result = self.supabase.table("icd_inspector_prompts").upsert(
+                prompt_data,
+                on_conflict="name"
+            ).execute()
+            if result.data:
+                logger.info(f"✅ ICD inspector prompt '{name}' stored/updated successfully")
+                return True
+            else:
+                logger.error(f"❌ Failed to store ICD inspector prompt '{name}'")
+                return False
+        except Exception as e:
+            logger.error(f"❌ Error storing ICD inspector prompt '{name}': {str(e)}", exc_info=True)
+            return False
+    
+    def get_icd_inspector_prompt(self, name: str) -> Optional[Dict]:
+        """Retrieve an icd inspector prompt by its name."""
+        self.ensure_connection()
+        try:
+            result = self.supabase.table("cdt_inspector_prompts").select("*").eq("name", name).limit(1).execute()
+            if result.data:
+                logger.info(f"✅ Retrieved icd inspector prompt '{name}'")
+                return result.data[0]
+            else:
+                logger.warning(f"❌ No icd inspector prompt found with name '{name}'")
+                return None
+        except Exception as e:
+            logger.error(f"❌ Error retrieving icd inspector prompt '{name}': {str(e)}", exc_info=True)
+            return None
+    
+    
     def create_analysis_record(self, data: dict, user_id: Union[str, None] = None):
         """Insert a new record into the dental_report table."""
         self.ensure_connection()
@@ -66,6 +260,84 @@ class MedicalCodingDB:
             print(f"❌ Error updating processed scenario: {str(e)}")
             return False
         
+    def store_cdt_classifier_prompt(self, name: str, template: str, version: str = "1.0") -> bool:
+        """Store a cdt classifier prompt in the cdt_classifier_prompts table."""
+        self.ensure_connection()
+        try:
+            prompt_data = {
+                "name": name,
+                "template": template,
+                "version": version
+            }
+            result = self.supabase.table("cdt_classifier_prompts").upsert(
+                prompt_data,
+                on_conflict="name"
+            ).execute()
+            if result.data:
+                logger.info(f"✅ Cdt classifier prompt '{name}' stored/updated successfully")
+                return True
+            else:
+                logger.error(f"❌ Failed to store cdt classifier prompt '{name}'")
+                return False
+        except Exception as e:
+            logger.error(f"❌ Error storing cdt classifier prompt '{name}': {str(e)}", exc_info=True)
+            return False
+
+    def get_cdt_classifier_prompt(self, name: str) -> Optional[Dict]:
+        """Retrieve a cdt classifier prompt by its name."""
+        self.ensure_connection()
+        try:
+            result = self.supabase.table("cdt_classifier_prompts").select("*").eq("name", name).limit(1).execute()
+            if result.data:
+                logger.info(f"✅ Retrieved cdt classifier prompt '{name}'")
+                return result.data[0]
+            else:
+                logger.warning(f"❌ No cdt classifier prompt found with name '{name}'")
+                return None
+        except Exception as e:
+            logger.error(f"❌ Error retrieving cdt classifier prompt '{name}': {str(e)}", exc_info=True)
+            return None
+        
+    def store_icd_classifier_prompt(self, name: str, template: str, version: str = "1.0") -> bool:
+        """Store a icd classifier prompt in the icd_classifier_prompts table."""
+        self.ensure_connection()
+        try:
+            prompt_data = {
+                "name": name,
+                "template": template,
+                "version": version
+            }
+            result = self.supabase.table("icd_classifier_prompts").upsert(
+                prompt_data,
+                on_conflict="name"
+            ).execute()
+            if result.data:
+                logger.info(f"✅ Icd classifier prompt '{name}' stored/updated successfully")
+                return True
+            else:
+                logger.error(f"❌ Failed to store icd classifier prompt '{name}'")
+                return False
+        except Exception as e:
+            logger.error(f"❌ Error storing icd classifier prompt '{name}': {str(e)}", exc_info=True)
+            return False
+
+    def get_icd_classifier_prompt(self, name: str) -> Optional[Dict]:
+        """Retrieve a icd classifier prompt by its name."""
+        self.ensure_connection()
+        try:
+            result = self.supabase.table("cdt_classifier_prompts").select("*").eq("name", name).limit(1).execute()
+            if result.data:
+                logger.info(f"✅ Retrieved icd classifier prompt '{name}'")
+                return result.data[0]
+            else:
+                logger.warning(f"❌ No icd classifier prompt found with name '{name}'")
+                return None
+        except Exception as e:
+            logger.error(f"❌ Error retrieving icd classifier prompt '{name}': {str(e)}", exc_info=True)
+            return None
+
+        
+
     def store_topic_prompt(self, name: str, template: str, version: str = "1.0") -> bool:
         """Store a topic prompt in the topics_prompts table."""
         self.ensure_connection()

@@ -883,6 +883,49 @@ async def get_all_user_activity(
         logger.error(f"❌ ERROR fetching all user activity: {str(e)}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve all user activity")
 
+
+
+@app.get("api/prompts/topic_prompts", summary="Retrieve topic prompts", response_model=List[Dict])
+async def get_topic_prompts(name: Optional[str] = None):
+    """
+    Retrieve all topic prompts or a specific prompt by name from the topic_prompts table.
+    
+    Parameters:
+    - name (optional): The name of the prompt to retrieve. If not provided, all prompts are returned.
+    
+    Returns:
+    - List of prompts with fields: id, name, template, version, created_at.
+    """
+    try:
+        prompts = db.get_topic_prompt(name=name)
+        if not prompts and name:
+            raise HTTPException(status_code=404, detail=f"No topic prompt found with name: {name}")
+        return prompts
+    except Exception as e:
+        logger.error(f"Error fetching topic prompts: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("api/prompts/inspector_prompts/", summary="Retrieve inspector prompts", response_model=List[Dict])
+async def get_inspector_prompts(name: Optional[str] = None):
+    """
+    Retrieve all inspector prompts or a specific prompt by name from the inspector_prompts table.
+    
+    Parameters:
+    - name (optional): The name of the prompt to retrieve. If not provided, all prompts are returned.
+    
+    Returns:
+    - List of prompts with fields: id, name, template, version, created_at.
+    """
+    try:
+        prompts = db.get_icd_inspector_prompt(name=name)
+        if not prompts and name:
+            raise HTTPException(status_code=404, detail=f"No inspector prompt found with name: {name}")
+        return prompts
+    except Exception as e:
+        logger.error(f"Error fetching inspector prompts: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 # Add a root endpoint for basic checks
 @app.get("/")
 async def read_root():
