@@ -4,7 +4,7 @@ import asyncio
 import re # Added for parsing
 from langchain.prompts import PromptTemplate
 from llm_services import LLMService, get_service, set_model, set_temperature
-
+from database import MedicalCodingDB
 from sub_topic_registry import SubtopicRegistry
 
 # Add the root directory to the Python path
@@ -12,8 +12,6 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 sys.path.append(root_dir)
 
-# Import modules
-from topics.prompt import PROMPT
 
 # Import service objects from subtopics with fallback mechanism
 try:
@@ -39,10 +37,11 @@ class FixedProsthodonticsServices:
     def __init__(self, llm_service: LLMService = None):
         """Initialize with an optional LLMService instance."""
         self.llm_service = llm_service or get_service()
+        self.db = MedicalCodingDB()
         self.prompt_template = self._create_prompt_template()
         self.registry = SubtopicRegistry()
         self._register_subtopics()
-    
+        
     def _register_subtopics(self):
         """Register all subtopics for parallel activation."""
         try:
@@ -59,42 +58,18 @@ class FixedProsthodonticsServices:
     
     def _create_prompt_template(self) -> PromptTemplate:
         """Create the prompt template for analyzing fixed prosthodontics services."""
+        prompt_data = self.db.get_topic_prompt("prosthodontics_fixed_prompt")           
+        instruction_data = self.db.get_instruction("instruction_prompt")
+        print("###***Prompt Data Successfully Retrived from Database***###, ", "prosthodontics_fixed_prompt")
+        if not prompt_data or not prompt_data.get("template"):
+            raise ValueError("Failed to retrieve prompt 'prosthodontics_fixed_prompt' from database")
+        template = prompt_data["template"]
+        print(f"Template: {template}")
         return PromptTemplate(
             template=f"""
-You are a highly experienced dental coding expert with over 15 years of expertise in ADA dental codes. 
-Your task is to analyze the given scenario and determine the most applicable fixed prosthodontics code range(s) based on the following classifications:
-
-## **Fixed Partial Denture Pontics (D6205-D6253)**
-**Use when:** Providing artificial replacement teeth in a fixed bridge.
-**Check:** Documentation specifies pontic material and design for the edentulous area.
-**Note:** These are the artificial teeth in a bridge that replace missing natural teeth.
-**Activation trigger:** Scenario mentions OR implies any bridge pontic, artificial tooth in a bridge, tooth replacement in fixed prosthesis, or pontic design/material. INCLUDE this range if there's any indication of replacement teeth in a fixed bridge.
-
-## **Fixed Partial Denture Retainers — Inlays/Onlays (D6545-D6634)**
-**Use when:** Using inlays or onlays as the retaining elements for a fixed bridge.
-**Check:** Documentation details the inlay/onlay material and design as a bridge retainer.
-**Note:** These are more conservative than full crowns but still provide retention for the bridge.
-**Activation trigger:** Scenario mentions OR implies any inlay retainer, onlay abutment, partial coverage retainer for bridge, or conservative bridge attachment. INCLUDE this range if there's any hint of inlays or onlays being used to support a fixed bridge.
-
-## **Fixed Partial Denture Retainers — Crowns (D6710-D6793)**
-**Use when:** Using full coverage crowns as the retaining elements for a fixed bridge.
-**Check:** Documentation specifies crown material and design as bridge abutments.
-**Note:** These provide maximum retention but require more tooth reduction.
-**Activation trigger:** Scenario mentions OR implies any crown retainer, abutment crown, full coverage bridge support, or crown preparation for bridge. INCLUDE this range if there's any suggestion of full crowns being used to support a fixed bridge.
-
-## **Other Fixed Partial Denture Services (D6920-D6999)**
-**Use when:** Providing additional services related to fixed bridges.
-**Check:** Documentation details the specific service and its purpose for the bridge.
-**Note:** These include repairs, recementations, and specialized bridge components.
-**Activation trigger:** Scenario mentions OR implies any bridge repair, recementation, stress breaker, precision attachment, or maintenance of existing bridge. INCLUDE this range if there's any indication of services for fixed bridges beyond the initial fabrication.
-
-### **Scenario:**
-{{scenario}}
-{PROMPT}
-
-RESPOND WITH ALL APPLICABLE CODE RANGES from the options above, even if they are only slightly relevant.
-List them in order of relevance, with the most relevant first.
-""",
+            {template}
+            {instruction_data}
+            """,
             input_variables=["scenario"]
         )
     

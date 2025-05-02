@@ -7,6 +7,7 @@ import Login from '../components/Comman/Login.jsx';
 import Signup from '../components/Comman/Signup.jsx';
 import AdminDashboard from '../components/Pages/AdminDashboard.jsx';
 import UserActivity from '../components/Pages/UserActivity.jsx';
+import Extractor from '../components/Pages/Extractor.jsx';
 import { useAuth } from '../context/AuthContext';
 import PropTypes from 'prop-types';
 
@@ -80,6 +81,16 @@ const AppRoutes = () => {
         }
       >
         <Route index element={<Home1 />} />
+      </Route>
+      <Route 
+        path="/extractor" 
+        element={
+          <ProtectedRoute>
+            <Layout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<Extractor />} />
       </Route>
       <Route 
         path="/admin/dashboard" 

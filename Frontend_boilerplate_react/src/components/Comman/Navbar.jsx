@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { FaTooth, FaSun, FaMoon, FaPlus, FaUserCircle, FaSignOutAlt, FaUsers, FaBars } from 'react-icons/fa';
+import { FaTooth, FaSun, FaMoon, FaPlus, FaUserCircle, FaSignOutAlt, FaUsers, FaBars, FaFileUpload } from 'react-icons/fa';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import PropTypes from 'prop-types';
@@ -76,6 +76,16 @@ const Navbar = ({ toggleSidebar }) => {
           <FaPlus className="text-lg" />
           <span className="ml-1 hidden sm:inline">New Analysis</span>
         </button>
+        <Link 
+          to="/extractor" 
+          className={`${isDark ? 'text-gray-300 hover:text-blue-300' : 'text-gray-600 hover:text-blue-700'} 
+            flex items-center transition-colors p-2 rounded-md`}
+          aria-label="Extractor"
+          title="Extract from files"
+        >
+          <FaFileUpload className="text-lg" />
+          <span className="ml-1 hidden sm:inline">Extractor</span>
+        </Link>
         {/* <Link 
           to="/questions" 
           className={`${isDark ? 'text-gray-300 hover:text-blue-300' : 'text-gray-700 hover:text-blue-700'} 

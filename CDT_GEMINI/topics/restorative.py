@@ -4,7 +4,7 @@ import asyncio
 import re # Added for parsing
 from langchain.prompts import PromptTemplate
 from llm_services import LLMService, get_service, set_model, set_temperature
-
+from database import MedicalCodingDB
 from sub_topic_registry import SubtopicRegistry
 
 # Add the root directory to the Python path
@@ -12,8 +12,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 sys.path.append(root_dir)
 
-# Import modules
-from topics.prompt import PROMPT
+
 from subtopics.Restorative.amalgam_restorations import AmalgamRestorationsServices
 from subtopics.Restorative.resin_based_composite_restorations import ResinBasedCompositeRestorationsServices
 from subtopics.Restorative.gold_foil_restorations import GoldFoilRestorationsServices
@@ -27,8 +26,9 @@ class RestorativeServices:
     def __init__(self, llm_service: LLMService = None):
         """Initialize with an optional LLMService instance."""
         self.llm_service = llm_service or get_service()
+        self.db = MedicalCodingDB()
         self.prompt_template = self._create_prompt_template()
-        
+    
         # Initialize the subtopic service classes - needed if calling instance methods
         self.amalgam_restorations = AmalgamRestorationsServices(self.llm_service)
         self.resin_based_composite_restorations = ResinBasedCompositeRestorationsServices(self.llm_service)
@@ -58,56 +58,20 @@ class RestorativeServices:
     
     def _create_prompt_template(self) -> PromptTemplate:
         """Create the prompt template for analyzing restorative services."""
+        prompt_data = self.db.get_topic_prompt("restorative_prompt")
+        instruction_data = self.db.get_instruction("instruction_prompt")
+        print("###***Prompt Data Successfully Retrived from Database***###, ", "restorative_prompt")
+        if not prompt_data or not prompt_data.get("template"):
+            raise ValueError("Failed to retrieve prompt 'restorative_prompt' from database")
+        template = prompt_data["template"]
+        print(f"Template: {template}")
         return PromptTemplate(
             template=f"""
-You are a highly experienced dental coding expert with over 15 years of expertise in ADA dental codes. 
-Your task is to analyze the given scenario and determine the most applicable restorative code range(s) based on the following classifications:
-
-## **Amalgam Restorations (D2140-D2161)**
-**Use when:** Placing silver-colored metal alloy fillings.
-**Check:** Documentation specifies the number of surfaces involved and tooth location.
-**Note:** These durable restorations are typically used for posterior teeth.
-**Activation trigger:** Scenario mentions OR implies any amalgam filling, silver filling, metallic restoration, posterior filling, or direct restoration with amalgam. INCLUDE this range if there's any indication of silver-colored fillings being placed.
-
-## **Resin-Based Composite Restorations (D2330-D2394)**
-**Use when:** Placing tooth-colored fillings made of composite resin.
-**Check:** Documentation details the number of surfaces involved and tooth location.
-**Note:** These esthetic restorations can be used in anterior or posterior teeth.
-**Activation trigger:** Scenario mentions OR implies any composite filling, tooth-colored restoration, resin restoration, bonded filling, or esthetic direct restoration. INCLUDE this range if there's any hint of tooth-colored fillings being placed.
-
-## **Gold Foil Restorations (D2410-D2430)**
-**Use when:** Placing pure gold restorations through direct techniques.
-**Check:** Documentation identifies the number of surfaces and specific gold foil technique.
-**Note:** These are specialized, less common restorations using pure gold.
-**Activation trigger:** Scenario mentions OR implies any gold foil, direct gold restoration, or traditional gold filling technique. INCLUDE this range if there's any suggestion of pure gold being used in a direct restoration technique.
-
-## **Inlays and Onlays (D2510-D2664)**
-**Use when:** Providing laboratory-fabricated partial coverage restorations.
-**Check:** Documentation specifies the material used and extent of cuspal coverage.
-**Note:** These indirect restorations offer precision fit for moderate to large lesions.
-**Activation trigger:** Scenario mentions OR implies any inlay, onlay, indirect restoration, laboratory-fabricated partial coverage, or precision-fitted restoration. INCLUDE this range if there's any indication of indirect partial coverage restorations.
-
-## **Crowns (D2710-D2799)**
-**Use when:** Providing full-coverage restorations for damaged teeth.
-**Check:** Documentation details the crown material and reason for full coverage.
-**Note:** These restore severely damaged teeth requiring complete coronal protection.
-**Activation trigger:** Scenario mentions OR implies any crown, full coverage restoration, cap, coronal coverage, or complete tooth restoration. INCLUDE this range if there's any hint of full coverage restorations being provided.
-
-## **Other Restorative Services (D2910-D2999)**
-**Use when:** Providing additional services related to restorations.
-**Check:** Documentation specifies the exact service and its purpose.
-**Note:** These include repairs, recementations, cores, posts, and specialized services.
-**Activation trigger:** Scenario mentions OR implies any core buildup, post and core, resin infiltration, temporary restoration, crown repair, veneer, reattachment of fragment, or specialized restorative service. INCLUDE this range if there's any suggestion of restorative services beyond standard fillings or crowns.
-
-### **Scenario:**
-{{scenario}}
-{PROMPT}
-
-RESPOND WITH ALL APPLICABLE CODE RANGES from the options above, even if they are only slightly relevant.
-List them in order of relevance, with the most relevant first.
-""",
+            {template}
+            {instruction_data}
+            """,
             input_variables=["scenario"]
-        )
+            )
     
     def analyze_restorative(self, scenario: str) -> dict: # Changed return type to dict
         """Analyze the scenario and return raw LLM output and the applicable code range string."""

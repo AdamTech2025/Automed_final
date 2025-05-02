@@ -195,3 +195,21 @@ export const getUserActivity = async (userId, signal) => {
     throw error.response?.data || { message: `Failed to fetch activity for user ${userId}`, detail: 'Could not connect or permission denied' };
   }
 };
+
+// File upload and extraction service
+export const uploadAndExtract = async (file) => {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await apiInstance.post('/api/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Upload error:', error);
+    throw error.response?.data || { message: 'Failed to process file' };
+  }
+};

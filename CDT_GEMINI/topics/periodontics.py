@@ -4,7 +4,7 @@ import asyncio
 import re # Added for parsing
 from langchain.prompts import PromptTemplate
 from llm_services import LLMService, get_service, set_model, set_temperature
-
+from database import MedicalCodingDB
 from sub_topic_registry import SubtopicRegistry
 
 # Add the root directory to the Python path
@@ -12,8 +12,6 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 sys.path.append(root_dir)
 
-# Import modules
-from topics.prompt import PROMPT
 
 # Import subtopics with fallback mechanism
 try:
@@ -36,10 +34,11 @@ class PeriodonticServices:
     def __init__(self, llm_service: LLMService = None):
         """Initialize with an optional LLMService instance."""
         self.llm_service = llm_service or get_service()
+        self.db = MedicalCodingDB()
         self.prompt_template = self._create_prompt_template()
         self.registry = SubtopicRegistry()
         self._register_subtopics()
-    
+        
     def _register_subtopics(self):
         """Register all subtopics for parallel activation."""
         self.registry.register("D4210-D4286", surgical_services.activate_surgical_services, 
@@ -51,37 +50,18 @@ class PeriodonticServices:
     
     def _create_prompt_template(self) -> PromptTemplate:
         """Create the prompt template for analyzing periodontic services."""
+        prompt_data = self.db.get_topic_prompt("periodontics_prompt")
+        instruction_data = self.db.get_instruction("instruction_prompt")
+        print("###***Prompt Data Successfully Retrived from Database***###, ", "periodontics_prompt")
+        if not prompt_data or not prompt_data.get("template"):
+            raise ValueError("Failed to retrieve prompt 'periodontic_services_prompt' from database")
+        template = prompt_data["template"]
+        print(f"Template: {template}")
         return PromptTemplate(
             template=f"""
-You are a highly experienced dental coding expert with over 15 years of expertise in ADA dental codes. 
-Your task is to analyze the given scenario and determine the most applicable periodontal code range(s) based on the following classifications:
-
-## **Surgical Services (D4210-D4286)**
-**Use when:** Performing invasive periodontal procedures involving incisions and flap elevation.
-**Check:** Documentation details the specific surgical approach, tissues involved, and treatment goals.
-**Note:** These procedures address moderate to severe periodontal disease through surgical intervention.
-**Activation trigger:** Scenario mentions OR implies any gum surgery, periodontal surgery, flap procedure, gingivectomy, graft placement, or surgical treatment of periodontal disease. INCLUDE this range if there's any indication of invasive treatment of gum or periodontal tissues.
-
-## **Non-Surgical Periodontal Services (D4322-D4381)**
-**Use when:** Providing non-invasive treatment for periodontal disease.
-**Check:** Documentation specifies the extent of treatment and instruments/methods used.
-**Note:** These procedures treat periodontal disease without surgical intervention.
-**Activation trigger:** Scenario mentions OR implies any scaling and root planing, deep cleaning, periodontal debridement, non-surgical periodontal therapy, or treatment of gum disease without surgery. INCLUDE this range if there's any hint of non-surgical treatment of periodontal conditions.
-
-## **Other Periodontal Services (D4910-D4999)**
-**Use when:** Providing specialized periodontal care beyond routine treatment.
-**Check:** Documentation details the specific service and its therapeutic purpose.
-**Note:** These include maintenance treatments following active therapy and specialized interventions.
-**Activation trigger:** Scenario mentions OR implies any periodontal maintenance, antimicrobial delivery, gingival irrigation, local drug delivery, or follow-up periodontal care. INCLUDE this range if there's any suggestion of ongoing periodontal management or specialized treatments.
-
-### **Scenario:**
-{{scenario}}
-{PROMPT}
-
-RESPOND WITH ALL APPLICABLE CODE RANGES from the options above, even if they are only slightly relevant.
-List them in order of relevance, with the most relevant first.
-Example: "D4322-D4381, D4910-D4999, D4210-D4286"
-""",
+            {template}
+            {instruction_data}
+            """,
             input_variables=["scenario"]
         )
     

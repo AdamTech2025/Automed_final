@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 import json
 import logging
-from typing import Union, Optional
+from typing import Union, Optional, Dict
 
 load_dotenv()
 
@@ -65,6 +65,121 @@ class MedicalCodingDB:
         except Exception as e:
             print(f"❌ Error updating processed scenario: {str(e)}")
             return False
+        
+    def store_topic_prompt(self, name: str, template: str, version: str = "1.0") -> bool:
+        """Store a topic prompt in the topics_prompts table."""
+        self.ensure_connection()
+        try:
+            prompt_data = {
+                "name": name,
+                "template": template,
+                "version": version
+            }
+            result = self.supabase.table("topics_prompts").upsert(
+                prompt_data,
+                on_conflict="name"
+            ).execute()
+            if result.data:
+                logger.info(f"✅ Topic prompt '{name}' stored/updated successfully")
+                return True
+            else:
+                logger.error(f"❌ Failed to store topic prompt '{name}'")
+                return False
+        except Exception as e:
+            logger.error(f"❌ Error storing topic prompt '{name}': {str(e)}", exc_info=True)
+            return False
+
+    def get_topic_prompt(self, name: str) -> Optional[Dict]:
+        """Retrieve a topic prompt by its name."""
+        self.ensure_connection()
+        try:
+            result = self.supabase.table("topics_prompts").select("*").eq("name", name).limit(1).execute()
+            if result.data:
+                logger.info(f"✅ Retrieved topic prompt '{name}'")
+                return result.data[0]
+            else:
+                logger.warning(f"❌ No topic prompt found with name '{name}'")
+                return None
+        except Exception as e:
+            logger.error(f"❌ Error retrieving topic prompt '{name}': {str(e)}", exc_info=True)
+            return None
+
+    def store_subtopic_prompt(self, subtopic_name: str, template: str, version: str = "1.0") -> bool:
+        """Store a subtopic prompt in the subtopics_prompts table."""
+        self.ensure_connection()
+        try:
+            prompt_data = {
+                "subtopic_name": subtopic_name,
+                "template": template,
+                "version": version
+            }
+            result = self.supabase.table("subtopics_prompts").upsert(
+                prompt_data,
+                on_conflict="subtopic_name"
+            ).execute()
+            if result.data:
+                logger.info(f"✅ Subtopic prompt '{subtopic_name}' stored/updated successfully")
+                return True
+            else:
+                logger.error(f"❌ Failed to store subtopic prompt '{subtopic_name}'")
+                return False
+        except Exception as e:
+            logger.error(f"❌ Error storing subtopic prompt '{subtopic_name}': {str(e)}", exc_info=True)
+            return False
+
+    def get_subtopic_prompt(self, subtopic_name: str) -> Optional[Dict]:
+        """Retrieve a subtopic prompt by its subtopic_name."""
+        self.ensure_connection()
+        try:
+            result = self.supabase.table("subtopics_prompts").select("*").eq("subtopic_name", subtopic_name).limit(1).execute()
+            if result.data:
+                logger.info(f"✅ Retrieved subtopic prompt '{subtopic_name}'")
+                return result.data[0]
+            else:
+                logger.warning(f"❌ No subtopic prompt found with name '{subtopic_name}'")
+                return None
+        except Exception as e:
+            logger.error(f"❌ Error retrieving subtopic prompt '{subtopic_name}': {str(e)}", exc_info=True)
+            return None
+
+    def store_instruction(self, name: str, template: str, version: str = "1.0") -> bool:
+        """Store an instruction in the instructions table."""
+        self.ensure_connection()
+        try:
+            instruction_data = {
+                "name": name,
+                "template": template,
+                "version": version
+            }
+            result = self.supabase.table("instructions").upsert(
+                instruction_data,
+                on_conflict="name"
+            ).execute()
+            if result.data:
+                logger.info(f"✅ Instruction '{name}' stored/updated successfully")
+                return True
+            else:
+                logger.error(f"❌ Failed to store instruction '{name}'")
+                return False
+        except Exception as e:
+            logger.error(f"❌ Error storing instruction '{name}': {str(e)}", exc_info=True)
+            return False
+
+    def get_instruction(self, name: str) -> Optional[Dict]:
+        """Retrieve an instruction by its name."""
+        self.ensure_connection()
+        try:
+            result = self.supabase.table("instructions").select("*").eq("name", name).limit(1).execute()
+            if result.data:
+                logger.info(f"✅ Retrieved instruction '{name}'")
+                return result.data[0]
+            else:
+                logger.warning(f"❌ No instruction found with name '{name}'")
+                return None
+        except Exception as e:
+            logger.error(f"❌ Error retrieving instruction '{name}': {str(e)}", exc_info=True)
+            return None
+
 
     def update_analysis_results(self, record_id, cdt_result, icd_result):
         """Update the CDT and ICD results for a given record."""

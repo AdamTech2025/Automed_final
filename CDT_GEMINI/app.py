@@ -273,7 +273,7 @@ class FileUploadResponse(BaseModel):
     filename: str
     scenarios: List[str]
 
-@app.post("/upload", response_model=FileUploadResponse)
+@app.post("/api/upload", response_model=FileUploadResponse)
 async def upload_file(file: UploadFile = File(...)):
     """
     Handles file upload, extracts text, splits into scenarios using AI,
