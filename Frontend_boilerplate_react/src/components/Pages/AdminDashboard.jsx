@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { getAllUsersActivity, getUserActivity } from '../../interceptors/services';
+import { getAllUsersActivity, getUserActivity, updateUserRules } from '../../interceptors/services';
 import { useTheme } from '../../context/ThemeContext';
-import { FaUsers, FaEnvelope, FaPhone, FaCalendarAlt, FaCheckCircle, FaTimesCircle, FaChartBar, FaUserCircle, FaClipboardList, FaTimes } from 'react-icons/fa';
+import { FaUsers, FaEnvelope, FaPhone, FaCalendarAlt, FaCheckCircle, FaTimesCircle, FaChartBar, FaUserCircle, FaClipboardList, FaTimes, FaEdit, FaSave } from 'react-icons/fa';
 
 const AdminDashboard = () => {
   const [usersData, setUsersData] = useState([]);
@@ -13,6 +13,12 @@ const AdminDashboard = () => {
   const [selectedUserData, setSelectedUserData] = useState(null);
   const [isLoadingUserData, setIsLoadingUserData] = useState(false);
   const [userDataError, setUserDataError] = useState(null);
+  
+  // Add states for rules editing
+  const [isEditingRules, setIsEditingRules] = useState(false);
+  const [userRules, setUserRules] = useState("");
+  const [isSavingRules, setIsSavingRules] = useState(false);
+  const [rulesSaveError, setRulesSaveError] = useState(null);
   
   const { isDark } = useTheme();
 
@@ -50,9 +56,12 @@ const AdminDashboard = () => {
     const fetchUserData = async () => {
       setIsLoadingUserData(true);
       setUserDataError(null);
+      setIsEditingRules(false); // Reset editing state
       try {
         const response = await getUserActivity(selectedUserId, controller.signal);
         setSelectedUserData(response);
+        // Initialize rules state if rules exist
+        setUserRules(response.user_details.rules || "");
       } catch (err) {
         if (err.name !== 'AbortError') {
           console.error(`Failed to fetch activity for user ${selectedUserId}:`, err);
@@ -93,12 +102,42 @@ const AdminDashboard = () => {
     }
   };
 
+  // Handle saving user rules
+  const handleSaveRules = async () => {
+    if (!selectedUserId) return;
+    
+    setIsSavingRules(true);
+    setRulesSaveError(null);
+    
+    try {
+      await updateUserRules(selectedUserId, userRules);
+      // Update the selected user data with new rules
+      if (selectedUserData) {
+        setSelectedUserData({
+          ...selectedUserData,
+          user_details: {
+            ...selectedUserData.user_details,
+            rules: userRules
+          }
+        });
+      }
+      setIsEditingRules(false);
+    } catch (err) {
+      console.error(`Failed to save rules for user ${selectedUserId}:`, err);
+      setRulesSaveError(err.detail || err.message || 'Failed to save rules.');
+    } finally {
+      setIsSavingRules(false);
+    }
+  };
+
   // Handle user selection
   const handleUserClick = (userId) => {
     if (selectedUserId === userId) {
       // If clicking the same user, close the details
       setSelectedUserId(null);
       setSelectedUserData(null);
+      setUserRules("");
+      setIsEditingRules(false);
     } else {
       // Otherwise select the user
       setSelectedUserId(userId);
@@ -251,6 +290,67 @@ const AdminDashboard = () => {
                     </span>
                   </p>
                   <p><strong className="font-medium">Email Verified:</strong> {selectedUserData.user_details.is_email_verified ? 'Yes' : 'No'}</p>
+                </div>
+
+                {/* User Rules Section */}
+                <div className="mt-6">
+                  <div className="flex justify-between items-center mb-2">
+                    <h4 className="text-md font-semibold">User-Specific Rules</h4>
+                    {!isEditingRules ? (
+                      <button 
+                        onClick={() => setIsEditingRules(true)}
+                        className={`p-2 rounded-md ${isDark ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white`}
+                      >
+                        <FaEdit className="mr-1" /> Edit Rules
+                      </button>
+                    ) : (
+                      <div className="flex space-x-2">
+                        <button 
+                          onClick={handleSaveRules}
+                          disabled={isSavingRules}
+                          className={`p-2 rounded-md ${isDark ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white ${isSavingRules ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          <FaSave className="mr-1" /> {isSavingRules ? 'Saving...' : 'Save Rules'}
+                        </button>
+                        <button 
+                          onClick={() => {
+                            setIsEditingRules(false);
+                            setUserRules(selectedUserData.user_details.rules || "");
+                          }}
+                          disabled={isSavingRules}
+                          className={`p-2 rounded-md ${isDark ? 'bg-gray-600 hover:bg-gray-700' : 'bg-gray-500 hover:bg-gray-600'} text-white ${isSavingRules ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {rulesSaveError && (
+                    <div className={`p-2 mb-2 rounded-md ${isDark ? 'bg-red-800 bg-opacity-50 text-red-200' : 'bg-red-100 text-red-700'}`}>
+                      {rulesSaveError}
+                    </div>
+                  )}
+                  
+                  {isEditingRules ? (
+                    <textarea
+                      value={userRules}
+                      onChange={(e) => setUserRules(e.target.value)}
+                      placeholder="Enter custom rules for this user..."
+                      rows={6}
+                      className={`w-full p-2 rounded-md ${isDark ? 'bg-gray-800 text-gray-200 border-gray-700' : 'bg-white text-gray-800 border-gray-300'} border`}
+                    />
+                  ) : (
+                    <div className={`p-4 rounded-md ${isDark ? 'bg-gray-800' : 'bg-white'} border ${isDark ? 'border-gray-700' : 'border-gray-300'}`}>
+                      {selectedUserData.user_details.rules ? (
+                        <pre className="whitespace-pre-wrap font-mono text-sm">
+                          {selectedUserData.user_details.rules}
+                        </pre>
+                      ) : (
+                        <p className="text-gray-500 italic">No custom rules defined for this user.</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 

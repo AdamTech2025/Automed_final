@@ -261,3 +261,26 @@ export const uploadAndExtract = async (file) => {
     throw error.response?.data || { message: 'Failed to process file' };
   }
 };
+
+// Update user rules (Admin)
+export const updateUserRules = async (userId, rules, signal) => {
+  try {
+    console.log(`services.js: Attempting to update rules for user ID: ${userId}`);
+    const response = await apiInstance.post(`/api/admin/user/${userId}/update-rules`, 
+      { rules }, // Send rules in the request body
+      {
+        signal: signal // Pass the AbortController signal
+      }
+    );
+    console.log(`services.js: Successfully updated rules for user ${userId}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Update User Rules (ID: ${userId}) error:`, error);
+    if (error.name === 'CanceledError' || error.name === 'AbortError') {
+      const abortError = new Error('Request was cancelled');
+      abortError.name = 'AbortError';
+      throw abortError;
+    }
+    throw error.response?.data || { message: `Failed to update rules for user ${userId}`, detail: 'Could not connect or permission denied' };
+  }
+};

@@ -592,8 +592,8 @@ class MedicalCodingDB:
         """Retrieve a user record by their ID, including the role."""
         self.ensure_connection()
         try:
-            # Select all fields including the new 'role' field
-            result = self.supabase.table("Users").select("id, name, email, phone, is_email_verified, created_at, role").eq("id", user_id).limit(1).execute()
+            # Select all fields including the 'role' and 'rules' fields
+            result = self.supabase.table("Users").select("id, name, email, phone, is_email_verified, created_at, role, rules").eq("id", user_id).limit(1).execute()
             if result.data:
                 logger.info(f"User details found for ID: {user_id}")
                 # Exclude sensitive fields before returning if necessary, e.g., password, OTP
@@ -613,8 +613,8 @@ class MedicalCodingDB:
         """Retrieve all user records, including role, excluding sensitive fields."""
         self.ensure_connection()
         try:
-            # Include 'role' in the select statement
-            result = self.supabase.table("Users").select("id, name, email, phone, is_email_verified, created_at, role").execute()
+            # Include 'role' and 'rules' in the select statement
+            result = self.supabase.table("Users").select("id, name, email, phone, is_email_verified, created_at, role, rules").execute()
             if result.data:
                 logger.info(f"Retrieved {len(result.data)} user records.")
                 # Sensitive fields are already excluded by the select statement
@@ -932,6 +932,21 @@ class MedicalCodingDB:
         except Exception as e:
             logger.error(f"❌ Error retrieving rules for user ID {user_id}: {str(e)}", exc_info=True)
             return None
+
+    def update_user_rules(self, user_id: str, rules: str) -> bool:
+        """Update a user's rules by their ID."""
+        self.ensure_connection()
+        try:
+            result = self.supabase.table("Users").update({"rules": rules}).eq("id", user_id).execute()
+            if result.data:
+                logger.info(f"✅ Updated rules for user ID: {user_id}")
+                return True
+            else:
+                logger.warning(f"⚠️ No update result for user ID: {user_id}")
+                return False
+        except Exception as e:
+            logger.error(f"❌ Error updating rules for user ID {user_id}: {str(e)}", exc_info=True)
+            return False
 
 # ===========================
 # Example Usage

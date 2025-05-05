@@ -247,6 +247,7 @@ class UserDetails(BaseModel):
     is_email_verified: bool
     created_at: Optional[str] # Assuming it comes as string from DB
     role: str # Add role
+    rules: Optional[str] = None # Add rules field
 
 class AnalysisSummary(BaseModel):
     id: str
@@ -939,3 +940,31 @@ if __name__ == "__main__":
     port = 8001
     logger.info(f"Starting Uvicorn server for Cleaning & Auth API on {host}:{port}")
     uvicorn.run("app:app", host=host, port=port, reload=True)
+
+@app.post("/api/admin/user/{user_id}/update-rules")
+async def update_user_rules(
+    user_id: str,
+    request: dict,
+    admin_user: dict = Depends(require_admin_role) # Require admin role
+):
+    """(Admin) Update rules for a specific user."""
+    admin_user_id = admin_user.get('id')
+    logger.info(f"Admin ({admin_user_id}) updating rules for user ID: {user_id}")
+    
+    if "rules" not in request:
+        raise HTTPException(status_code=400, detail="Rules field is required")
+    
+    try:
+        # Update user rules
+        success = db.update_user_rules(user_id, request["rules"])
+        if not success:
+            raise HTTPException(status_code=404, detail="User not found or rules update failed")
+        
+        return {"status": "success", "message": "User rules updated successfully"}
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        error_details = traceback.format_exc()
+        logger.error(f"❌ ERROR updating rules for User {user_id} by Admin {admin_user_id}: {str(e)}")
+        logger.error(f"STACK TRACE: {error_details}")
+        raise HTTPException(status_code=500, detail="Failed to update user rules")
