@@ -73,6 +73,19 @@ EXPLANATION: K05.1 (Chronic gingivitis) is appropriate as the scenario describes
         if temperature is not None:
             set_temperature(temperature)
 
+    def _format_prompt(self, scenario: str, topic_analysis: Any, questioner_data: Any = None, user_rules: Optional[str] = None) -> str:
+        """Format the prompt template with all inputs including user rules"""
+        topic_analysis_str = self._format_topic_analysis(topic_analysis)
+        questioner_data_str = self._format_questioner_data(questioner_data)
+        rules_section = f"User-Specific Rules:\n{user_rules}" if user_rules else ""
+        
+        return self.PROMPT_TEMPLATE.format(
+            scenario=scenario,
+            topic_analysis=topic_analysis_str,
+            questioner_data=questioner_data_str,
+            user_rules=rules_section
+        )
+
     def _format_topic_analysis(self, topic_analysis: Any) -> str:
         """Format topic analysis data into string"""
         if topic_analysis is None:
