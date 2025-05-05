@@ -5,7 +5,7 @@ import re # Added for parsing
 from dotenv import load_dotenv
 from langchain.prompts import PromptTemplate
 from llm_services import LLMService, get_service, set_model, set_temperature
-from database import MedicalCodingDB
+
 from sub_topic_registry import SubtopicRegistry
 
 # Load environment variables
@@ -15,6 +15,9 @@ load_dotenv()
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 sys.path.append(root_dir)
+
+# Import modules
+from topics.prompt import PROMPT
 
 # Import service objects from subtopics with fallback mechanism
 try:
@@ -58,11 +61,10 @@ class OralMaxillofacialSurgeryServices:
     def __init__(self, llm_service: LLMService = None):
         """Initialize with an optional LLMService instance."""
         self.llm_service = llm_service or get_service()
-        self.db = MedicalCodingDB()
         self.prompt_template = self._create_prompt_template()
         self.registry = SubtopicRegistry()
         self._register_subtopics()
-        
+    
     def _register_subtopics(self):
         """Register all subtopics for parallel activation."""
         try:
@@ -105,17 +107,110 @@ class OralMaxillofacialSurgeryServices:
     
     def _create_prompt_template(self) -> PromptTemplate:
         """Create the prompt template for analyzing oral and maxillofacial surgery services."""
-        prompt_data = self.db.get_topic_prompt("oral_maxillofacial_surgery_prompt")
-        instruction_data = self.db.get_instruction("instruction_prompt")
-        if not prompt_data or not prompt_data.get("template"):
-            raise ValueError("Failed to retrieve prompt 'oral_maxillofacial_surgery_prompt' from database")
-        template = prompt_data["template"]
-        
         return PromptTemplate(
             template=f"""
-            {template}
-            {instruction_data}
-            """,
+You are a highly experienced dental coding expert with over 15 years of expertise in ADA dental codes. 
+Your task is to analyze the given scenario and determine the most applicable oral and maxillofacial surgery code range(s) based on the following classifications:
+
+## IMPORTANT GUIDELINES:
+- You should activate ALL code ranges that have any potential relevance to the scenario
+- Even if a code range is only slightly related, include it in your response
+- Only exclude a code range if it is DEFINITELY NOT relevant to the scenario
+- When in doubt, INCLUDE the code range rather than exclude it
+- Multiple code ranges can and should be activated if they have any potential applicability
+- Your goal is to ensure no potentially relevant codes are missed
+
+## **Extractions (Simple) (D7111-D7140)**
+**Use when:** Removing teeth through simple non-surgical procedures.
+**Check:** Documentation indicates routine extraction without significant bone removal or sectioning.
+**Note:** These are straightforward procedures typically performed with elevators and forceps.
+**Activation trigger:** Scenario mentions OR implies any simple extraction, removal of erupted tooth, or non-surgical tooth removal. INCLUDE this range if there's any indication of basic tooth extraction without surgical intervention.
+
+## **Surgical Extractions (D7210-D7251)**
+**Use when:** Removing teeth that require surgical intervention.
+**Check:** Documentation details flap elevation, bone removal, or tooth sectioning.
+**Note:** These procedures are more complex than simple extractions and may involve impacted teeth.
+**Activation trigger:** Scenario mentions OR implies any surgical extraction, removal of bone, sectioning of tooth, impacted tooth, or complicated extraction. INCLUDE this range if there's any hint of extraction requiring more than elevators and forceps.
+
+## **Other Surgical Procedures (D7260-D7297)**
+**Use when:** Performing specialized oral surgical procedures beyond extractions.
+**Check:** Documentation specifies the exact procedure and anatomical structures involved.
+**Note:** These include oroantral fistula closures, tooth reimplantation, surgical exposure, and biopsies.
+**Activation trigger:** Scenario mentions OR implies any specialized oral surgery, fistula, reimplantation, exposure of unerupted teeth, or tissue biopsy. INCLUDE this range if there's any suggestion of oral surgical procedures beyond extractions.
+
+## **Alveoloplasty (D7310-D7321)**
+**Use when:** Surgically remodeling and smoothing bone after extractions.
+**Check:** Documentation describes ridge preparation and whether performed with extractions or separately.
+**Note:** These procedures prepare the ridge for prosthetic placement.
+**Activation trigger:** Scenario mentions OR implies any bone recontouring, ridge smoothing, preparation for dentures, or alveolar ridge modification. INCLUDE this range if there's any suggestion of bone remodeling related to tooth extraction sites.
+
+## **Vestibuloplasty (D7340-D7350)**
+**Use when:** Surgically modifying the vestibular depth and soft tissues.
+**Check:** Documentation specifies the surgical approach and graft materials if used.
+**Note:** These procedures increase the vestibular depth for prosthetic stability.
+**Activation trigger:** Scenario mentions OR implies any vestibular extension, soft tissue modification for dentures, ridge extension, or tissue grafting for prosthetic purposes. INCLUDE this range if there's any indication of surgical alteration of vestibular tissues.
+
+## **Excision of Soft Tissue Lesions (D7410-D7465)**
+**Use when:** Removing lesions or abnormal tissues from oral structures.
+**Check:** Documentation details size, location, and pathology results of excised tissue.
+**Note:** These procedures address pathological conditions requiring removal.
+**Activation trigger:** Scenario mentions OR implies any tissue biopsy, lesion removal, excision of abnormal tissue, or removal of cysts or tumors. INCLUDE this range if there's any hint of removing pathological tissue from the oral cavity.
+
+## **Excision of Intra-Osseous Lesions (D7440-D7461)**
+**Use when:** Removing lesions within the bone.
+**Check:** Documentation specifies the exact procedure, lesion type, and extent of bone involvement.
+**Note:** These address pathological conditions within the jawbones.
+**Activation trigger:** Scenario mentions OR implies any bony lesion, intraosseous cyst, jaw tumor, or pathology within bone. INCLUDE this range if there's any indication of lesions or pathology within the jawbones requiring surgical removal.
+
+## **Excision of Bone Tissue (D7471-D7490)**
+**Use when:** Removing excess bone or bony growths.
+**Check:** Documentation identifies the specific bony structure and reason for removal.
+**Note:** These procedures address non-pathological bony overgrowths or interferences.
+**Activation trigger:** Scenario mentions OR implies any tori, exostosis, excessive bone, bony protuberance, or bone removal for prosthetic purposes. INCLUDE this range if there's any suggestion of removing excess bone not related to pathology.
+
+## **Surgical Incision (D7510-D7560)**
+**Use when:** Creating surgical openings to drain infections or remove foreign bodies.
+**Check:** Documentation describes the reason for incision and what was drained or removed.
+**Note:** These procedures address acute conditions requiring immediate drainage.
+**Activation trigger:** Scenario mentions OR implies any incision and drainage, abscess treatment, swelling, infection, or foreign body removal. INCLUDE this range if there's any suggestion of creating a surgical opening for therapeutic purposes.
+
+## **Treatment of Fractures (Closed/Open) (D7610-D7780)**
+**Use when:** Managing facial or jaw fractures through surgical intervention.
+**Check:** Documentation specifies fracture type (closed/open), location, and fixation method.
+**Note:** These procedures restore function and proper alignment after trauma.
+**Activation trigger:** Scenario mentions OR implies any jaw fracture, facial trauma, bone plating, fixation of fragments, or fracture reduction. INCLUDE this range if there's any indication of treating broken facial or jaw bones.
+
+## **TMJ Treatment (D7810-D7880)**
+**Use when:** Correcting dislocated temporomandibular joint or managing TMJ dysfunction surgically or non-surgically.
+**Check:** Documentation details the condition and specific intervention performed (e.g., arthrocentesis, arthroscopy, reduction).
+**Note:** These procedures address joint-related conditions affecting function.
+**Activation trigger:** Scenario mentions OR implies any TMJ disorder, jaw joint problems, clicking, locking, disc displacement, joint manipulation, arthrocentesis, or TMJ surgery. INCLUDE this range if there's any hint of temporomandibular joint issues requiring intervention.
+
+## **Repair of Traumatic Wounds (D7910-D7912)**
+**Use when:** Suturing or otherwise closing traumatic wounds.
+**Check:** Documentation specifies wound size, complexity, and repair technique.
+**Note:** These procedures address soft tissue injuries from trauma. D7911/D7912 are for complex wounds.
+**Activation trigger:** Scenario mentions OR implies any laceration, soft tissue injury, suturing, wound closure, or traumatic tissue damage. INCLUDE this range if there's any suggestion of repairing damaged oral tissues after injury.
+
+## **Complicated Suturing (D7911-D7912)**
+**Use when:** Closing complex wounds requiring advanced techniques.
+**Check:** Documentation details the complexity factors and closure method.
+**Note:** These are more involved than simple suturing procedures. Often falls under D7910-D7912 as well.
+**Activation trigger:** Scenario mentions OR implies any complex laceration, extensive tissue damage, complicated wound closure, or wounds requiring layered repair. INCLUDE this range if there's any indication of complex wound management beyond simple suturing.
+
+## **Other Repair Procedures (D7920-D7999)**
+**Use when:** Performing specialized surgical procedures not covered by other categories.
+**Check:** Documentation provides detailed narrative explaining the unusual or specialized procedure.
+**Note:** These include skin grafts, sinus procedures, frenectomies, and other specialized surgeries.
+**Activation trigger:** Scenario mentions OR implies any frenectomy, sinus procedures, skin grafts, bone replacement, specialized surgical interventions, or unusual maxillofacial procedures. INCLUDE this range if there's any hint of specialized surgical procedures not clearly fitting other categories.
+
+### **Scenario:**
+{{scenario}}
+{PROMPT}
+
+RESPOND WITH ALL APPLICABLE CODE RANGES from the options above, even if they are only slightly relevant.
+List them in order of relevance, with the most relevant first.
+""",
             input_variables=["scenario"]
         )
     

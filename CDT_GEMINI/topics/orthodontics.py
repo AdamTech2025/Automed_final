@@ -4,13 +4,16 @@ import asyncio
 import re # Added for parsing
 from langchain.prompts import PromptTemplate
 from llm_services import LLMService, get_service, set_model, set_temperature
-from database import MedicalCodingDB
+
 from sub_topic_registry import SubtopicRegistry
 
 # Add the root directory to the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 sys.path.append(root_dir)
+
+# Import modules
+from topics.prompt import PROMPT
 
 # Import subtopics with fallback mechanism
 try:
@@ -35,11 +38,10 @@ class OrthodonticServices:
     def __init__(self, llm_service: LLMService = None):
         """Initialize with an optional LLMService instance."""
         self.llm_service = llm_service or get_service()
-        self.db = MedicalCodingDB()
         self.prompt_template = self._create_prompt_template()
         self.registry = SubtopicRegistry()
         self._register_subtopics()
-        
+    
     def _register_subtopics(self):
         """Register all subtopics for parallel activation."""
         self.registry.register("D8010-D8040", limited_orthodontic_treatment.activate_limited_orthodontic_treatment, 
@@ -53,18 +55,42 @@ class OrthodonticServices:
     
     def _create_prompt_template(self) -> PromptTemplate:
         """Create the prompt template for analyzing orthodontic services."""
-        prompt_data = self.db.get_topic_prompt("orthodontics_prompt")
-        instruction_data = self.db.get_instruction("instruction_prompt")
-        if not prompt_data or not prompt_data.get("template"):
-            raise ValueError("Failed to retrieve prompt 'orthodontic_services_prompt' from database")
-        template = prompt_data["template"]
-        
         return PromptTemplate(
             template=f"""
-            {template}
-            {instruction_data}
-            """,
+You are a highly experienced dental coding expert with over 15 years of expertise in ADA dental codes. 
+Your task is to analyze the given scenario and determine the most applicable orthodontic code range(s) based on the following classifications:
 
+## **Limited Orthodontic Treatment (D8010-D8040)**
+**Use when:** Providing partial correction or addressing a specific orthodontic problem.
+**Check:** Documentation specifies which dentition stage (primary, transitional, adolescent, adult) is being treated.
+**Note:** These procedures focus on limited treatment goals rather than comprehensive correction.
+**Activation trigger:** Scenario mentions OR implies any partial orthodontic treatment, minor tooth movement, single arch treatment, or interceptive orthodontics. INCLUDE this range if there's any indication of focused orthodontic care rather than full correction.
+
+## **Comprehensive Orthodontic Treatment (D8070-D8090)**
+**Use when:** Providing complete orthodontic correction for the entire dentition.
+**Check:** Documentation identifies the dentition stage (transitional, adolescent, adult) being treated.
+**Note:** These involve full banding/bracketing of the dentition with regular adjustments.
+**Activation trigger:** Scenario mentions OR implies any full orthodontic treatment, complete braces, comprehensive correction, full arch treatment, or extensive alignment. INCLUDE this range if there's any hint of complete orthodontic care addressing overall occlusion.
+
+## **Minor Treatment to Control Harmful Habits (D8210-D8220)**
+**Use when:** Correcting deleterious oral habits through appliance therapy.
+**Check:** Documentation specifies the habit being addressed and type of appliance used.
+**Note:** These procedures target specific habits rather than overall malocclusion.
+**Activation trigger:** Scenario mentions OR implies any thumb-sucking, tongue thrusting, habit appliance, habit breaking, or interceptive treatment for parafunctional habits. INCLUDE this range if there's any suggestion of treating harmful oral habits through specialized appliances.
+
+## **Other Orthodontic Services (D8660-D8999)**
+**Use when:** Providing supplementary orthodontic services or treatments not specified elsewhere.
+**Check:** Documentation details the specific service provided and its purpose.
+**Note:** These include consultations, retention, repairs, and additional orthodontic services.
+**Activation trigger:** Scenario mentions OR implies any pre-orthodontic visit, retainer placement, bracket repair, adjustment visit, or specialized orthodontic service. INCLUDE this range if there's any indication of orthodontic care beyond the initial appliance placement.
+
+### **Scenario:**
+{{scenario}}
+{PROMPT}
+
+RESPOND WITH ALL APPLICABLE CODE RANGES from the options above, even if they are only slightly relevant.
+List them in order of relevance, with the most relevant first.
+""",
             input_variables=["scenario"]
         )
     

@@ -4,7 +4,7 @@ import asyncio
 import re # Added for parsing
 from langchain.prompts import PromptTemplate
 from llm_services import LLMService, get_service, set_model, set_temperature
-from database import MedicalCodingDB
+
 from sub_topic_registry import SubtopicRegistry
 
 # Add the root directory to the Python path
@@ -12,7 +12,8 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 sys.path.append(root_dir)
 
-
+# Import modules
+from topics.prompt import PROMPT
 from subtopics.Maxillofacial_Prosthetics.general_prosthetics import general_prosthetics_service
 from subtopics.Maxillofacial_Prosthetics.carriers import carriers_service
 
@@ -22,11 +23,10 @@ class MaxillofacialProstheticsServices:
     def __init__(self, llm_service: LLMService = None):
         """Initialize with an optional LLMService instance."""
         self.llm_service = llm_service or get_service()
-        self.db = MedicalCodingDB()
         self.prompt_template = self._create_prompt_template()
         self.registry = SubtopicRegistry()
         self._register_subtopics()
-        
+    
     def _register_subtopics(self):
         """Register all subtopics for parallel activation."""
         # Correcting ranges based on common understanding or specific codes if known
@@ -38,17 +38,30 @@ class MaxillofacialProstheticsServices:
     
     def _create_prompt_template(self) -> PromptTemplate:
         """Create the prompt template for analyzing maxillofacial prosthetics services."""
-        prompt_data = self.db.get_topic_prompt("maxillofacial_prosthetics_prompt")
-        instruction_data = self.db.get_instruction("instruction_prompt")
-        if not prompt_data or not prompt_data.get("template"):
-            raise ValueError("Failed to retrieve prompt 'maxillofacial_prosthetics_prompt' from database")
-        template = prompt_data["template"]
-        
         return PromptTemplate(
             template=f"""
-            {template}
-            {instruction_data}
-            """,
+You are a highly experienced dental coding expert with over 15 years of expertise in ADA dental codes. 
+Your task is to analyze the given scenario and determine the most applicable maxillofacial prosthetics code range(s) based on the following classifications:
+
+## **General Maxillofacial Prosthetics (D5911-D5937)**
+**Use when:** Creating or adjusting prosthetic replacements for missing facial or oral structures (e.g., obturators, facial prostheses, speech aids).
+**Check:** Documentation describes the specific prosthesis type and its purpose in restoring function or aesthetics.
+**Note:** These prostheses address complex defects resulting from surgery, trauma, or congenital conditions.
+**Activation trigger:** Scenario mentions OR implies any facial prosthesis, oral-maxillofacial defect, obturator, speech aid, radiation shield, or post-surgical rehabilitation. INCLUDE this range if there's any indication of specialized prostheses for maxillofacial defects.
+
+## **Carriers (D5986-D5999)**
+**Use when:** Fabricating devices for delivery of therapeutic agents or specialized treatments (e.g., fluoride carriers, radiation carriers).
+**Check:** Documentation specifies the purpose of the carrier and what it's designed to deliver.
+**Note:** These include custom trays for medication delivery or protection of tissues.
+**Activation trigger:** Scenario mentions OR implies any fluoride carrier, medicament delivery device, specialized tray, or custom carrier for therapeutic agents. INCLUDE this range if there's any hint of devices designed to hold or deliver medications or treatments.
+
+### **Scenario:**
+{{scenario}}
+{PROMPT}
+
+RESPOND WITH ALL APPLICABLE CODE RANGES from the options above, even if they are only slightly relevant.
+List them in order of relevance, with the most relevant first.
+""",
             input_variables=["scenario"]
         )
     

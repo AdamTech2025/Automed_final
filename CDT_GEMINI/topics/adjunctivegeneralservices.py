@@ -4,15 +4,16 @@ import asyncio
 import re # Added for parsing
 from langchain.prompts import PromptTemplate
 from llm_services import LLMService, get_service, set_model, set_temperature
-from database import MedicalCodingDB
+
 from sub_topic_registry import SubtopicRegistry
 
 # Add the root directory to the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 sys.path.append(root_dir)
- 
 
+# Import modules
+from topics.prompt import PROMPT
 
 # Import subtopics with fallback mechanism
 try:
@@ -70,12 +71,10 @@ class AdjunctiveGeneralServices:
     def __init__(self, llm_service: LLMService = None):
         """Initialize with an optional LLMService instance."""
         self.llm_service = llm_service or get_service()
-        self.db = MedicalCodingDB()
         self.prompt_template = self._create_prompt_template()
         self.registry = SubtopicRegistry()
         self._register_subtopics()
-        
-
+    
     def _register_subtopics(self):
         """Register all subtopics for parallel activation."""
         self.registry.register("D9110-D9130", unclassified_service.activate_unclassified_treatment, 
@@ -95,17 +94,60 @@ class AdjunctiveGeneralServices:
     
     def _create_prompt_template(self) -> PromptTemplate:
         """Create the prompt template for analyzing adjunctive general services."""
-        prompt_data = self.db.get_topic_prompt("adjunctive_general_services_prompt")
-        instruction_data = self.db.get_instruction("instruction_prompt")
-        if not prompt_data or not prompt_data.get("template"):
-            raise ValueError("Failed to retrieve prompt 'adjunctive_general_services_prompt' from database")
-        template = prompt_data["template"]
-        
         return PromptTemplate(
             template=f"""
-            {template}
-            {instruction_data}
-            """,
+You are a highly experienced dental coding expert with over 15 years of expertise in ADA dental codes. 
+Your task is to analyze the given scenario and determine the most applicable adjunctive general services code range(s) based on the following detailed classifications:
+
+## **Unclassified Treatment (D9110-D9130)**
+**Use when:** Providing emergency palliative treatment or applying desensitizing medicament.
+**Check:** Documentation clearly specifies the treatment provided to alleviate acute pain or address sensitivity.
+**Note:** These codes are used for managing immediate comfort rather than definitive treatment.
+**Activation trigger:** Scenario mentions OR implies any emergency pain relief, acute dental discomfort, or tooth sensitivity treatment. INCLUDE this range if there's any indication of palliative care or emergency pain management.
+
+## **Anesthesia (D9210-D9248)**
+**Use when:** Administering various forms of anesthesia or sedation for dental procedures.
+**Check:** Documentation specifies the type of anesthesia used and the rationale for its selection.
+**Note:** Different codes apply based on the type of anesthesia and administration method.
+**Activation trigger:** Scenario mentions OR implies any anesthesia, sedation, numbing, pain control during procedures, nitrous oxide, or IV sedation. INCLUDE this range if there's any indication of pain control measures beyond topical agents.
+
+## **Professional Consultation (D9310-D9311)**
+**Use when:** Providing consultation services to other healthcare professionals or conducting specialized patient consultations.
+**Check:** Documentation shows a consultation was specifically requested and details the findings/recommendations.
+**Note:** These codes reflect services provided by a dentist other than the treating dentist.
+**Activation trigger:** Scenario mentions OR implies any specialist consultation, second opinion, or referral for expert evaluation. INCLUDE this range if there's any suggestion of consultation services.
+
+## **Professional Visits (D9410-D9450)**
+**Use when:** Providing dental services outside the dental office or performing specialized case management.
+**Check:** Documentation details the location of services or the specific case management provided.
+**Note:** These codes reflect services provided in alternative settings or specialized case presentation.
+**Activation trigger:** Scenario mentions OR implies any house calls, nursing facility visits, hospital visits, or specialized case presentations. INCLUDE this range if services are provided outside a standard dental office.
+
+## **Drugs (D9610-D9630)**
+**Use when:** Administering therapeutic drugs or dispensing medications for home use.
+**Check:** Documentation specifies the medication, dosage, and clinical rationale.
+**Note:** These codes exclude anesthetics used for procedures, which have their own codes.
+**Activation trigger:** Scenario mentions OR implies any therapeutic drug administration, medication dispensing, or prescribed pharmaceuticals. INCLUDE this range if there's any indication of drug delivery or medication management.
+
+## **Miscellaneous Services (D9910-D9973)**
+**Use when:** Providing specialized services that don't fit into other categories.
+**Check:** Documentation details the specific service and clinical necessity.
+**Note:** These codes cover a wide range of adjunctive services from desensitization to bleaching.
+**Activation trigger:** Scenario mentions OR implies any desensitization, occlusal analysis, cleaning or repair of prosthetics, bleaching, or other specialized adjunctive procedures. INCLUDE this range if there's any mention of specialized services that don't fit elsewhere.
+
+## **Non-clinical Procedures (D9961-D9999)**
+**Use when:** Performing administrative, preventive, or unclassified procedures.
+**Check:** Documentation justifies the use of these codes with detailed explanations.
+**Note:** These include specialized administrative services as well as unspecified procedures.
+**Activation trigger:** Scenario mentions OR implies any duplicate appliances, dental case management, unspecified adjunctive procedures, or administrative services. INCLUDE this range if there's any suggestion of non-clinical management or undefined procedures.
+
+### **Scenario:**
+{{scenario}}
+{PROMPT}
+RESPOND WITH ALL APPLICABLE CODE RANGES from the options above, even if they are only slightly relevant.
+List them in order of relevance, with the most relevant first.
+Example: "D9210-D9248, D9110-D9130, D9610-D9630"
+""",
             input_variables=["scenario"]
         )
     
