@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from llm_services import generate_response, get_service, set_model, set_temperature
 from typing import Dict, Any, Optional
 from llm_services import OPENROUTER_MODEL, DEFAULT_TEMP
+from database import MedicalCodingDB
 load_dotenv()
 
 class DentalScenarioProcessor:
@@ -19,6 +20,8 @@ No Assumptions: Process only the information explicitly stated in the input.(bas
 Full Data Retention: Capture and preserve every detail from the input scenario in the output, ensuring nothing is omitted. your job is to only structre data
 
 also mention the command line if something is there like that , example "only do this and this"
+
+{user_rules}
 
 OUTPUT FORMAT:
 
@@ -60,6 +63,7 @@ e.g., "Schedule for full root canal and crown in 1 week."
         """Initialize the processor with model and temperature settings"""
         self.service = get_service()
         self.configure(model, temperature)
+        self.db = MedicalCodingDB()
 
     def configure(self, model: Optional[str] = None, temperature: Optional[float] = None) -> None:
         """Configure model and temperature settings"""
@@ -68,13 +72,18 @@ e.g., "Schedule for full root canal and crown in 1 week."
         if temperature is not None:
             set_temperature(temperature)
 
-    def format_prompt(self, scenario: str) -> str:
-        """Format the prompt template with the given scenario"""
-        return self.PROMPT_TEMPLATE.format(scenario=scenario)
+    def format_prompt(self, scenario: str, user_rules: Optional[str] = None) -> str:
+        """Format the prompt template with the given scenario and user rules"""
+        rules_section = f"User-Specific Rules:\n{user_rules}" if user_rules else ""
+        return self.PROMPT_TEMPLATE.format(scenario=scenario, user_rules=rules_section)
 
-    def process(self, scenario: str) -> Dict[str, str]:
-        """Process a dental scenario and return structured output"""
-        formatted_prompt = self.format_prompt(scenario)
+    def process(self, scenario: str, user_id: Optional[str] = None) -> Dict[str, str]:
+        """Process a dental scenario and return structured output, with optional user-specific rules"""
+        user_rules = None
+        if user_id:
+            user_rules = self.db.get_user_rules(user_id)
+        
+        formatted_prompt = self.format_prompt(scenario, user_rules)
         result = generate_response(formatted_prompt)
         return {"standardized_scenario": result}
 

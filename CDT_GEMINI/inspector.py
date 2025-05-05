@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from llm_services import generate_response, get_service, set_model, set_temperature
 from typing import Dict, Any, Optional
 from llm_services import OPENROUTER_MODEL, DEFAULT_TEMP
+from database import MedicalCodingDB
 
 # Load environment variables
 load_dotenv()
@@ -25,6 +26,8 @@ Topic Analysis Results:
 
 Additional Information from Questions (if any):
 {questioner_data}
+
+{user_rules}
 
 Instructions:
 
@@ -69,6 +72,7 @@ REJECTED CODES: D0140, D0220, D0230
         self.service = get_service()
         self.configure(model, temperature)
         self.logger = self._setup_logging()
+        self.db = MedicalCodingDB()
 
     def _setup_logging(self) -> logging.Logger:
         """Configure logging for the inspector module"""
@@ -86,15 +90,17 @@ REJECTED CODES: D0140, D0220, D0230
         if temperature is not None:
             set_temperature(temperature)
 
-    def format_prompt(self, scenario: str, topic_analysis: Any, questioner_data: Any = None) -> str:
+    def format_prompt(self, scenario: str, topic_analysis: Any, questioner_data: Any = None, user_rules: Optional[str] = None) -> str:
         """Format the prompt template with the given inputs"""
         topic_analysis_str = self._format_topic_analysis(topic_analysis)
         questioner_data_str = self._format_questioner_data(questioner_data)
+        rules_section = f"User-Specific Rules:\n{user_rules}" if user_rules else ""
         
         return self.PROMPT_TEMPLATE.format(
             scenario=scenario,
             topic_analysis=topic_analysis_str,
-            questioner_data=questioner_data_str
+            questioner_data=questioner_data_str,
+            user_rules=rules_section
         )
 
     def _format_topic_analysis(self, topic_analysis: Any) -> str:
@@ -200,15 +206,26 @@ REJECTED CODES: D0140, D0220, D0230
                     cleaned.append(clean_code)
         return cleaned
 
-    def process(self, scenario: str, topic_analysis: Any = None, questioner_data: Any = None) -> Dict[str, Any]:
+    def process(self, scenario: str, topic_analysis: Any = None, questioner_data: Any = None, user_id: Optional[str] = None) -> Dict[str, Any]:
         """Process a dental scenario and return inspection results"""
         try:
             # Pre-process topic_analysis to ensure all candidate codes are properly represented
             all_candidate_codes = self._extract_all_candidate_codes(topic_analysis)
             self.logger.info(f"Extracted {len(all_candidate_codes)} candidate codes for analysis")
             
+            # Get user rules if user_id is provided
+            user_rules = None
+            if user_id:
+                user_rules = self.db.get_user_rules(user_id)
+                self.logger.info(f"Retrieved user rules for user ID: {user_id}" if user_rules else "No user rules found")
+            
             # Format the prompt with all candidate codes clearly presented
-            formatted_prompt = self.format_prompt(scenario, topic_analysis, questioner_data)
+            formatted_prompt = self.format_prompt(
+                scenario=scenario, 
+                topic_analysis=topic_analysis, 
+                questioner_data=questioner_data,
+                user_rules=user_rules
+            )
             
             # Generate the response from the LLM
             response = generate_response(formatted_prompt)

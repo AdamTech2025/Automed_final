@@ -377,7 +377,7 @@ async def analyze_scenario_endpoint(
     try:
         # Step 1: Clean the scenario
         logger.info(f"*********🔍 Step 1: Cleaning Scenario:*********************")
-        cleaned_data = scenario_processor.process(payload.scenario)
+        cleaned_data = scenario_processor.process(payload.scenario, user_id=current_user.get('id'))
         cleaned_scenario_text = cleaned_data.get("standardized_scenario", "")
         if not cleaned_scenario_text:
             logger.error("Scenario cleaning failed or produced empty result.")
@@ -599,13 +599,15 @@ async def analyze_scenario_endpoint(
                     cdt_inspector.process, 
                     cleaned_scenario_text, 
                     cdt_inspector_input, 
-                    questioner_data
+                    questioner_data,
+                    current_user.get('id')
                 )
                 icd_inspector_task = asyncio.to_thread(
                     icd_inspector.process, 
                     cleaned_scenario_text, 
                     icd_inspector_input, 
-                    questioner_data
+                    questioner_data,
+                    current_user.get('id')
                 )
 
                 # Run concurrently
@@ -800,44 +802,6 @@ async def store_code_status(
             status_code = e.status_code
         raise HTTPException(status_code=status_code, detail=str(e))
 
-# --- User Activity Endpoint ---
-@app.get("/api/user/activity", response_model=UserActivityResponse)
-async def get_user_activity(
-    current_user: dict = Depends(get_current_user) # Inject user data dependency
-):
-    """Retrieve user details and their analysis history."""
-    user_id = current_user.get('id') # Get user ID from the dependency result
-    logger.info(f"Fetching activity for user ID: {user_id} (Role: {current_user.get('role')})")
-    try:
-        # Fetch user details
-        user_details_data = db.get_user_details_by_id(user_id)
-        if not user_details_data:
-            logger.warning(f"User not found for activity request: {user_id}")
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-        
-        # Fetch user analyses
-        user_analyses_data = db.get_user_analyses(user_id)
-        
-        # Prepare response
-        user_details = UserDetails(**user_details_data)
-        analysis_summaries = [AnalysisSummary(**analysis) for analysis in user_analyses_data]
-        
-        response = UserActivityResponse(
-            user_details=user_details,
-            analysis_count=len(analysis_summaries),
-            analyses=analysis_summaries
-        )
-        
-        logger.info(f"Successfully retrieved activity for user ID: {user_id} ({len(analysis_summaries)} analyses)")
-        return response
-
-    except HTTPException as http_exc: # Re-raise HTTP exceptions
-        raise http_exc
-    except Exception as e:
-        error_details = traceback.format_exc()
-        logger.error(f"❌ ERROR fetching user activity for User {user_id}: {str(e)}")
-        logger.error(f"STACK TRACE: {error_details}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve user activity")
 
 # --- Admin Endpoint --- 
 @app.get("/api/admin/all-users", response_model=AllUsersActivityResponse)
@@ -883,7 +847,45 @@ async def get_all_user_activity(
         logger.error(f"❌ ERROR fetching all user activity: {str(e)}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve all user activity")
 
+# --- Admin Endpoint for Specific User Activity ---
+@app.get("/api/admin/user/{user_id}/activity", response_model=UserActivityResponse)
+async def get_specific_user_activity(
+    user_id: str,
+    admin_user: dict = Depends(require_admin_role) # Require admin role
+):
+    """(Admin) Retrieve details and analysis history for a specific user."""
+    admin_user_id = admin_user.get('id')
+    logger.info(f"Admin ({admin_user_id}) fetching activity for user ID: {user_id}")
+    try:
+        # Fetch user details
+        user_details_data = db.get_user_details_by_id(user_id)
+        if not user_details_data:
+            logger.warning(f"User not found for admin activity request: {user_id}")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        
+        # Fetch user analyses
+        user_analyses_data = db.get_user_analyses(user_id)
+        
+        # Prepare response
+        user_details = UserDetails(**user_details_data)
+        analysis_summaries = [AnalysisSummary(**analysis) for analysis in user_analyses_data]
+        
+        response = UserActivityResponse(
+            user_details=user_details,
+            analysis_count=len(analysis_summaries),
+            analyses=analysis_summaries
+        )
+        
+        logger.info(f"Successfully retrieved activity by admin for user ID: {user_id} ({len(analysis_summaries)} analyses)")
+        return response
 
+    except HTTPException as http_exc: # Re-raise HTTP exceptions
+        raise http_exc
+    except Exception as e:
+        error_details = traceback.format_exc()
+        logger.error(f"❌ ERROR fetching specific user activity for User {user_id} by Admin {admin_user_id}: {str(e)}")
+        logger.error(f"STACK TRACE: {error_details}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve specific user activity")
 
 @app.get("api/prompts/topic_prompts", summary="Retrieve topic prompts", response_model=List[Dict])
 async def get_topic_prompts(name: Optional[str] = None):

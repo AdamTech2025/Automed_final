@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from llm_services import generate_response, get_service, set_model, set_temperature
 from typing import Dict, Any, Optional
 from llm_services import OPENROUTER_MODEL, DEFAULT_TEMP
+from database import MedicalCodingDB
 
 # Load environment variables
 load_dotenv()
@@ -26,6 +27,8 @@ Topic Analysis Results:
 
 Additional Information from Questions (if any):
 {questioner_data}
+
+{user_rules}
 
 Please provide a thorough analysis of this scenario by:
 1. Only select the suitable ICD-10-CM code(s) from the suggested answers in the topic analysis
@@ -52,6 +55,7 @@ EXPLANATION: K05.1 (Chronic gingivitis) is appropriate as the scenario describes
         self.service = get_service()
         self.configure(model, temperature)
         self.logger = self._setup_logging()
+        self.db = MedicalCodingDB()
 
     def _setup_logging(self) -> logging.Logger:
         """Configure logging for the ICD inspector module"""
@@ -211,21 +215,28 @@ EXPLANATION: K05.1 (Chronic gingivitis) is appropriate as the scenario describes
         
         return ""
 
-    def process(self, scenario: str, topic_analysis: Any = None, questioner_data: Any = None) -> Dict[str, Any]:
+    def process(self, scenario: str, topic_analysis: Any = None, questioner_data: Any = None, user_id: Optional[str] = None) -> Dict[str, Any]:
         """Process a scenario and return ICD inspection results"""
         try:
             # Log input types for debugging
             self.logger.info(f"Processing scenario with topic_analysis type: {type(topic_analysis)}")
             self.logger.info(f"Questioner data type: {type(questioner_data)}")
             
+            # Get user rules if user_id is provided
+            user_rules = None
+            if user_id:
+                user_rules = self.db.get_user_rules(user_id)
+                self.logger.info(f"Retrieved user rules for user ID: {user_id}" if user_rules else "No user rules found")
+            
             # Pre-process topic_analysis if it's a string to convert to a more useful format
             if isinstance(topic_analysis, str):
                 self.logger.info("Received topic_analysis as string, using as-is")
             
-            formatted_prompt = self.PROMPT_TEMPLATE.format(
+            formatted_prompt = self._format_prompt(
                 scenario=scenario,
-                topic_analysis=self._format_topic_analysis(topic_analysis),
-                questioner_data=self._format_questioner_data(questioner_data)
+                topic_analysis=topic_analysis,
+                questioner_data=questioner_data,
+                user_rules=user_rules
             )
             
             response = generate_response(formatted_prompt)
