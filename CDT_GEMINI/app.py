@@ -377,7 +377,7 @@ async def analyze_scenario_endpoint(
     try:
         # Step 1: Clean the scenario
         logger.info(f"*********🔍 Step 1: Cleaning Scenario:*********************")
-        cleaned_data = scenario_processor.process(payload.scenario)
+        cleaned_data = scenario_processor.process(payload.scenario, user_id=current_user.get('id'))
         cleaned_scenario_text = cleaned_data.get("standardized_scenario", "")
         if not cleaned_scenario_text:
             logger.error("Scenario cleaning failed or produced empty result.")
@@ -599,13 +599,15 @@ async def analyze_scenario_endpoint(
                     cdt_inspector.process, 
                     cleaned_scenario_text, 
                     cdt_inspector_input, 
-                    questioner_data
+                    questioner_data,
+                    current_user.get('id')
                 )
                 icd_inspector_task = asyncio.to_thread(
                     icd_inspector.process, 
                     cleaned_scenario_text, 
                     icd_inspector_input, 
-                    questioner_data
+                    questioner_data,
+                    current_user.get('id')
                 )
 
                 # Run concurrently

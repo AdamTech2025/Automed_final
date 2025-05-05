@@ -918,6 +918,21 @@ class MedicalCodingDB:
             logger.error(f"❌ Error adding code analysis for user {user_id or 'Anonymous'}: {str(e)}", exc_info=True)
             return None
 
+    def get_user_rules(self, user_id: str) -> Optional[str]:
+        """Retrieve a user's rules by their ID."""
+        self.ensure_connection()
+        try:
+            result = self.supabase.table("Users").select("rules").eq("id", user_id).limit(1).execute()
+            if result.data and result.data[0].get('rules'):
+                logger.info(f"✅ Retrieved rules for user ID: {user_id}")
+                return result.data[0]['rules']
+            else:
+                logger.info(f"No custom rules found for user ID: {user_id}")
+                return None
+        except Exception as e:
+            logger.error(f"❌ Error retrieving rules for user ID {user_id}: {str(e)}", exc_info=True)
+            return None
+
 # ===========================
 # Example Usage
 # ===========================
