@@ -47,6 +47,14 @@ class LoginResponse(BaseModel):
 class UpdateTourStatusRequest(BaseModel):
     has_seen_tour: bool = True
 
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+
+class VerifyResetOtpRequest(BaseModel):
+    email: EmailStr
+    otp: str
+    new_password: str
+
 # --- Routes ---
 @router.post("/signup/send-otp", status_code=status.HTTP_200_OK)
 async def signup_send_otp(request: SignupRequest):
@@ -278,6 +286,104 @@ async def update_tour_status(
         raise http_exc
     except Exception as e:
         logger.error(f"Error updating tour status for {user_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected error occurred: {str(e)}"
+        ) 
+
+@router.post("/forgot-password/send-otp")
+async def forgot_password_send_otp(request: ResetPasswordRequest):
+    """Send OTP for password reset."""
+    logger.info(f"Password reset OTP request for email: {request.email}")
+    try:
+        user = db.get_user_by_email(request.email)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Email not found."
+            )
+
+        # Generate OTP
+        otp = generate_otp()
+        otp_expiry = calculate_otp_expiry()
+        
+        # Update user record with OTP
+        update_success = db.update_user_otp(user.get('id'), otp, otp_expiry)
+        if not update_success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to store OTP."
+            )
+        
+        # Send OTP via email
+        email_sent = await send_otp_email(request.email, otp)
+        if not email_sent:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to send OTP email."
+            )
+            
+        return {"message": f"OTP sent successfully to {request.email}"}
+
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        logger.error(f"Error during password reset OTP sending: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected error occurred: {str(e)}"
+        )
+
+@router.post("/forgot-password/verify-otp")
+async def verify_reset_otp(request: VerifyResetOtpRequest):
+    """Verify OTP and update password."""
+    logger.info(f"Password reset verification for email: {request.email}")
+    try:
+        user = db.get_user_by_email(request.email)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+
+        # Validate OTP
+        stored_otp = user.get('otp')
+        otp_expires_at_str = user.get('otp_expires_at')
+        
+        if not stored_otp or not otp_expires_at_str:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No active OTP found.")
+            
+        try:
+            otp_expires_at = datetime.fromisoformat(otp_expires_at_str)
+        except ValueError:
+            try:
+                otp_expires_at = datetime.strptime(otp_expires_at_str, '%Y-%m-%dT%H:%M:%S.%f')
+            except ValueError:
+                logger.error(f"Failed to parse OTP expiry timestamp: {otp_expires_at_str}")
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Invalid OTP expiry format.")
+
+        utc_now = datetime.now(otp_expires_at.tzinfo)
+        if stored_otp != request.otp:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OTP.")
+        if utc_now > otp_expires_at:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OTP has expired.")
+
+        # Hash new password and update
+        hashed_password = get_password_hash(request.new_password)
+        password_updated = db.update_user_password(user.get('id'), hashed_password)
+        
+        if not password_updated:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update password."
+            )
+
+        # Clear OTP after successful password reset
+        db.update_user_otp(user.get('id'), None, None)
+        
+        return {"message": "Password reset successful. Please login with your new password."}
+
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        logger.error(f"Error during password reset verification: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An unexpected error occurred: {str(e)}"

@@ -300,3 +300,21 @@ export const updateTourStatus = async (hasSeen = true) => {
     throw error.response?.data || { message: 'Failed to update tour status' };
   }
 };
+
+export const sendResetOtp = async (data) => {
+  try {
+    const response = await apiInstance.post('/api/auth/forgot-password/send-otp', data);
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || error;
+  }
+};
+
+export const verifyResetOtp = async (data) => {
+  try {
+    const response = await apiInstance.post('/api/auth/forgot-password/verify-otp', data);
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || error;
+  }
+};
