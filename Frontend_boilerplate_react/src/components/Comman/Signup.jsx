@@ -61,7 +61,8 @@ const Signup = () => {
         const userData = {
           name: name,
           email: email,
-          role: 'user'
+          role: response.role || 'user',
+          has_seen_tour: false
         };
         login(userData, response.access_token);
       } else {

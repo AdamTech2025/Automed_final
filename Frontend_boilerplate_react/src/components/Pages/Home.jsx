@@ -1,10 +1,18 @@
-import { FaCogs, FaCopy, FaSpinner, FaPlus, FaChevronDown, FaChevronUp, FaSave } from 'react-icons/fa';
+import { FaCogs, FaCopy, FaSpinner, FaPlus, FaChevronDown, FaChevronUp, FaSave, FaQuestionCircle, FaTrophy, FaFileUpload } from 'react-icons/fa';
 import { analyzeDentalScenario, addCustomCode, submitSelectedCodes } from '../../interceptors/services.js';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import PropTypes from 'prop-types';
 import Questioner from './Questioner.jsx';
 import { useTheme } from '../../context/ThemeContext';
 import Loader from '../Modal/Loading.jsx';
 import { message } from 'antd';
+import { driver } from 'driver.js';
+import 'driver.js/dist/driver.css';
+import '../../styles/driverjs.css';
+import TourConfetti from '../Tour/TourConfetti';
+import { useAuth } from '../../context/AuthContext';
+import { updateTourStatus } from '../../interceptors/services';
+import { useNavigate } from 'react-router-dom';
 
 // Helper function to escape regex special characters
 const escapeRegex = (string) => {
@@ -13,8 +21,51 @@ const escapeRegex = (string) => {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
 }
 
+// Add this animated welcome component
+const AnimatedWelcome = ({ isVisible, onClose }) => {
+  if (!isVisible) return null;
+  
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 backdrop-blur-sm">
+      <div className="bg-gradient-to-br from-white to-blue-50 dark:from-gray-800 dark:to-gray-900 p-8 rounded-xl shadow-2xl max-w-lg w-full mx-4 transform animate-[fadeInScale_0.6s_ease-out]">
+        <div className="text-center">
+          <div className="flex justify-center mb-6">
+            <div className="w-24 h-24 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center mb-4 animate-pulse">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-white animate-[spin_3s_linear_infinite]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905a3.61 3.61 0 01-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
+              </svg>
+            </div>
+          </div>
+          <h2 className="text-3xl font-bold mb-4 text-[var(--color-text-primary)] bg-gradient-to-r from-blue-500 to-indigo-600 bg-clip-text text-transparent animate-[pulse_2s_ease-in-out_infinite]">
+            Welcome to Dental Coding Assistant
+          </h2>
+          <p className="text-[var(--color-text-secondary)] mb-6 leading-relaxed">
+            You&apos;re now ready to use all the powerful features of our AI-powered coding tool.
+            Our system will help you analyze dental scenarios and generate accurate billing codes.
+          </p>
+          <div className="flex flex-wrap justify-center gap-4">
+            <button
+              onClick={onClose}
+              className="px-6 py-3 bg-gradient-to-r from-[var(--color-primary)] to-blue-600 text-white rounded-lg hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1"
+            >
+              Get Started
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+AnimatedWelcome.propTypes = {
+  isVisible: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired
+};
+
 const Home = () => {
   useTheme();
+  const navigate = useNavigate();
+  const { user } = useAuth(); // Get user data from auth context
   const [scenario, setScenario] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -22,8 +73,6 @@ const Home = () => {
   const [showQuestioner, setShowQuestioner] = useState(false);
   const [newCode, setNewCode] = useState('');
   const [loadingProgress, setLoadingProgress] = useState(0);
-  const [uploadedFile, setUploadedFile] = useState(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [activeCodeDetail, setActiveCodeDetail] = useState(null);
   const [isAddingCode, setIsAddingCode] = useState(false);
   const [expandedHistoryRows, setExpandedHistoryRows] = useState({});
@@ -32,6 +81,11 @@ const Home = () => {
   const [showFullIcdExplanation, setShowFullIcdExplanation] = useState(false);
   const [customCodes, setCustomCodes] = useState({ cdt: [], icd: [] }); // State for custom codes
   const [isSubmittingCodes, setIsSubmittingCodes] = useState(false);
+  const [showTour, setShowTour] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [showWelcomeMessage, setShowWelcomeMessage] = useState(false);
+  const driverRef = useRef(null);
 
   // Check if there are questions in the result
   useEffect(() => {
@@ -225,6 +279,206 @@ const Home = () => {
     setAllCodeDetailsMap(detailsMap);
   }, [result]);
 
+  // Initialize Driver.js
+  useEffect(() => {
+    // Create a new Driver instance with customized options
+    driverRef.current = driver({
+      className: 'custom-driver-js',
+      animate: true,
+      opacity: 0.75,
+      padding: 5,
+      allowClose: true,
+      overlayClickNext: false,
+      showProgress: true,
+      stagePadding: 10,
+      disableActiveInteraction: false, // Allow interaction with highlighted elements
+      onHighlightStarted: (element) => {
+        // Add a subtle animation to highlighted element
+        if (element) {
+          element.style.transition = 'transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out';
+          element.style.transform = 'scale(1.03)';
+          element.style.boxShadow = '0 0 0 5px rgba(var(--color-primary-rgb), 0.3)';
+        }
+      },
+      onHighlighted: (element) => {
+        // Pulse animation for the highlighted element
+        if (element) {
+          element.animate([
+            { boxShadow: '0 0 0 5px rgba(var(--color-primary-rgb), 0.3)' },
+            { boxShadow: '0 0 0 8px rgba(var(--color-primary-rgb), 0.1)' },
+            { boxShadow: '0 0 0 5px rgba(var(--color-primary-rgb), 0.3)' }
+          ], {
+            duration: 1500,
+            iterations: Infinity
+          });
+        }
+      },
+      onDeselected: (element) => {
+        if (element) {
+          element.style.transform = 'scale(1)';
+          element.style.boxShadow = 'none';
+          
+          // Stop any ongoing animations
+          element.getAnimations().forEach(animation => {
+            animation.cancel();
+          });
+        }
+      },
+      onDestroyed: () => {
+        setShowTour(false);
+        
+        // Check if this was a normal completion (not a skip)
+        const hasCompletedTour = localStorage.getItem('hasCompletedTour');
+        if (!hasCompletedTour) {
+          localStorage.setItem('hasCompletedTour', 'true');
+          setShowConfetti(true);
+          
+          // Show welcome message after a short delay
+          setTimeout(() => {
+            setShowWelcomeMessage(true);
+          }, 800);
+        }
+      }
+    });
+
+    // Check if user has seen the tour
+    const checkTourStatus = () => {
+      // If user exists and has_seen_tour is false, show the tour
+      if (user && user.has_seen_tour === false) {
+        setTimeout(() => {
+          setShowTour(true);
+        }, 1000); // Wait 1 second before starting the tour
+      }
+    };
+    
+    checkTourStatus();
+  }, [user]);
+
+  // Start the tour when showTour changes
+  useEffect(() => {
+    if (showTour && driverRef.current) {
+      startTour();
+    }
+  }, [showTour]);
+
+  // Define the tour steps with enhanced descriptions
+  const startTour = () => {
+    if (!driverRef.current) return;
+
+    const steps = [
+      {
+        element: '#tour-header',
+        popover: {
+          title: '👋 Welcome to the Dental Coding Assistant',
+          description: 'This premium AI-powered tool analyzes dental scenarios and generates accurate billing codes. Let\'s explore its powerful features!',
+          side: "bottom",
+          align: 'center'
+        }
+      },
+      {
+        element: '#tour-input-notes',
+        popover: {
+          title: '📝 Clinical Notes Input',
+          description: 'Enter your patient\'s clinical notes in this area. Our advanced AI will analyze the text to identify relevant procedures and conditions.',
+          side: "top",
+          align: 'start'
+        }
+      },
+      {
+        element: '#tour-pdf-upload',
+        popover: {
+          title: '📄 PDF Document Upload',
+          description: 'Save time by directly uploading PDF documents. Our system will extract and analyze the clinical notes automatically.',
+          side: "top",
+          align: 'center'
+        }
+      },
+      {
+        element: '#tour-process-btn',
+        popover: {
+          title: '⚙️ Process Input',
+          description: 'Click here to start the AI analysis. Our system will identify applicable CDT and ICD-10 codes based on the clinical scenario.',
+          side: "right",
+          align: 'start'
+        }
+      },
+      {
+        element: '#tour-final-codes',
+        popover: {
+          title: '✅ Final Codes',
+          description: 'Generated codes appear here. Click on any code to accept or reject it. Accepted codes will be highlighted in green, rejected in red.',
+          side: "left",
+          align: 'center'
+        }
+      },
+      {
+        element: '#tour-custom-code',
+        popover: {
+          title: '➕ Custom Code Analysis',
+          description: 'Need to check a specific code? Add it here, and our AI will analyze if it applies to the current scenario, providing detailed reasoning.',
+          side: "top",
+          align: 'center'
+        }
+      },
+      {
+        element: '#tour-explanation',
+        popover: {
+          title: '📋 Comprehensive Explanation',
+          description: 'Review the AI\'s detailed rationale for code selection. This helps you understand why certain codes were recommended.',
+          side: "top",
+          align: 'center'
+        }
+      },
+      {
+        element: '#tour-code-details',
+        popover: {
+          title: '🔍 Code Details',
+          description: 'Click any code to see its detailed information in this panel, including explanations of why it applies to the current scenario.',
+          side: "top",
+          align: 'center'
+        }
+      },
+      {
+        element: '#tour-history',
+        popover: {
+          title: '📊 Code Generation History',
+          description: 'Track all codes generated for the current analysis session, with clear explanations for each selection.',
+          side: "top",
+          align: 'start'
+        }
+      },
+      {
+        element: '#tour-submit-btn',
+        popover: {
+          title: '💾 Submit Your Selections',
+          description: 'When you\'re satisfied with your code selections, click here to submit and save them to the system.',
+          side: "left",
+          align: 'center'
+        }
+      }
+    ];
+
+    // Create and start the tour
+    driverRef.current.setSteps(steps);
+    driverRef.current.drive();
+    
+    // Update tour status in the backend after starting the tour
+    updateTourStatus(true)
+      .then(() => {
+        console.log('Tour status updated successfully');
+      })
+      .catch(error => {
+        console.error('Failed to update tour status:', error);
+      });
+  };
+
+  // Function to restart the tour anytime
+  const restartTour = () => {
+    setShowConfetti(false);
+    setShowCompletionModal(false);
+    setShowTour(true);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -370,20 +624,6 @@ const Home = () => {
     }
   };
 
-  const handleFileUpload = (file) => {
-    setUploadedFile(file);
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += 10;
-      setUploadProgress(progress);
-      if (progress >= 100) {
-        clearInterval(interval);
-        setUploadProgress(0);
-        handleSubmit(new Event('submit')); // Simulate form submission
-      }
-    }, 200);
-  };
-
   // Helper function to count code occurrences
   const countCodes = (codes) => {
     return codes.reduce((acc, code) => {
@@ -435,14 +675,67 @@ const Home = () => {
 
   return (
     <div className="flex-1 p-4 md:p-8 bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
+      {/* Tour Confetti Effect */}
+      <TourConfetti isActive={showConfetti} />
+      
+      {/* Animated Welcome Message */}
+      <AnimatedWelcome 
+        isVisible={showWelcomeMessage} 
+        onClose={() => setShowWelcomeMessage(false)} 
+      />
+      
+      {/* Tour Completion Modal - hide this if we're using the welcome message instead */}
+      {false && showCompletionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-2xl max-w-md w-full mx-4 transform tour-completion-modal">
+            <div className="text-center">
+              <div className="w-20 h-20 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full mx-auto flex items-center justify-center mb-4">
+                <FaTrophy className="text-3xl text-white trophy-icon" />
+              </div>
+              <h2 className="text-2xl font-bold mb-2 text-[var(--color-text-primary)]">Tour Completed!</h2>
+              <p className="text-[var(--color-text-secondary)] mb-6">
+                You&apos;re now ready to use all the powerful features of the Dental Coding Assistant.
+                Need to review the tour again? You can restart it anytime!
+              </p>
+              <div className="flex justify-center gap-4">
+                <button
+                  onClick={() => setShowCompletionModal(false)}
+                  className="px-6 py-2 border border-[var(--color-border)] rounded-lg hover:bg-[var(--color-bg-primary)] transition-colors text-[var(--color-text-primary)]"
+                >
+                  Get Started
+                </button>
+                <button
+                  onClick={restartTour}
+                  className="px-6 py-2 bg-gradient-to-r from-[var(--color-primary)] to-blue-600 text-white rounded-lg hover:opacity-90 transition-opacity"
+                >
+                  Restart Tour
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Help Button for Tour */}
+      <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-3">
+        <button
+          onClick={restartTour}
+          className="bg-gradient-to-r from-[var(--color-primary)] to-blue-600 hover:from-blue-600 hover:to-[var(--color-primary)] text-white p-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 group"
+          title="Start Tour"
+        >
+          <FaQuestionCircle className="text-xl group-hover:animate-bounce" />
+        </button>
+      </div>
+      
       {/* Main Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Input Section */}
-        <div className="bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-lg col-span-1 md:col-span-2">
+        <div id="tour-header" className="bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-lg col-span-1 md:col-span-2">
           <h3 className="text-lg font-bold tracking-tight mb-4 text-[var(--color-text-primary)]">Input Clinical Notes</h3>
           <div className="mb-4">
             <label className="block text-[var(--color-text-secondary)] mb-2 text-sm font-medium">Raw Text Input</label>
             <textarea
+              id="tour-input-notes"
               value={scenario}
               onChange={(e) => setScenario(e.target.value)}
               className="w-full border rounded-lg p-3 bg-[var(--color-input-bg)] text-[var(--color-text-primary)] border-[var(--color-border)] focus:ring-2 focus:ring-[var(--color-primary)] text-sm font-light leading-relaxed"
@@ -453,44 +746,18 @@ const Home = () => {
           <div className="mb-4">
             <label className="block text-[var(--color-text-secondary)] mb-2 text-sm font-medium">Upload PDF</label>
             <div 
-              className="border-2 border-dashed border-[var(--color-border)] p-6 rounded-lg text-center hover:border-[var(--color-primary)] transition-colors"
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                const file = e.dataTransfer.files[0];
-                if (file && file.type === 'application/pdf') {
-                  handleFileUpload(file);
-                }
-              }}
+              id="tour-pdf-upload"
+              onClick={() => navigate('/extractor')}
+              className="border-2 border-dashed border-[var(--color-border)] p-6 rounded-lg text-center hover:border-[var(--color-primary)] transition-colors cursor-pointer flex flex-col items-center justify-center"
             >
-              <input
-                type="file"
-                accept=".pdf"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleFileUpload(file);
-                }}
-              />
+              <FaFileUpload className="text-2xl text-[var(--color-text-secondary)] mb-2" />
               <p className="text-[var(--color-text-secondary)] text-sm font-light leading-relaxed">
-                Drag and drop a PDF or <span className="text-[var(--color-primary)] cursor-pointer hover:underline">browse</span>
+                Click to go to PDF Extractor
               </p>
-              {uploadedFile && (
-                <p className="text-[var(--color-text-secondary)] mt-2 text-sm font-light">
-                  {uploadedFile.name}
-                </p>
-              )}
-              {uploadProgress > 0 && uploadProgress < 100 && (
-                <div className="w-full bg-[var(--color-border)] rounded-full h-2 mt-2">
-                  <div
-                    className="bg-[var(--color-primary)] h-2 rounded-full"
-                    style={{ width: `${uploadProgress}%` }}
-                  />
-                </div>
-              )}
             </div>
           </div>
           <button
+            id="tour-process-btn"
             onClick={handleSubmit}
             disabled={loading}
             className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white px-4 py-2 text-sm rounded-lg hover:scale-105 hover:shadow-lg focus:ring-2 focus:ring-[var(--color-primary)] font-medium transition-all duration-200"
@@ -509,8 +776,8 @@ const Home = () => {
           </button>
         </div>
 
-        {/* Final Codes Section - Add space-y-6 for better vertical spacing */}
-        <div className="bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 space-y-6">
+        {/* Final Codes Section - Add id for tour */}
+        <div id="tour-final-codes" className="bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 space-y-6">
           {/* Header: Title and Copy Button */}
           <div className="flex justify-between items-center">
             <h3 className="text-lg font-bold tracking-tight text-[var(--color-text-primary)]">Final Codes</h3>
@@ -563,8 +830,8 @@ const Home = () => {
             </div>
           </div>
 
-          {/* Custom Code Input Form */}
-          <div className="mb-4">
+          {/* Custom Code Input Form - Add id for tour*/}
+          <div id="tour-custom-code" className="mb-4">
             <h4 className="text-sm font-semibold text-[var(--color-text-secondary)] mb-2">Add Custom Code</h4>
             <div className="flex flex-col sm:flex-row flex-wrap gap-2">
               <input
@@ -743,8 +1010,8 @@ const Home = () => {
           </div>
         </div>
 
-        {/* Inspector Explanation Section */}
-        <div className="bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 col-span-1 md:col-span-3 space-y-4">
+        {/* Inspector Explanation Section - Add id for tour */}
+        <div id="tour-explanation" className="bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 col-span-1 md:col-span-3 space-y-4">
           <h3 className="text-lg font-bold tracking-tight text-[var(--color-text-primary)]">Final Explanation</h3>
           {/* CDT Explanation */}
           {result?.inspector_results?.cdt?.explanation ? (
@@ -790,8 +1057,8 @@ const Home = () => {
           )}
         </div>
 
-        {/* Code Details Section */}
-        <div className="bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 col-span-1 md:col-span-3">
+        {/* Code Details Section - Add id for tour */}
+        <div id="tour-code-details" className="bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 col-span-1 md:col-span-3">
           <h3 className="text-lg font-bold tracking-tight mb-4 text-[var(--color-text-primary)]">Code Details</h3>
           <div className="border border-[var(--color-border)] bg-[var(--color-input-bg)] p-4 rounded-lg shadow-inner min-h-[100px] text-sm font-light leading-relaxed text-[var(--color-text-primary)]">
             {activeCodeDetail && allCodeDetailsMap[activeCodeDetail] ? (
@@ -835,8 +1102,8 @@ const Home = () => {
           </div>
         </div>
 
-        {/* Recent Codes Dashboard */}
-        <div className="bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-lg col-span-1 md:col-span-3">
+        {/* Recent Codes Dashboard - Add id for tour */}
+        <div id="tour-history" className="bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-lg col-span-1 md:col-span-3">
           <h3 className="text-lg font-bold tracking-tight mb-4 text-[var(--color-text-primary)]">Final Code Generation History</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-left">

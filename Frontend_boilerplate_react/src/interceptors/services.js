@@ -283,3 +283,20 @@ export const updateUserRules = async (userId, rules, signal) => {
     throw error.response?.data || { message: `Failed to update rules for user ${userId}`, detail: 'Could not connect or permission denied' };
   }
 };
+
+// Update tour status for a user
+export const updateTourStatus = async (hasSeen = true) => {
+  try {
+    const response = await apiInstance.post('/api/auth/update-tour-status', { has_seen_tour: hasSeen });
+    
+    // Update the local storage with the new tour status
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    user.has_seen_tour = hasSeen;
+    localStorage.setItem('user', JSON.stringify(user));
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error updating tour status:', error);
+    throw error.response?.data || { message: 'Failed to update tour status' };
+  }
+};

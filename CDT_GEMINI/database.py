@@ -948,6 +948,33 @@ class MedicalCodingDB:
             logger.error(f"❌ Error updating rules for user ID {user_id}: {str(e)}", exc_info=True)
             return False
 
+    def update_user_tour_status(self, user_id: str, has_seen_tour: bool = True) -> bool:
+        """
+        Update the has_seen_tour field for a specific user.
+        
+        Args:
+            user_id: The ID of the user to update
+            has_seen_tour: Whether the user has seen the tour or not
+            
+        Returns:
+            Boolean indicating success or failure
+        """
+        self.ensure_connection()
+        try:
+            result = self.supabase.table("Users").update(
+                {"has_seen_tour": has_seen_tour}
+            ).eq("id", user_id).execute()
+            
+            if result.data and len(result.data) > 0:
+                logger.info(f"✅ Updated tour status for user {user_id} to {has_seen_tour}")
+                return True
+            else:
+                logger.warning(f"❌ No user found with ID {user_id} to update tour status")
+                return False
+        except Exception as e:
+            logger.error(f"❌ Error updating tour status for user {user_id}: {str(e)}", exc_info=True)
+            return False
+
 # ===========================
 # Example Usage
 # ===========================

@@ -42,6 +42,10 @@ class LoginResponse(BaseModel):
     name: str
     email: EmailStr
     role: str
+    has_seen_tour: bool = False
+
+class UpdateTourStatusRequest(BaseModel):
+    has_seen_tour: bool = True
 
 # --- Routes ---
 @router.post("/signup/send-otp", status_code=status.HTTP_200_OK)
@@ -238,5 +242,43 @@ async def login_for_access_token(request: LoginRequest):
         "token_type": "bearer",
         "name": user.get("name", ""), # Include name (with fallback)
         "email": user["email"], # Include email
-        "role": user.get("role", "user") # Include role
+        "role": user.get("role", "user"), # Include role
+        "has_seen_tour": user.get("has_seen_tour", False) # Include has_seen_tour
     } 
+
+@router.post("/update-tour-status")
+async def update_tour_status(
+    request: UpdateTourStatusRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Updates the has_seen_tour status for a user.
+    This is used to track if a user has completed the onboarding tour.
+    """
+    logger.info(f"Updating tour status for user {current_user.get('id')} to {request.has_seen_tour}")
+    try:
+        user_id = current_user.get('id')
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid user credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Update the has_seen_tour field in the Users table
+        updated = db.update_user_tour_status(user_id, request.has_seen_tour)
+        if not updated:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update tour status."
+            )
+            
+        return {"status": "success", "message": "Tour status updated successfully"}
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        logger.error(f"Error updating tour status for {user_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected error occurred: {str(e)}"
+        ) 

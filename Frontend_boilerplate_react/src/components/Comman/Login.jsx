@@ -39,9 +39,15 @@ const Login = () => {
           const userData = { 
             name: response.name,
             email: response.email,
-            role: response.role 
+            role: response.role,
+            has_seen_tour: response.has_seen_tour || false
           };
+          
+          // Store tour status in login context
           login(userData, response.access_token);
+          
+          // Navigate user to home, tour will be shown based on has_seen_tour flag
+          // If has_seen_tour is false, the Home component will show the tour
         } else {
           throw new Error(response.detail || 'Login response missing token or user details.');
         }

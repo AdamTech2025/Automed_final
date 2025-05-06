@@ -52,11 +52,12 @@ export const AuthProvider = ({ children }) => {
     // If user data and token were passed directly, store them in localStorage
     if (userData && token) {
       localStorage.setItem('accessToken', token);
-      // Ensure userData includes name, email, and role
+      // Ensure userData includes name, email, role, and has_seen_tour
       const userToStore = { 
         name: userData.name, 
         email: userData.email,
-        role: userData.role // Extract role
+        role: userData.role, // Extract role
+        has_seen_tour: userData.has_seen_tour || false // Add tour status with default
       };
       localStorage.setItem('user', JSON.stringify(userToStore));
       console.log("AuthContext: Stored in localStorage:", { token, userToStore });
@@ -72,18 +73,19 @@ export const AuthProvider = ({ children }) => {
         const parsedUser = JSON.parse(storedUser);
         console.log("AuthContext: Parsed user:", parsedUser);
         
-        // Ensure user state includes the role
-        const userWithRole = { 
+        // Ensure user state includes all necessary properties
+        const userWithDetails = { 
           name: parsedUser.name, 
           email: parsedUser.email, 
-          role: parsedUser.role // Ensure role is included
+          role: parsedUser.role, // Ensure role is included
+          has_seen_tour: parsedUser.has_seen_tour || false // Add tour status with default
         };
 
         // Update state
         setIsAuthenticated(true);
-        setUser(userWithRole);
+        setUser(userWithDetails);
         
-        console.log("AuthContext: State updated:", { isAuthenticated: true, user: userWithRole });
+        console.log("AuthContext: State updated:", { isAuthenticated: true, user: userWithDetails });
         
         // Navigate to dashboard after successful login state update
         navigate('/dashboard');
