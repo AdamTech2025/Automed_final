@@ -1,5 +1,5 @@
-import { FaCogs, FaCopy, FaSpinner, FaPlus, FaChevronDown, FaChevronUp } from 'react-icons/fa';
-import { analyzeDentalScenario, addCustomCode } from '../../interceptors/services.js';
+import { FaCogs, FaCopy, FaSpinner, FaPlus, FaChevronDown, FaChevronUp, FaSave } from 'react-icons/fa';
+import { analyzeDentalScenario, addCustomCode, submitSelectedCodes } from '../../interceptors/services.js';
 import { useState, useEffect } from 'react';
 import Questioner from './Questioner.jsx';
 import { useTheme } from '../../context/ThemeContext';
@@ -31,6 +31,7 @@ const Home = () => {
   const [showFullCdtExplanation, setShowFullCdtExplanation] = useState(false);
   const [showFullIcdExplanation, setShowFullIcdExplanation] = useState(false);
   const [customCodes, setCustomCodes] = useState({ cdt: [], icd: [] }); // State for custom codes
+  const [isSubmittingCodes, setIsSubmittingCodes] = useState(false);
 
   // Check if there are questions in the result
   useEffect(() => {
@@ -150,13 +151,18 @@ const Home = () => {
 
     // Function to extract explanation for a specific code from the inspector string
     const getInspectorExplanation = (code, explanationString) => {
-      // Escape the code before inserting into regex
+      // Escape characters with special meaning in regex.
       const escapedCode = escapeRegex(code);
-      // Simplified regex: Require exactly two asterisks **CODE(...)**: Selected. - Fixed lint errors (Attempt 4)
-      const regex = new RegExp(`- \*\*${escapedCode}\s*\([^)]*\)\*\*:\s*Selected\.\s*(.*?)(?=\s*-\s*\*\*|$)`, 'i');
-      const match = explanationString.match(regex);
-      // console.log(`Regex for ${code}:`, regex, `Match:`, match); // Debugging log
-      return match ? match[1].trim() : 'Explanation from final inspection result.'; // Fallback explanation
+      // Create regex to match the code explanation
+      try {
+        // Use a simpler regex pattern that's less prone to escaping issues
+        const regex = new RegExp(`- \\*\\*${escapedCode}(?:\\s*\\([^)]*\\))?\\*\\*:\\s*Selected\\.\\s*(.*?)(?=\\s*-\\s*\\*\\*|$)`, 'i');
+        const match = explanationString.match(regex);
+        return match ? match[1].trim() : 'Explanation from final inspection result.'; // Fallback explanation
+      } catch (e) {
+        console.warn(`Failed to parse explanation for code ${code}:`, e);
+        return 'Explanation unavailable due to parsing error.';
+      }
     };
 
     inspectorCdtCodes.forEach(code => {
@@ -386,6 +392,47 @@ const Home = () => {
     }, {});
   };
 
+  const handleSubmitCodes = async () => {
+    if (!result?.record_id) {
+      message.error('Cannot submit codes without a processed scenario record ID.');
+      return;
+    }
+
+    if (selectedCodes.accepted.length === 0) {
+      message.warning('Please select at least one code to submit.');
+      return;
+    }
+
+    // Separate codes into CDT and ICD categories
+    const acceptedCdtCodes = selectedCodes.accepted.filter(code => code.startsWith('D'));
+    const acceptedIcdCodes = selectedCodes.accepted.filter(code => !code.startsWith('D'));
+    
+    const deniedCdtCodes = selectedCodes.denied.filter(code => code.startsWith('D'));
+    const deniedIcdCodes = selectedCodes.denied.filter(code => !code.startsWith('D'));
+
+    // Create properly structured payload
+    const payload = {
+      cdt_codes: acceptedCdtCodes,
+      rejected_cdt_codes: deniedCdtCodes,
+      icd_codes: acceptedIcdCodes,
+      rejected_icd_codes: deniedIcdCodes
+    };
+
+    console.log('Submitting codes with structured payload:', payload);
+    
+    setIsSubmittingCodes(true);
+    try {
+      const response = await submitSelectedCodes(payload, result.record_id);
+      console.log('Submit codes response:', response);
+      message.success('Codes submitted successfully!');
+    } catch (error) {
+      console.error('Error submitting codes:', error);
+      message.error(error.message || 'Failed to submit codes. Please try again.');
+    } finally {
+      setIsSubmittingCodes(false);
+    }
+  };
+
   return (
     <div className="flex-1 p-4 md:p-8 bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
       {/* Main Grid */}
@@ -467,25 +514,44 @@ const Home = () => {
           {/* Header: Title and Copy Button */}
           <div className="flex justify-between items-center">
             <h3 className="text-lg font-bold tracking-tight text-[var(--color-text-primary)]">Final Codes</h3>
-            <button
-              onClick={() => {
-                const finalAcceptedCdt = (result?.inspector_results?.cdt?.codes || []).filter(code => selectedCodes.accepted.includes(code));
-                const finalAcceptedIcd = (result?.inspector_results?.icd?.codes || []).filter(code => selectedCodes.accepted.includes(code));
-                const allAccepted = [...finalAcceptedCdt, ...finalAcceptedIcd];
-                if (allAccepted.length === 0) {
-                  message.warning('No accepted codes to copy.');
-                  return;
-                }
-                const textToCopy = allAccepted.join(', ');
-                navigator.clipboard.writeText(textToCopy)
-                  .then(() => message.success(`Copied: ${textToCopy}`))
-                  .catch(() => message.error('Failed to copy codes.'));
-              }}
-              disabled={!((result?.inspector_results?.cdt?.codes || []).some(code => selectedCodes.accepted.includes(code)) || (result?.inspector_results?.icd?.codes || []).some(code => selectedCodes.accepted.includes(code)))}
-              className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white px-3 py-1 text-sm rounded-lg hover:scale-105 hover:shadow-lg focus:ring-2 focus:ring-[var(--color-primary)] flex items-center font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <FaCopy className="mr-2" /> Copy Selected
-            </button>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => {
+                  const finalAcceptedCdt = (result?.inspector_results?.cdt?.codes || []).filter(code => selectedCodes.accepted.includes(code));
+                  const finalAcceptedIcd = (result?.inspector_results?.icd?.codes || []).filter(code => selectedCodes.accepted.includes(code));
+                  const allAccepted = [...finalAcceptedCdt, ...finalAcceptedIcd];
+                  if (allAccepted.length === 0) {
+                    message.warning('No accepted codes to copy.');
+                    return;
+                  }
+                  const textToCopy = allAccepted.join(', ');
+                  navigator.clipboard.writeText(textToCopy)
+                    .then(() => message.success(`Copied: ${textToCopy}`))
+                    .catch(() => message.error('Failed to copy codes.'));
+                }}
+                disabled={!((result?.inspector_results?.cdt?.codes || []).some(code => selectedCodes.accepted.includes(code)) || (result?.inspector_results?.icd?.codes || []).some(code => selectedCodes.accepted.includes(code)))}
+                className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white px-3 py-1 text-sm rounded-lg hover:scale-105 hover:shadow-lg focus:ring-2 focus:ring-[var(--color-primary)] flex items-center font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <FaCopy className="mr-2 md:mr-0 lg:mr-2" /> <span className="hidden md:hidden lg:inline">Copy Selected</span>
+              </button>
+              <button
+                onClick={handleSubmitCodes}
+                disabled={isSubmittingCodes || !result?.record_id || selectedCodes.accepted.length === 0}
+                className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 text-sm rounded-lg hover:scale-105 hover:shadow-lg focus:ring-2 focus:ring-green-500 flex items-center font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmittingCodes ? (
+                  <>
+                    <FaSpinner className="animate-spin mr-2 md:mr-0 lg:mr-2" /> 
+                    <span className="hidden md:hidden lg:inline">Submitting...</span>
+                  </>
+                ) : (
+                  <>
+                    <FaSave className="mr-2 md:mr-0 lg:mr-2" /> 
+                    <span className="hidden md:hidden lg:inline">Submit</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Custom Code Input Form */}

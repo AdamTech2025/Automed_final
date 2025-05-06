@@ -39,22 +39,21 @@ export const analyzeBatchScenarios = async (scenariosArray, signal) => {
 };
 
 // Submit selected codes service
-export const submitSelectedCodes = async (selectedCodes, recordId) => {
+export const submitSelectedCodes = async (payload, recordId) => {
   try {
-    // selectedCodes is expected to have { accepted: [...], denied: [...] } structure
-    // Transform it to match the backend model CodeStatusRequest
-    const payload = {
+    // Prepare the API request payload
+    const apiPayload = {
       record_id: recordId,
-      cdt_codes: selectedCodes.accepted || [], // Map accepted to cdt_codes
-      rejected_cdt_codes: selectedCodes.denied || [], // Map denied to rejected_cdt_codes
-      icd_codes: [], // Send empty list if frontend doesn't handle ICD yet
-      rejected_icd_codes: [] // Send empty list if frontend doesn't handle ICD yet
+      cdt_codes: payload.cdt_codes || [],
+      rejected_cdt_codes: payload.rejected_cdt_codes || [],
+      icd_codes: payload.icd_codes || [],
+      rejected_icd_codes: payload.rejected_icd_codes || []
     };
 
     // Log the payload being sent
-    console.log("Sending payload to /api/store-code-status:", payload);
+    console.log("Sending payload to /api/store-code-status:", apiPayload);
 
-    const response = await apiInstance.post('/api/store-code-status', payload); // Send the transformed payload
+    const response = await apiInstance.post('/api/store-code-status', apiPayload);
     return response.data;
   } catch (error) {
     console.error("Error in submitSelectedCodes:", error.response || error);
