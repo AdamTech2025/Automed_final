@@ -12,7 +12,6 @@ import '../../styles/driverjs.css';
 import TourConfetti from '../Tour/TourConfetti';
 import { useAuth } from '../../context/AuthContext';
 import { updateTourStatus } from '../../interceptors/services';
-import { useNavigate } from 'react-router-dom';
 
 // Helper function to escape regex special characters
 const escapeRegex = (string) => {
@@ -64,7 +63,6 @@ AnimatedWelcome.propTypes = {
 
 const Home = () => {
   useTheme();
-  const navigate = useNavigate();
   const { user } = useAuth(); // Get user data from auth context
   const [scenario, setScenario] = useState('');
   const [loading, setLoading] = useState(false);
@@ -747,12 +745,12 @@ const Home = () => {
             <label className="block text-[var(--color-text-secondary)] mb-2 text-sm font-medium">Upload PDF</label>
             <div 
               id="tour-pdf-upload"
-              onClick={() => navigate('/extractor')}
+              onClick={() => window.open(`${window.location.origin}/extractor`, '_blank')}
               className="border-2 border-dashed border-[var(--color-border)] p-6 rounded-lg text-center hover:border-[var(--color-primary)] transition-colors cursor-pointer flex flex-col items-center justify-center"
             >
               <FaFileUpload className="text-2xl text-[var(--color-text-secondary)] mb-2" />
               <p className="text-[var(--color-text-secondary)] text-sm font-light leading-relaxed">
-                Click to go to PDF Extractor
+                Click to go to PDF Extractor (opens in new tab)
               </p>
             </div>
           </div>

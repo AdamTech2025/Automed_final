@@ -60,6 +60,33 @@ AdminProtectedRoute.propTypes = {
     children: PropTypes.node.isRequired,
 };
 
+// Simple component for the extractor page without sidebar/navbar layout
+// This component handles its own auth check to prevent redirect loops
+const ExtractorPage = () => {
+  const { isAuthenticated } = useAuth();
+  
+  // If not authenticated, show a login prompt instead of redirecting
+  if (!isAuthenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-100 dark:bg-gray-900">
+        <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-lg max-w-md w-full text-center">
+          <h2 className="text-2xl font-bold mb-4 text-gray-800 dark:text-white">Authentication Required</h2>
+          <p className="text-gray-600 dark:text-gray-300 mb-6">Please login to access the PDF Extractor</p>
+          <a 
+            href="/" 
+            className="inline-block bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Go to Login
+          </a>
+        </div>
+      </div>
+    );
+  }
+  
+  // User is authenticated, show the extractor
+  return <Extractor />;
+};
+
 const AppRoutes = () => {
   const { isAuthenticated } = useAuth();
 
@@ -85,14 +112,8 @@ const AppRoutes = () => {
       </Route>
       <Route 
         path="/extractor" 
-        element={
-          <ProtectedRoute>
-            <Layout />
-          </ProtectedRoute>
-        }
-      >
-        <Route index element={<Extractor />} />
-      </Route>
+        element={<ExtractorPage />}
+      />
       <Route 
         path="/admin/dashboard" 
         element={

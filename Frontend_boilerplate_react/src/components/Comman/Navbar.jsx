@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { FaTooth, FaSun, FaMoon, FaPlus, FaUserCircle, FaSignOutAlt, FaUsers, FaBars, FaFileUpload } from 'react-icons/fa';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -10,27 +10,13 @@ const Navbar = ({ toggleSidebar }) => {
   const { isAuthenticated, user, logout } = useAuth();
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
-  const navigate = useNavigate();
-  const location = useLocation();
 
   // Log the state received from context
   console.log("Navbar received from useAuth:", { isAuthenticated, user });
 
   const handleNewAnalysis = () => {
-    // If already on dashboard page, reload it to reset state
-    if (location.pathname === '/dashboard') {
-      // Create a custom event that the Home component can listen for
-      const event = new CustomEvent('newAnalysis', { 
-        detail: { timestamp: new Date().getTime() } 
-      });
-      window.dispatchEvent(event);
-      
-      // Scroll to top to focus on the input
-      window.scrollTo(0, 0);
-    } else {
-      // If on another page, navigate to dashboard
-      navigate('/dashboard');
-    }
+    // Open dashboard in a new browser tab
+    window.open('/dashboard', '_blank');
   };
 
   const handleLogout = () => {
@@ -76,16 +62,18 @@ const Navbar = ({ toggleSidebar }) => {
           <FaPlus className="text-lg" />
           <span className="ml-1 hidden sm:inline">New Analysis</span>
         </button>
-        <Link 
-          to="/extractor" 
+        <a 
+          href={`${window.location.origin}/extractor`}
+          target="_blank"
+          rel="noopener noreferrer"
           className={`${isDark ? 'text-gray-300 hover:text-blue-300' : 'text-gray-600 hover:text-blue-700'} 
             flex items-center transition-colors p-2 rounded-md`}
           aria-label="Extractor"
-          title="Extract from files"
+          title="Extract from files (opens in new tab)"
         >
           <FaFileUpload className="text-lg" />
           <span className="ml-1 hidden sm:inline">Extractor</span>
-        </Link>
+        </a>
         {/* <Link 
           to="/questions" 
           className={`${isDark ? 'text-gray-300 hover:text-blue-300' : 'text-gray-700 hover:text-blue-700'} 
