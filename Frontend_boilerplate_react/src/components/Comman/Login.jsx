@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { gsap } from 'gsap';
 import Particles from '../Particles/Particles';
 import SuccessModal from '../Modal/SuccessModal';
-import { loginUser } from '../../interceptors/services';
+import { loginUser, sendResetOtp, verifyResetOtp } from '../../interceptors/services';
 import { useAuth } from '../../context/AuthContext';
 import logo from '../../assets/Adam_tech_logo.png';
 
@@ -15,6 +15,15 @@ const Login = () => {
   const [modalData, setModalData] = useState({ title: '', message: '', isSuccess: true });
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
+
+  // Forgot password states
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetOtp, setResetOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
   useEffect(() => {
     gsap.fromTo('.card', { y: 100, opacity: 0 }, { y: 0, opacity: 1, duration: 1, ease: 'power3.out' });
@@ -42,26 +51,79 @@ const Login = () => {
             role: response.role,
             has_seen_tour: response.has_seen_tour || false
           };
-          
-          // Store tour status in login context
           login(userData, response.access_token);
-          
-          // Navigate user to home, tour will be shown based on has_seen_tour flag
-          // If has_seen_tour is false, the Home component will show the tour
         } else {
           throw new Error(response.detail || 'Login response missing token or user details.');
         }
       } catch (error) {
         setModalData({ title: 'Login Failed', message: error.detail || error.message || 'Invalid credentials or server error.', isSuccess: false });
         setShowModal(true);
-        console.log('Modal should show (error): ', modalData);
       } finally {
         setIsLoading(false);
       }
     } else {
       setModalData({ title: 'Error', message: 'Please fill in all fields.', isSuccess: false });
       setShowModal(true);
-      console.log('Modal should show (validation): ', modalData);
+    }
+  };
+
+  const handleSendResetOtp = async (e) => {
+    e.preventDefault();
+    if (!resetEmail.trim()) {
+      setModalData({ title: 'Error', message: 'Please enter your email address.', isSuccess: false });
+      setShowModal(true);
+      return;
+    }
+
+    setIsResetting(true);
+    try {
+      const response = await sendResetOtp({ email: resetEmail });
+      setModalData({ title: 'Success', message: response.message || 'OTP sent successfully. Please check your email.', isSuccess: true });
+      setShowModal(true);
+      setOtpSent(true);
+    } catch (error) {
+      setModalData({ title: 'Error', message: error.detail || error.message || 'Failed to send OTP.', isSuccess: false });
+      setShowModal(true);
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    if (!resetOtp || !newPassword || !confirmPassword) {
+      setModalData({ title: 'Error', message: 'Please fill in all fields.', isSuccess: false });
+      setShowModal(true);
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setModalData({ title: 'Error', message: 'Passwords do not match.', isSuccess: false });
+      setShowModal(true);
+      return;
+    }
+
+    setIsResetting(true);
+    try {
+      const response = await verifyResetOtp({
+        email: resetEmail,
+        otp: resetOtp,
+        new_password: newPassword
+      });
+      setModalData({ title: 'Success', message: response.message || 'Password reset successful. Please login with your new password.', isSuccess: true });
+      setShowModal(true);
+      // Reset states and show login form
+      setShowForgotPassword(false);
+      setResetEmail('');
+      setResetOtp('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setOtpSent(false);
+    } catch (error) {
+      setModalData({ title: 'Error', message: error.detail || error.message || 'Failed to reset password.', isSuccess: false });
+      setShowModal(true);
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -76,46 +138,140 @@ const Login = () => {
             </div>
             <h2 className="text-3xl font-bold text-center text-white mb-2">Adam Tech</h2>
             <p className="text-center text-gray-300 mb-6 text-sm">Dental Coding Software</p>
-            <div className="w-full bg-gray-700 bg-opacity-30 rounded-full h-1.5 mb-6">
-              <div style={{ width: `${progress}%` }} className="bg-gradient-to-r from-yellow-400 to-yellow-500 h-1.5 rounded-full transition-all duration-500 ease-out" />
-            </div>
-            <form onSubmit={handleSubmit}>
-              <div className="mb-5 form-element">
-                <label htmlFor="email" className="block text-sm font-medium text-gray-200 mb-1">Email</label>
-                <input
-                  type="email"
-                  id="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="w-full rounded-lg border-none bg-white bg-opacity-10 text-white placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:ring-opacity-50 p-3 transition-all duration-300"
-                  placeholder="you@example.com"
-                />
-              </div>
-              <div className="mb-6 form-element">
-                <label htmlFor="password" className="block text-sm font-medium text-gray-200 mb-1">Password</label>
-                <input
-                  type="password"
-                  id="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="w-full rounded-lg border-none bg-white bg-opacity-10 text-white placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:ring-opacity-50 p-3 transition-all duration-300"
-                  placeholder="••••••••"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-gray-900 font-semibold py-3 rounded-lg hover:from-yellow-500 hover:to-yellow-600 transition-all duration-300 shadow-md disabled:opacity-50"
-              >
-                {isLoading ? 'Logging In...' : 'Login'}
-              </button>
-            </form>
-            <p className="mt-4 text-center text-sm text-gray-300">
-              Don&apos;t have an account?{' '}
-              <Link to="/signup" className="text-yellow-400 hover:underline font-medium">Sign Up</Link>
-            </p>
+            
+            {!showForgotPassword ? (
+              // Login Form
+              <>
+                <div className="w-full bg-gray-700 bg-opacity-30 rounded-full h-1.5 mb-6">
+                  <div style={{ width: `${progress}%` }} className="bg-gradient-to-r from-yellow-400 to-yellow-500 h-1.5 rounded-full transition-all duration-500 ease-out" />
+                </div>
+                <form onSubmit={handleSubmit}>
+                  <div className="mb-5 form-element">
+                    <label htmlFor="email" className="block text-sm font-medium text-gray-200 mb-1">Email</label>
+                    <input
+                      type="email"
+                      id="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      className="w-full rounded-lg border-none bg-white bg-opacity-10 text-white placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:ring-opacity-50 p-3 transition-all duration-300"
+                      placeholder="you@example.com"
+                    />
+                  </div>
+                  <div className="mb-6 form-element">
+                    <label htmlFor="password" className="block text-sm font-medium text-gray-200 mb-1">Password</label>
+                    <input
+                      type="password"
+                      id="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      className="w-full rounded-lg border-none bg-white bg-opacity-10 text-white placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:ring-opacity-50 p-3 transition-all duration-300"
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-gray-900 font-semibold py-3 rounded-lg hover:from-yellow-500 hover:to-yellow-600 transition-all duration-300 shadow-md disabled:opacity-50"
+                  >
+                    {isLoading ? 'Logging In...' : 'Login'}
+                  </button>
+                </form>
+                <div className="mt-4 text-center space-y-2">
+                  <button
+                    onClick={() => setShowForgotPassword(true)}
+                    className="text-yellow-400 hover:underline text-sm font-medium"
+                  >
+                    Forgot Password?
+                  </button>
+                  <p className="text-sm text-gray-300">
+                    Don&apos;t have an account?{' '}
+                    <Link to="/signup" className="text-yellow-400 hover:underline font-medium">Sign Up</Link>
+                  </p>
+                </div>
+              </>
+            ) : (
+              // Forgot Password Form
+              <form onSubmit={otpSent ? handleResetPassword : handleSendResetOtp} className="space-y-4">
+                {!otpSent ? (
+                  // Email Input for OTP
+                  <div className="form-element">
+                    <label htmlFor="resetEmail" className="block text-sm font-medium text-gray-200 mb-1">Email</label>
+                    <input
+                      type="email"
+                      id="resetEmail"
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                      required
+                      className="w-full rounded-lg border-none bg-white bg-opacity-10 text-white placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:ring-opacity-50 p-3 transition-all duration-300"
+                      placeholder="Enter your email"
+                    />
+                  </div>
+                ) : (
+                  // OTP and New Password Fields
+                  <>
+                    <div className="form-element">
+                      <label htmlFor="otp" className="block text-sm font-medium text-gray-200 mb-1">OTP</label>
+                      <input
+                        type="text"
+                        id="otp"
+                        value={resetOtp}
+                        onChange={(e) => setResetOtp(e.target.value)}
+                        required
+                        className="w-full rounded-lg border-none bg-white bg-opacity-10 text-white placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:ring-opacity-50 p-3 transition-all duration-300"
+                        placeholder="Enter OTP"
+                      />
+                    </div>
+                    <div className="form-element">
+                      <label htmlFor="newPassword" className="block text-sm font-medium text-gray-200 mb-1">New Password</label>
+                      <input
+                        type="password"
+                        id="newPassword"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        required
+                        className="w-full rounded-lg border-none bg-white bg-opacity-10 text-white placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:ring-opacity-50 p-3 transition-all duration-300"
+                        placeholder="Enter new password"
+                      />
+                    </div>
+                    <div className="form-element">
+                      <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-200 mb-1">Confirm Password</label>
+                      <input
+                        type="password"
+                        id="confirmPassword"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        required
+                        className="w-full rounded-lg border-none bg-white bg-opacity-10 text-white placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:ring-opacity-50 p-3 transition-all duration-300"
+                        placeholder="Confirm new password"
+                      />
+                    </div>
+                  </>
+                )}
+                <button
+                  type="submit"
+                  disabled={isResetting}
+                  className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-gray-900 font-semibold py-3 rounded-lg hover:from-yellow-500 hover:to-yellow-600 transition-all duration-300 shadow-md disabled:opacity-50"
+                >
+                  {isResetting ? 'Processing...' : (otpSent ? 'Reset Password' : 'Send OTP')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForgotPassword(false);
+                    setResetEmail('');
+                    setResetOtp('');
+                    setNewPassword('');
+                    setConfirmPassword('');
+                    setOtpSent(false);
+                  }}
+                  className="w-full mt-2 bg-transparent border border-yellow-400 text-yellow-400 font-semibold py-3 rounded-lg hover:bg-yellow-400 hover:text-gray-900 transition-all duration-300"
+                >
+                  Back to Login
+                </button>
+              </form>
+            )}
           </div>
         </div>
       </div>

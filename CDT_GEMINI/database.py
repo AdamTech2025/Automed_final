@@ -975,6 +975,24 @@ class MedicalCodingDB:
             logger.error(f"❌ Error updating tour status for user {user_id}: {str(e)}", exc_info=True)
             return False
 
+    def update_user_password(self, user_id: str, hashed_password: str) -> bool:
+        """Update a user's password with a new hashed password."""
+        self.ensure_connection()
+        try:
+            result = self.supabase.table("Users").update({
+                "hashed_password": hashed_password
+            }).eq("id", user_id).execute()
+            
+            if result.data:
+                logger.info(f"✅ Password updated successfully for user ID: {user_id}")
+                return True
+            else:
+                logger.warning(f"⚠️ No update result for user ID: {user_id}")
+                return False
+        except Exception as e:
+            logger.error(f"❌ Error updating password for user ID {user_id}: {str(e)}", exc_info=True)
+            return False
+
 # ===========================
 # Example Usage
 # ===========================
