@@ -517,8 +517,17 @@ const Home = () => {
             <div className="flex space-x-2">
               <button
                 onClick={() => {
-                  const finalAcceptedCdt = (result?.inspector_results?.cdt?.codes || []).filter(code => selectedCodes.accepted.includes(code));
-                  const finalAcceptedIcd = (result?.inspector_results?.icd?.codes || []).filter(code => selectedCodes.accepted.includes(code));
+                  // Get all accepted codes, including both inspector results and custom codes
+                  const finalAcceptedCdt = [
+                    ...(result?.inspector_results?.cdt?.codes || []).filter(code => selectedCodes.accepted.includes(code)),
+                    ...customCodes.cdt.filter(code => selectedCodes.accepted.includes(code))
+                  ];
+                  
+                  const finalAcceptedIcd = [
+                    ...(result?.inspector_results?.icd?.codes || []).filter(code => selectedCodes.accepted.includes(code)),
+                    ...customCodes.icd.filter(code => selectedCodes.accepted.includes(code))
+                  ];
+                  
                   const allAccepted = [...finalAcceptedCdt, ...finalAcceptedIcd];
                   if (allAccepted.length === 0) {
                     message.warning('No accepted codes to copy.');
@@ -529,7 +538,7 @@ const Home = () => {
                     .then(() => message.success(`Copied: ${textToCopy}`))
                     .catch(() => message.error('Failed to copy codes.'));
                 }}
-                disabled={!((result?.inspector_results?.cdt?.codes || []).some(code => selectedCodes.accepted.includes(code)) || (result?.inspector_results?.icd?.codes || []).some(code => selectedCodes.accepted.includes(code)))}
+                disabled={!selectedCodes.accepted.length}
                 className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white px-3 py-1 text-sm rounded-lg hover:scale-105 hover:shadow-lg focus:ring-2 focus:ring-[var(--color-primary)] flex items-center font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <FaCopy className="mr-2 md:mr-0 lg:mr-2" /> <span className="hidden md:hidden lg:inline">Copy Selected</span>
@@ -596,7 +605,11 @@ const Home = () => {
                 <h4 className="text-lg font-semibold text-[var(--color-text-primary)]">CDT Codes</h4>
                 <button
                   onClick={() => {
-                    const acceptedCdtCodes = (result?.inspector_results?.cdt?.codes || []).filter(code => selectedCodes.accepted.includes(code));
+                    const acceptedCdtCodes = [
+                      ...(result?.inspector_results?.cdt?.codes || []).filter(code => selectedCodes.accepted.includes(code)),
+                      ...customCodes.cdt.filter(code => selectedCodes.accepted.includes(code))
+                    ];
+                    
                     if (acceptedCdtCodes.length === 0) {
                       message.warning('No accepted CDT codes to copy.');
                       return;
@@ -606,7 +619,7 @@ const Home = () => {
                       .then(() => message.success(`Copied CDT: ${textToCopy}`))
                       .catch(() => message.error('Failed to copy CDT codes.'));
                   }}
-                  disabled={!(result?.inspector_results?.cdt?.codes || []).some(code => selectedCodes.accepted.includes(code))}
+                  disabled={!selectedCodes.accepted.some(code => code.startsWith('D') || customCodes.cdt.includes(code))}
                   className="text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed p-1"
                   aria-label="Copy Accepted CDT Codes"
                 >
@@ -663,7 +676,11 @@ const Home = () => {
                 <h4 className="text-lg font-semibold text-[var(--color-text-primary)]">ICD-10 Codes</h4>
                 <button
                   onClick={() => {
-                    const acceptedIcdCodes = (result?.inspector_results?.icd?.codes || []).filter(code => selectedCodes.accepted.includes(code));
+                    const acceptedIcdCodes = [
+                      ...(result?.inspector_results?.icd?.codes || []).filter(code => selectedCodes.accepted.includes(code)),
+                      ...customCodes.icd.filter(code => selectedCodes.accepted.includes(code))
+                    ];
+                    
                     if (acceptedIcdCodes.length === 0) {
                       message.warning('No accepted ICD-10 codes to copy.');
                       return;
@@ -673,7 +690,7 @@ const Home = () => {
                       .then(() => message.success(`Copied ICD-10: ${textToCopy}`))
                       .catch(() => message.error('Failed to copy ICD-10 codes.'));
                   }}
-                  disabled={!(result?.inspector_results?.icd?.codes || []).some(code => selectedCodes.accepted.includes(code))}
+                  disabled={!selectedCodes.accepted.some(code => !code.startsWith('D') || customCodes.icd.includes(code))}
                   className="text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed p-1"
                   aria-label="Copy Accepted ICD-10 Codes"
                 >
