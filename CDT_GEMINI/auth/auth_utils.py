@@ -25,9 +25,9 @@ SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 # Ensure default value if not set or invalid
 try:
-    ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")) 
+    ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "43600")) 
 except ValueError:
-    logger.warning("Invalid ACCESS_TOKEN_EXPIRE_MINUTES, defaulting to 30.")
+    logger.warning("Invalid ACCESS_TOKEN_EXPIRE_MINUTES, defaulting to 43600.")
     ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 if not SECRET_KEY:

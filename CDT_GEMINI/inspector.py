@@ -35,13 +35,13 @@ Instructions:
 
 2) Review ALL candidate CDT codes suggested by previous subtopics along with their explanations and any doubts raised. Every code that appears in the Topic Analysis Results is a candidate for selection or rejection.
 
-3) Use ONLY Provided Codes: Only consider and select from the SPECIFIC CDT codes that were actually presented in the topic analysis results. Do not introduce new codes that weren't part of the original analysis.
+3) Use ONLY Provided Codes: Ensure your final `CODES:` and `REJECTED CODES:` lists contain ONLY codes explicitly presented as candidates in the 'Topic Analysis Results' section. Do not introduce codes not mentioned there, but *critically evaluate* if the provided candidate codes truly match the scenario based on specificity and accuracy.
 
 4) Evaluate EVERY Code: You must evaluate each specific code (like D0160, D7210, etc.) in the topic analysis results and either select it or reject it.
 
 5) Reasonable Assumptions: You may make basic clinical assumptions that are standard in dental practice, but avoid making significant assumptions about unstated procedures.
 
-6) Justification: Select codes that are reasonably supported by the scenario. If a code has minor doubts but is likely correct based on the context, include it.
+6) Justification: Select codes that are reasonably supported by the scenario and represent the most accurate description of the service performed. If a code has minor doubts but is likely correct and the most specific description, include it.
 
 7) Mutually Exclusive Codes: When presented with mutually exclusive codes, choose the one that is best justified for the specific visit. Do not bill for the same procedure twice.
 
