@@ -52,8 +52,8 @@ class PreventiveServices:
                             "Topical Fluoride Treatment (D1206-D1208)")
         self.registry.register("D1310-D1355", other_preventive_service.activate_other_preventive_services, 
                             "Other Preventive Services (D1310-D1355)")
-        self.registry.register("D1510-D1555", space_maintenance_service.activate_space_maintenance, 
-                            "Space Maintenance (D1510-D1555)")
+        self.registry.register("D1510-D1575", space_maintenance_service.activate_space_maintenance, 
+                            "Space Maintenance (D1510-D1575)")
         self.registry.register("D1701-D1707", vaccinations_service.activate_vaccinations, 
                             "Vaccinations (D1701-D1707)")
     
@@ -82,10 +82,10 @@ Your task is to analyze the given scenario and determine the most applicable pre
 **Note:** These codes (D1310-D1355) cover a wide range of preventive interventions designed to reduce risk factors for oral disease, including educational, behavioral, and minimally invasive clinical procedures aimed at preventing future disease rather than treating existing conditions.
 **Activation trigger:** Scenario mentions OR implies any oral hygiene instructions, nutritional or tobacco counseling, application of sealants to pits and fissures, silver diamine fluoride application, interim caries arresting medicament, oral cancer screening, caries risk assessment, or other non-restorative prevention procedures. INCLUDE this range if there's any suggestion of preventive care beyond routine cleaning and fluoride treatments.
 
-## **Space Maintenance (D1510-D1555)**
+## **Space Maintenance (D1510-D1575)**
 **Use when:** Placing, repairing, or removing appliances designed to maintain space for erupting permanent teeth following premature loss of primary teeth.
 **Check:** Documentation describes the type of space maintainer (fixed or removable), its location (unilateral or bilateral, maxillary or mandibular), and whether it's an initial placement, repair, or removal procedure.
-**Note:** These devices (D1510-D1555) are critical in pediatric dentistry to preserve arch length and prevent malocclusion following early loss of primary teeth. Different codes apply based on design features, with special consideration for distal shoe appliances that guide unerupted first permanent molars.
+**Note:** These devices (D1510-D1575) are critical in pediatric dentistry to preserve arch length and prevent malocclusion following early loss of primary teeth. Different codes apply based on design features, with special consideration for distal shoe appliances that guide unerupted first permanent molars.
 **Activation trigger:** Scenario mentions OR implies any space maintainer placement, space maintenance following extraction or premature loss of primary teeth, band and loop appliance, lingual arch, transpalatal arch, distal shoe appliance, recementation of space maintainer, or removal of space maintainer. INCLUDE this range if there's any indication of managing space in a developing dentition after tooth loss.
 
 ## **Vaccinations (D1701-D1707)**

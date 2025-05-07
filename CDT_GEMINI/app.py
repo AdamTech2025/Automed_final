@@ -221,9 +221,23 @@ class AnalysisStep3Output(AnalysisStep2Output):
 class AnalysisStep4Output(AnalysisStep3Output):
     record_id: str
 
+# New model for individual inspector results
+class InspectorResultDetail(BaseModel):
+    codes: List[str]
+    rejected_codes: List[str]
+    explanation: str
+    raw_response: Optional[str] = None # Add raw_response field
+    error: Optional[str] = None # Keep error field if applicable
+
+class InspectorResultsContainer(BaseModel):
+    cdt: InspectorResultDetail
+    icd: InspectorResultDetail
+    status: str
+    error: Optional[str] = None # Overall error for inspector step
+
 class AnalysisStep6Output(AnalysisStep4Output):
     questioner_data: Dict[str, Any]
-    inspector_results: Dict[str, Any]
+    inspector_results: InspectorResultsContainer # Use the new container
 
 # Request models from app.txt
 class CustomCodeRequest(BaseModel):
@@ -612,33 +626,47 @@ async def analyze_scenario_endpoint(
                 )
 
                 # Run concurrently
-                cdt_inspector_result, icd_inspector_result = await asyncio.gather(
+                cdt_inspector_result_raw, icd_inspector_result_raw = await asyncio.gather(
                     cdt_inspector_task, icd_inspector_task
                 )
-                logger.info(f"CDT Inspector Result Codes: {cdt_inspector_result.get('codes')}")
-                logger.info(f"ICD Inspector Result Codes: {icd_inspector_result.get('codes')}")
+                logger.info(f"CDT Inspector Result Codes: {cdt_inspector_result_raw.get('codes')}")
+                logger.info(f"ICD Inspector Result Codes: {icd_inspector_result_raw.get('codes')}")
 
                 # Combine and save results
-                inspector_results = {
-                    "cdt": cdt_inspector_result,
-                    "icd": icd_inspector_result,
-                    "status": "completed" # Mark as completed
-                }
-                db.update_inspector_results(record_id, json.dumps(inspector_results, default=str))
+                # Ensure the structure matches InspectorResultDetail for cdt and icd fields
+                inspector_results = InspectorResultsContainer(
+                    cdt=InspectorResultDetail(**cdt_inspector_result_raw),
+                    icd=InspectorResultDetail(**icd_inspector_result_raw),
+                    status="completed"
+                )
+                db.update_inspector_results(record_id, inspector_results.model_dump_json(exclude_none=True))
                 logger.info(f"Inspector results saved to DB for record ID: {record_id}")
 
             except Exception as insp_err:
                 logger.error(f"Error during inspector processing for {record_id}: {insp_err}", exc_info=True)
-                inspector_results["error"] = f"Inspector Error: {str(insp_err)}"
-                inspector_results["status"] = "error"
+                # Ensure error structure matches InspectorResultsContainer
+                error_detail = InspectorResultDetail(codes=[], rejected_codes=[], explanation=str(insp_err), raw_response=f"Inspector processing error: {insp_err}", error=str(insp_err))
+                inspector_results = InspectorResultsContainer(
+                    cdt=error_detail, # Or a specific error structure for cdt
+                    icd=error_detail, # Or a specific error structure for icd
+                    status="error",
+                    error=f"Inspector Error: {str(insp_err)}"
+                )
                 # Attempt to save error state
                 try:
-                    db.update_inspector_results(record_id, json.dumps(inspector_results, default=str))
+                    db.update_inspector_results(record_id, inspector_results.model_dump_json(exclude_none=True))
                     logger.warning(f"Saved inspector error state to DB for record ID: {record_id}")
                 except Exception as db_insp_err:
                     logger.error(f"Failed to save inspector error state to DB for {record_id}: {db_insp_err}")
         else:
             logger.info(f"Skipping immediate inspector run for {record_id} as questions were generated.")
+            # Ensure inspector_results has a default structure if not run
+            default_detail = InspectorResultDetail(codes=[], rejected_codes=[], explanation="Inspectors not run due to pending questions", raw_response="")
+            inspector_results = InspectorResultsContainer(
+                cdt=default_detail,
+                icd=default_detail,
+                status="not_run"
+            )
 
         # --- Step 7: Construct Final Response --- 
         logger.info(f"*********🔧 Step 7: Constructing Final Response:*********************")

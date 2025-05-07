@@ -169,22 +169,61 @@ REJECTED CODES: D0140, D0220, D0230
         codes_line = ""
         explanation_line = ""
         rejected_codes_line = ""
+        raw_response_for_output = response # Store the original raw response
         
         lines = response.strip().split('\n')
         in_explanation = False
         
+        current_section = None # To handle multi-line explanations, codes, etc.
+        explanation_parts = []
+        codes_parts = []
+        rejected_codes_parts = []
+
         for line in lines:
-            line = line.strip()
+            line_upper = line.upper().strip()
+
+            if line_upper.startswith("EXPLANATION:"):
+                current_section = "explanation"
+                # Take content after "EXPLANATION:"
+                explanation_parts.append(line.split(":", 1)[1].strip() if ":" in line else "")
+                continue
+            elif line_upper.startswith("CODES:"):
+                current_section = "codes"
+                codes_parts.append(line.split(":", 1)[1].strip() if ":" in line else "")
+                continue
+            elif line_upper.startswith("REJECTED CODES:"):
+                current_section = "rejected_codes"
+                rejected_codes_parts.append(line.split(":", 1)[1].strip() if ":" in line else "")
+                continue
             
-            if line.upper().startswith("CODES:"):
-                codes_line = line.split(":", 1)[1].strip()
-            elif line.upper().startswith("REJECTED CODES:"):
-                rejected_codes_line = line.split(":", 1)[1].strip()
-            elif line.upper().startswith("EXPLANATION:"):
-                in_explanation = True
-                explanation_line = line.split(":", 1)[1].strip()
-            elif in_explanation and line:
-                explanation_line += " " + line
+            if current_section == "explanation":
+                explanation_parts.append(line.strip())
+            elif current_section == "codes":
+                codes_parts.append(line.strip())
+            elif current_section == "rejected_codes":
+                rejected_codes_parts.append(line.strip())
+
+        explanation_line = " ".join(explanation_parts).strip()
+        codes_line = " ".join(codes_parts).strip()
+        rejected_codes_line = " ".join(rejected_codes_parts).strip()
+        
+        # Fallback: If CODES: is empty or not found, check if explanation ends with codes
+        if not codes_line:
+            import re
+            # Regex to find a pattern like "Dxxxx, Dyyyy none" or "Dxxxx, Dyyyy" at the end of the explanation
+            # This regex looks for one or more CDT codes (Dxxxx) optionally followed by 'none',
+            # at the end of the string, possibly with spaces.
+            match = re.search(r"((?:D\d{4}\s*,\s*)*D\d{4}(?:\s+none)?)$", explanation_line, re.IGNORECASE)
+            if match:
+                potential_codes_part = match.group(1).strip()
+                # Check if this part is significantly different from the whole explanation
+                # to avoid misinterpreting a short explanation as codes.
+                if len(explanation_line) - len(potential_codes_part) > 20: # Heuristic threshold
+                    codes_line = potential_codes_part
+                    # Attempt to remove this identified code part from the explanation
+                    explanation_line = explanation_line[:-len(potential_codes_part)].strip()
+                    self.logger.info(f"Fallback: Extracted codes from explanation: {codes_line}")
+
 
         cleaned_codes = self._clean_codes(codes_line)
         rejected_codes = self._clean_codes(rejected_codes_line)
@@ -192,7 +231,8 @@ REJECTED CODES: D0140, D0220, D0230
         return {
             "codes": cleaned_codes,
             "rejected_codes": rejected_codes,
-            "explanation": explanation_line
+            "explanation": explanation_line,
+            "raw_response": raw_response_for_output # Add raw response here
         }
 
     def _clean_codes(self, codes_line: str) -> list:
@@ -253,6 +293,7 @@ REJECTED CODES: D0140, D0220, D0230
                 "codes": [],
                 "rejected_codes": [],
                 "explanation": f"Error occurred: {str(e)}",
+                "raw_response": f"Error occurred, no raw response from LLM: {str(e)}", # Add raw_response field in error case
                 "type": "error",
                 "data_source": "error"
             }
@@ -380,7 +421,8 @@ REJECTED CODES: D0140, D0220, D0230
         return {
             "codes": validated_codes,
             "rejected_codes": validated_rejected,
-            "explanation": result["explanation"]
+            "explanation": result["explanation"],
+            "raw_response": result["raw_response"] # Ensure raw_response is passed through
         }
 
     @property

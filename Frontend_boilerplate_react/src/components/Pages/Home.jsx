@@ -419,19 +419,19 @@ const Home = () => {
         }
       },
       {
-        element: '#tour-explanation',
+        element: '#tour-code-details',
         popover: {
-          title: '📋 Comprehensive Explanation',
-          description: 'Review the AI\'s detailed rationale for code selection. This helps you understand why certain codes were recommended.',
+          title: '🔍 Code Details',
+          description: 'Click any code to see its detailed information in this panel, including explanations of why it applies to the current scenario.',
           side: "top",
           align: 'center'
         }
       },
       {
-        element: '#tour-code-details',
+        element: '#tour-explanation',
         popover: {
-          title: '🔍 Code Details',
-          description: 'Click any code to see its detailed information in this panel, including explanations of why it applies to the current scenario.',
+          title: '📋 Comprehensive Explanation',
+          description: 'Review the AI\'s detailed rationale for code selection. This helps you understand why certain codes were recommended.',
           side: "top",
           align: 'center'
         }
@@ -1008,6 +1008,51 @@ const Home = () => {
           </div>
         </div>
 
+        {/* Code Details Section - MOVED UP - Add id for tour */}
+        <div id="tour-code-details" className="bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 col-span-1 md:col-span-3">
+          <h3 className="text-lg font-bold tracking-tight mb-4 text-[var(--color-text-primary)]">Code Details</h3>
+          <div className="border border-[var(--color-border)] bg-[var(--color-input-bg)] p-4 rounded-lg shadow-inner min-h-[100px] text-sm font-light leading-relaxed text-[var(--color-text-primary)]">
+            {activeCodeDetail && allCodeDetailsMap[activeCodeDetail] ? (
+              (() => { // Use IIFE to handle conditional rendering logic
+                const details = allCodeDetailsMap[activeCodeDetail];
+                if (details.custom) {
+                  // Custom code formatting
+                  const explanation = details.explanation || '';
+                  const applicable = details.isApplicable;
+                  // Basic parsing assuming format: "...- **Applicable?** Yes/No - **Reason**: ..."
+                  const reasonMatch = explanation.match(/- \*\*Reason\*\*:\s*(.*)/s);
+                  const reason = reasonMatch ? reasonMatch[1].trim() : explanation; // Fallback to full explanation
+
+                  return (
+                    <div className="space-y-2">
+                      <p><strong className="font-medium text-[var(--color-text-secondary)]">Code:</strong> {details.code} ✨</p>
+                      <p><strong className="font-medium text-[var(--color-text-secondary)]">Type:</strong> {details.type} (Custom)</p>
+                      <p>
+                        <strong className="font-medium text-[var(--color-text-secondary)]">Applicable: </strong>
+                        <span className={applicable ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-red-600 dark:text-red-400 font-semibold'}>
+                          {applicable ? 'Yes' : 'No'}
+                        </span>
+                      </p>
+                      <p><strong className="font-medium text-[var(--color-text-secondary)]">Reason:</strong> {reason}</p>
+                    </div>
+                  );
+                } else {
+                  // Standard code formatting
+                  return (
+                    <div className="space-y-2">
+                      <p><strong className="font-medium text-[var(--color-text-secondary)]">Code:</strong> {details.code}</p>
+                      <p><strong className="font-medium text-[var(--color-text-secondary)]">Type:</strong> {details.type}</p>
+                      <p><strong className="font-medium text-[var(--color-text-secondary)]">Explanation:</strong> {details.explanation}</p>
+                    </div>
+                  );
+                }
+              })()
+            ) : (
+              <p className="text-[var(--color-text-secondary)]">Click a code in the &apos;Final Codes&apos; section or &apos;View Details&apos; in the summary table to see details here.</p>
+            )}
+          </div>
+        </div>
+
         {/* Inspector Explanation Section - Add id for tour */}
         <div id="tour-explanation" className="bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 col-span-1 md:col-span-3 space-y-4">
           <h3 className="text-lg font-bold tracking-tight text-[var(--color-text-primary)]">Final Explanation</h3>
@@ -1053,51 +1098,6 @@ const Home = () => {
                )}
             </div>
           )}
-        </div>
-
-        {/* Code Details Section - Add id for tour */}
-        <div id="tour-code-details" className="bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 col-span-1 md:col-span-3">
-          <h3 className="text-lg font-bold tracking-tight mb-4 text-[var(--color-text-primary)]">Code Details</h3>
-          <div className="border border-[var(--color-border)] bg-[var(--color-input-bg)] p-4 rounded-lg shadow-inner min-h-[100px] text-sm font-light leading-relaxed text-[var(--color-text-primary)]">
-            {activeCodeDetail && allCodeDetailsMap[activeCodeDetail] ? (
-              (() => { // Use IIFE to handle conditional rendering logic
-                const details = allCodeDetailsMap[activeCodeDetail];
-                if (details.custom) {
-                  // Custom code formatting
-                  const explanation = details.explanation || '';
-                  const applicable = details.isApplicable;
-                  // Basic parsing assuming format: "...- **Applicable?** Yes/No - **Reason**: ..."
-                  const reasonMatch = explanation.match(/- \*\*Reason\*\*:\s*(.*)/s);
-                  const reason = reasonMatch ? reasonMatch[1].trim() : explanation; // Fallback to full explanation
-
-                  return (
-                    <div className="space-y-2">
-                      <p><strong className="font-medium text-[var(--color-text-secondary)]">Code:</strong> {details.code} ✨</p>
-                      <p><strong className="font-medium text-[var(--color-text-secondary)]">Type:</strong> {details.type} (Custom)</p>
-                      <p>
-                        <strong className="font-medium text-[var(--color-text-secondary)]">Applicable: </strong>
-                        <span className={applicable ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-red-600 dark:text-red-400 font-semibold'}>
-                          {applicable ? 'Yes' : 'No'}
-                        </span>
-                      </p>
-                      <p><strong className="font-medium text-[var(--color-text-secondary)]">Reason:</strong> {reason}</p>
-                    </div>
-                  );
-                } else {
-                  // Standard code formatting
-                  return (
-                    <div className="space-y-2">
-                      <p><strong className="font-medium text-[var(--color-text-secondary)]">Code:</strong> {details.code}</p>
-                      <p><strong className="font-medium text-[var(--color-text-secondary)]">Type:</strong> {details.type}</p>
-                      <p><strong className="font-medium text-[var(--color-text-secondary)]">Explanation:</strong> {details.explanation}</p>
-                    </div>
-                  );
-                }
-              })()
-            ) : (
-              <p className="text-[var(--color-text-secondary)]">Click a code in the &apos;Final Codes&apos; section or &apos;View Details&apos; in the summary table to see details here.</p>
-            )}
-          </div>
         </div>
 
         {/* Recent Codes Dashboard - Add id for tour */}
