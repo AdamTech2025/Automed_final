@@ -83,7 +83,17 @@ const Home = () => {
   const [showConfetti, setShowConfetti] = useState(false);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [showWelcomeMessage, setShowWelcomeMessage] = useState(false);
+  const [isDetailSectionHighlighted, setIsDetailSectionHighlighted] = useState(false); // State for highlighting
   const driverRef = useRef(null);
+
+  // useEffect for highlighting the details section
+  useEffect(() => {
+    if (activeCodeDetail) { // Trigger highlight when activeCodeDetail changes
+      setIsDetailSectionHighlighted(true);
+      const timer = setTimeout(() => setIsDetailSectionHighlighted(false), 1500); // Highlight for 1.5 seconds
+      return () => clearTimeout(timer);
+    }
+  }, [activeCodeDetail]);
 
   // Check if there are questions in the result
   useEffect(() => {
@@ -404,7 +414,7 @@ const Home = () => {
         element: '#tour-final-codes',
         popover: {
           title: '✅ Final Codes',
-          description: 'Generated codes appear here. Click on any code to accept or reject it. Accepted codes will be highlighted in green, rejected in red.',
+          description: 'Generated codes appear here. Single-click any code to accept or reject it. Double-click a code to view its detailed explanation below.',
           side: "left",
           align: 'center'
         }
@@ -422,7 +432,7 @@ const Home = () => {
         element: '#tour-code-details',
         popover: {
           title: '🔍 Code Details',
-          description: 'Click any code to see its detailed information in this panel, including explanations of why it applies to the current scenario.',
+          description: 'After double-clicking a code from the list above, its detailed information (explanation, type, etc.) will appear in this section.',
           side: "top",
           align: 'center'
         }
@@ -897,7 +907,14 @@ const Home = () => {
                     key={`${code}-${index}`}
                     onClick={() => {
                       handleCodeSelection(code, selectedCodes.accepted.includes(code) ? 'deny' : 'accept');
+                    }}
+                    onDoubleClick={() => {
                       setActiveCodeDetail(code);
+                      const detailsSection = document.getElementById('tour-code-details');
+                      if (detailsSection) {
+                        detailsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                      setIsDetailSectionHighlighted(true); // Trigger highlight
                     }}
                     className={`cursor-pointer px-2 py-1 rounded-full text-xs transition-all duration-200 hover:scale-105 hover:shadow-lg border
                       ${
@@ -917,7 +934,14 @@ const Home = () => {
                     key={`custom-cdt-${code}-${index}`}
                     onClick={() => {
                       handleCodeSelection(code, selectedCodes.accepted.includes(code) ? 'deny' : 'accept');
+                    }}
+                    onDoubleClick={() => {
                       setActiveCodeDetail(code);
+                      const detailsSection = document.getElementById('tour-code-details');
+                      if (detailsSection) {
+                        detailsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                      setIsDetailSectionHighlighted(true); // Trigger highlight
                     }}
                     className={`cursor-pointer px-2 py-1 rounded-full text-xs transition-all duration-200 hover:scale-105 hover:shadow-lg border
                       bg-yellow-100 dark:bg-yellow-900/60 text-yellow-900 dark:text-yellow-200 border-yellow-300 dark:border-yellow-700 // Custom style
@@ -968,7 +992,14 @@ const Home = () => {
                     key={`icd-code-${index}-${code}`}
                     onClick={() => {
                       handleCodeSelection(code, selectedCodes.accepted.includes(code) ? 'deny' : 'accept');
+                    }}
+                    onDoubleClick={() => {
                       setActiveCodeDetail(code);
+                      const detailsSection = document.getElementById('tour-code-details');
+                      if (detailsSection) {
+                        detailsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                      setIsDetailSectionHighlighted(true); // Trigger highlight
                     }}
                     className={`cursor-pointer px-2 py-1 rounded-full text-xs transition-all duration-200 hover:scale-105 hover:shadow-lg border
                       ${
@@ -988,7 +1019,14 @@ const Home = () => {
                     key={`custom-icd-${code}-${index}`}
                     onClick={() => {
                       handleCodeSelection(code, selectedCodes.accepted.includes(code) ? 'deny' : 'accept');
+                    }}
+                    onDoubleClick={() => {
                       setActiveCodeDetail(code);
+                      const detailsSection = document.getElementById('tour-code-details');
+                      if (detailsSection) {
+                        detailsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                      setIsDetailSectionHighlighted(true); // Trigger highlight
                     }}
                     className={`cursor-pointer px-2 py-1 rounded-full text-xs transition-all duration-200 hover:scale-105 hover:shadow-lg border
                       bg-yellow-100 dark:bg-yellow-900/60 text-yellow-900 dark:text-yellow-200 border-yellow-300 dark:border-yellow-700 // Custom style
@@ -1009,7 +1047,12 @@ const Home = () => {
         </div>
 
         {/* Code Details Section - MOVED UP - Add id for tour */}
-        <div id="tour-code-details" className="bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 col-span-1 md:col-span-3">
+        <div 
+          id="tour-code-details" 
+          className={`bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-lg col-span-1 md:col-span-3 transition-all duration-300 ${
+            isDetailSectionHighlighted ? 'ring-2 ring-[var(--color-primary)] shadow-2xl scale-105' : 'hover:shadow-xl'
+          }`}
+        >
           <h3 className="text-lg font-bold tracking-tight mb-4 text-[var(--color-text-primary)]">Code Details</h3>
           <div className="border border-[var(--color-border)] bg-[var(--color-input-bg)] p-4 rounded-lg shadow-inner min-h-[100px] text-sm font-light leading-relaxed text-[var(--color-text-primary)]">
             {activeCodeDetail && allCodeDetailsMap[activeCodeDetail] ? (
