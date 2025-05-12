@@ -1,19 +1,17 @@
 import os
 import logging
+import re
 from dotenv import load_dotenv
 from llm_services import generate_response, get_service, set_model, set_temperature
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from llm_services import OPENROUTER_MODEL, DEFAULT_TEMP
 from database import MedicalCodingDB
 
 # Load environment variables
 load_dotenv()
 
-# Set a specific model for this file (optional)
-# set_model_for_file("gemini-2.0-flash-thinking-exp-01-21")
-
 class DentalInspector:
-    """Class to handle dental code inspection with configurable prompts and settings"""
+    """Class to handle CDT code inspection with configurable prompts and settings"""
     
     PROMPT_TEMPLATE = """
 You are the final code selector ("Inspector") with extensive expertise in dental coding. Your task is to perform a thorough analysis of the provided scenario along with the candidate CDT code outputs—including all explanations and doubts—from previous subtopics. Your final output must include only the CDT code(s) that are justified by the scenario, with minimal assumptions.
@@ -32,25 +30,15 @@ Additional Information from Questions (if any):
 Instructions:
 
 1) Carefully read the complete clinical scenario provided.
-
 2) Review ALL candidate CDT codes suggested by previous subtopics along with their explanations and any doubts raised. Every code that appears in the Topic Analysis Results is a candidate for selection or rejection.
-
 3) Use ONLY Provided Codes: Ensure your final `CODES:` and `REJECTED CODES:` lists contain ONLY codes explicitly presented as candidates in the 'Topic Analysis Results' section. Do not introduce codes not mentioned there, but *critically evaluate* if the provided candidate codes truly match the scenario based on specificity and accuracy.
-
 4) Evaluate EVERY Code: You must evaluate each specific code (like D0160, D7210, etc.) in the topic analysis results and either select it or reject it.
-
 5) Reasonable Assumptions: You may make basic clinical assumptions that are standard in dental practice, but avoid making significant assumptions about unstated procedures.
-
 6) Justification: Select codes that are reasonably supported by the scenario and represent the most accurate description of the service performed. If a code has minor doubts but is likely correct and the most specific description, include it.
-
 7) Mutually Exclusive Codes: When presented with mutually exclusive codes, choose the one that is best justified for the specific visit. Do not bill for the same procedure twice.
-
 8) Revenue & Defensibility: Your selection should maximize revenue while ensuring billing is defensible, but don't reject codes unnecessarily.
-
 9) Consider Additional QA: Incorporate any additional information or clarifications provided through the question-answer process.
-
 10) Output the same code multiple times if it is applicable (e.g., 8 scans would include the code 8 times).
-
 
 IMPORTANT: You must format your response exactly as follows:
 
@@ -61,7 +49,6 @@ CODES: [comma-separated list of CDT codes that are accepted, with no square brac
 REJECTED CODES: [comma-separated list of CDT codes that were considered but rejected, with no square brackets around individual codes. Only list codes that were actually analyzed in the topic analysis and are explicitly contradicted by the scenario.]
 
 For example:
-
 EXPLANATION: D0120 (periodic oral evaluation) is appropriate as this was a regular dental visit. D0274 (bitewings-four radiographs) is included because the scenario mentions taking four bitewing x-rays. D1110 (prophylaxis-adult) is included as the scenario describes cleaning of teeth for an adult patient. D0140 was rejected because this was not an emergency visit. D0220 was rejected as no periapical films were mentioned. D0230 was rejected as no additional periapical films were mentioned.
 CODES: D0120, D0274, D1110
 REJECTED CODES: D0140, D0220, D0230
@@ -112,27 +99,21 @@ REJECTED CODES: D0140, D0220, D0230
             formatted_topics = []
             all_candidate_codes = []
             
-            # First collect all specific candidate codes for clear visibility
             for code_range, topic_data in topic_analysis.items():
                 result = topic_data.get("result", "")
                 if isinstance(result, str) and "[" in result:
-                    # This might be a string representation of a list of codes
                     try:
-                        # Try to extract codes from the string representation
-                        import re
                         code_pattern = r'D\d{4}'  # Pattern to match D followed by 4 digits
                         codes = re.findall(code_pattern, result)
                         all_candidate_codes.extend(codes)
                     except:
                         pass
             
-            # Then format the full topic data
             for code_range, topic_data in topic_analysis.items():
                 topic_name = topic_data.get("name", "Unknown")
                 topic_result = topic_data.get("result", "No result")
                 formatted_topics.append(f"{topic_name} ({code_range}):\n{topic_result}")
             
-            # Add a clear summary of all candidate codes at the top
             if all_candidate_codes:
                 formatted_topics.insert(0, f"ALL CANDIDATE CODES FOR REVIEW: {', '.join(sorted(set(all_candidate_codes)))}\n")
                 
@@ -169,22 +150,18 @@ REJECTED CODES: D0140, D0220, D0230
         codes_line = ""
         explanation_line = ""
         rejected_codes_line = ""
-        raw_response_for_output = response # Store the original raw response
+        raw_response = response
         
         lines = response.strip().split('\n')
-        in_explanation = False
-        
-        current_section = None # To handle multi-line explanations, codes, etc.
+        current_section = None
         explanation_parts = []
         codes_parts = []
         rejected_codes_parts = []
 
         for line in lines:
             line_upper = line.upper().strip()
-
             if line_upper.startswith("EXPLANATION:"):
                 current_section = "explanation"
-                # Take content after "EXPLANATION:"
                 explanation_parts.append(line.split(":", 1)[1].strip() if ":" in line else "")
                 continue
             elif line_upper.startswith("CODES:"):
@@ -207,23 +184,14 @@ REJECTED CODES: D0140, D0220, D0230
         codes_line = " ".join(codes_parts).strip()
         rejected_codes_line = " ".join(rejected_codes_parts).strip()
         
-        # Fallback: If CODES: is empty or not found, check if explanation ends with codes
         if not codes_line:
-            import re
-            # Regex to find a pattern like "Dxxxx, Dyyyy none" or "Dxxxx, Dyyyy" at the end of the explanation
-            # This regex looks for one or more CDT codes (Dxxxx) optionally followed by 'none',
-            # at the end of the string, possibly with spaces.
             match = re.search(r"((?:D\d{4}\s*,\s*)*D\d{4}(?:\s+none)?)$", explanation_line, re.IGNORECASE)
             if match:
                 potential_codes_part = match.group(1).strip()
-                # Check if this part is significantly different from the whole explanation
-                # to avoid misinterpreting a short explanation as codes.
-                if len(explanation_line) - len(potential_codes_part) > 20: # Heuristic threshold
+                if len(explanation_line) - len(potential_codes_part) > 20:
                     codes_line = potential_codes_part
-                    # Attempt to remove this identified code part from the explanation
                     explanation_line = explanation_line[:-len(potential_codes_part)].strip()
                     self.logger.info(f"Fallback: Extracted codes from explanation: {codes_line}")
-
 
         cleaned_codes = self._clean_codes(codes_line)
         rejected_codes = self._clean_codes(rejected_codes_line)
@@ -232,10 +200,10 @@ REJECTED CODES: D0140, D0220, D0230
             "codes": cleaned_codes,
             "rejected_codes": rejected_codes,
             "explanation": explanation_line,
-            "raw_response": raw_response_for_output # Add raw response here
+            "raw_response": raw_response
         }
 
-    def _clean_codes(self, codes_line: str) -> list:
+    def _clean_codes(self, codes_line: str) -> List[str]:
         """Clean and format codes from response"""
         cleaned = []
         if codes_line:
@@ -249,17 +217,14 @@ REJECTED CODES: D0140, D0220, D0230
     def process(self, scenario: str, topic_analysis: Any = None, questioner_data: Any = None, user_id: Optional[str] = None) -> Dict[str, Any]:
         """Process a dental scenario and return inspection results"""
         try:
-            # Pre-process topic_analysis to ensure all candidate codes are properly represented
             all_candidate_codes = self._extract_all_candidate_codes(topic_analysis)
-            self.logger.info(f"Extracted {len(all_candidate_codes)} candidate codes for analysis")
+            self.logger.info(f"Extracted {len(all_candidate_codes)} candidate CDT codes for analysis")
             
-            # Get user rules if user_id is provided
             user_rules = None
             if user_id:
                 user_rules = self.db.get_user_rules(user_id)
                 self.logger.info(f"Retrieved user rules for user ID: {user_id}" if user_rules else "No user rules found")
             
-            # Format the prompt with all candidate codes clearly presented
             formatted_prompt = self.format_prompt(
                 scenario=scenario, 
                 topic_analysis=topic_analysis, 
@@ -267,13 +232,8 @@ REJECTED CODES: D0140, D0220, D0230
                 user_rules=user_rules
             )
             
-            # Generate the response from the LLM
             response = generate_response(formatted_prompt)
-            
-            # Parse the response
             result = self.parse_response(response)
-            
-            # Validate the results against candidate codes
             validated_result = self._validate_results(result, all_candidate_codes)
             
             self.logger.info(f"Dental analysis completed for scenario")
@@ -293,128 +253,89 @@ REJECTED CODES: D0140, D0220, D0230
                 "codes": [],
                 "rejected_codes": [],
                 "explanation": f"Error occurred: {str(e)}",
-                "raw_response": f"Error occurred, no raw response from LLM: {str(e)}", # Add raw_response field in error case
+                "raw_response": f"Error occurred, no raw response from LLM: {str(e)}",
                 "type": "error",
                 "data_source": "error"
             }
-            
-    def _extract_all_candidate_codes(self, topic_analysis: Any) -> list:
-        """Extract all candidate CDT codes (Dxxxx format) from the topic analysis data."""
+
+    def _extract_all_candidate_codes(self, topic_analysis: Any) -> List[str]:
+        """Extract all candidate CDT codes (Dxxxx format) from the topic analysis data"""
         if topic_analysis is None:
             return []
             
         all_codes = set()
         
         if isinstance(topic_analysis, dict):
-            # Extract codes from subtopic_data first if present
             if "subtopic_data" in topic_analysis:
-                 # Assuming subtopic_data itself might be a dict or a string representation
-                 subtopic_data_content = topic_analysis["subtopic_data"]
-                 if isinstance(subtopic_data_content, dict):
-                     for subtopic_key, codes_list in subtopic_data_content.items():
-                         if isinstance(codes_list, list):
+                subtopic_data_content = topic_analysis["subtopic_data"]
+                if isinstance(subtopic_data_content, dict):
+                    for subtopic_key, codes_list in subtopic_data_content.items():
+                        if isinstance(codes_list, list):
                             for code_entry in codes_list:
                                 if isinstance(code_entry, dict) and "code" in code_entry:
-                                     # Use regex to find the Dxxxx pattern within the code field
                                     code_match = re.search(r'(D\d{4})', str(code_entry["code"]))
                                     if code_match:
                                         all_codes.add(code_match.group(1))
-                 elif isinstance(subtopic_data_content, str):
-                     # Extract from string representation if it's not a dict
-                     codes_from_string = self._extract_codes_from_subtopic_data_string(subtopic_data_content)
-                     all_codes.update(codes_from_string)
+                elif isinstance(subtopic_data_content, str):
+                    codes_from_string = self._extract_codes_from_subtopic_data_string(subtopic_data_content)
+                    all_codes.update(codes_from_string)
             
-            # Extract codes from other parts of topic_analysis
             for code_range, topic_data in topic_analysis.items():
-                 # Skip the subtopic_data key itself if it was processed above
-                 if code_range == "subtopic_data":
-                     continue
-                     
-                 result = topic_data.get("result", "")
-                 if isinstance(result, str):
-                     # Use regex to find all Dxxxx codes directly within the result string
-                     import re
-                     code_pattern = r'(D\d{4})'
-                     codes_in_result = re.findall(code_pattern, result)
-                     all_codes.update(codes_in_result)
-                     
-                     # Additionally, specifically look for codes within quoted "code": fields
-                     quoted_code_pattern = r'"code":\s*"(D\d{4})"'
-                     quoted_codes = re.findall(quoted_code_pattern, result)
-                     all_codes.update(quoted_codes)
+                if code_range == "subtopic_data":
+                    continue
+                result = topic_data.get("result", "")
+                if isinstance(result, str):
+                    code_pattern = r'(D\d{4})'
+                    codes_in_result = re.findall(code_pattern, result)
+                    all_codes.update(codes_in_result)
+                    quoted_code_pattern = r'"code":\s*"(D\d{4})"'
+                    quoted_codes = re.findall(quoted_code_pattern, result)
+                    all_codes.update(quoted_codes)
 
-        # Ensure codes extracted from different places are unified
         return sorted(list(all_codes))
         
     def _extract_codes_from_subtopic_data_string(self, data_str: str) -> set:
-        """Extract Dxxxx codes from a string representation of subtopic data."""
+        """Extract Dxxxx codes from a string representation of subtopic data"""
         codes = set()
-        import re
         try:
-            # Look for codes in the format "code": "Dxxxx"
             quoted_code_pattern = r'"code":\s*"(D\d{4})"'
             quoted_matches = re.findall(quoted_code_pattern, data_str)
             codes.update(quoted_matches)
             
-            # Look for codes directly like Dxxxx
             direct_code_pattern = r'(D\d{4})'
             direct_matches = re.findall(direct_code_pattern, data_str)
             codes.update(direct_matches)
-
-            # Attempt to handle the malformed examples specifically if needed,
-            # but focusing on valid Dxxxx should be more robust.
-            # For example, explicitly ignore lines containing "Overall" or similar keywords
-            # if they interfere.
             
         except Exception as e:
             self.logger.error(f"Error extracting codes from subtopic_data string: {str(e)}")
         
         return codes
 
-    def _validate_results(self, result: Dict[str, Any], candidate_codes: list) -> Dict[str, Any]:
+    def _validate_results(self, result: Dict[str, Any], candidate_codes: List[str]) -> Dict[str, Any]:
         """Validate the results against the candidate codes"""
-        # If no candidate codes were found, return the original result
         if not candidate_codes:
             return result
             
         validated_codes = []
         validated_rejected = []
         
-        # Process accepted codes
         for code in result["codes"]:
-            # Clean the code and ensure it's in the right format
             clean_code = code.strip()
-            
-            # Remove any description after the code
             if " " in clean_code:
                 clean_code = clean_code.split(" ")[0].strip()
-                
-            # Validate that it's a properly formatted CDT code
-            import re
             if re.match(r'D\d{4}', clean_code):
                 validated_codes.append(clean_code)
         
-        # Process rejected codes
         for code in result["rejected_codes"]:
-            # Clean and validate
             clean_code = code.strip()
-            
-            # Remove any description
             if " " in clean_code:
                 clean_code = clean_code.split(" ")[0].strip()
-                
-            # Validate format
-            import re
             if re.match(r'D\d{4}', clean_code) and clean_code.lower() != "n/a":
                 validated_rejected.append(clean_code)
         
-        # Check for special case where N/A is included
         if len(result["rejected_codes"]) == 1 and (
-            result["rejected_codes"][0].lower() == "n/a" or 
-            result["rejected_codes"][0].lower() == "none"
+            result["rejected_codes"][0].lower() in ["n/a", "none"]
         ):
-            # Generate the correct rejected codes list
-            # This means no codes were explicitly rejected, so all codes not accepted should be rejected
             all_rejected = [code for code in candidate_codes if code not in validated_codes]
             validated_rejected = all_rejected
         
@@ -422,7 +343,7 @@ REJECTED CODES: D0140, D0220, D0230
             "codes": validated_codes,
             "rejected_codes": validated_rejected,
             "explanation": result["explanation"],
-            "raw_response": result["raw_response"] # Ensure raw_response is passed through
+            "raw_response": result["raw_response"]
         }
 
     @property
@@ -471,8 +392,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
