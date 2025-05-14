@@ -16,7 +16,7 @@ load_dotenv()
 
 # OpenRouter configuration
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_MODEL = "openai/o4-mini-high" # Hardcode the desired model
+OPENROUTER_MODEL = "google/gemini-2.5-pro-preview" # Hardcode the desired model
 OPENROUTER_TEMPERATURE = float(os.getenv("OPENROUTER_TEMPERATURE", "0.0"))
 OPENROUTER_SITE_URL = os.getenv("OPENROUTER_SITE_URL", "")
 OPENROUTER_SITE_NAME = os.getenv("OPENROUTER_SITE_NAME", "")
